@@ -368,7 +368,32 @@ export class ObsidianClient {
     }
   }
 
-  // --- Encode Path ---
+  // --- Helpers ---
+
+  /** Builds HTTP headers for PATCH operations from PatchOptions. */
+  private buildPatchHeaders(options: PatchOptions): Record<string, string> {
+    const headers: Record<string, string> = {
+      "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
+      "Operation": options.operation,
+      "Target-Type": options.targetType,
+      "Target": encodeURIComponent(options.target),
+    };
+    if (options.targetDelimiter !== undefined) {
+      headers["Target-Delimiter"] = options.targetDelimiter;
+    }
+    if (options.trimTargetWhitespace !== undefined) {
+      headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
+    }
+    if (options.createIfMissing !== undefined) {
+      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
+    }
+    return headers;
+  }
+
+  /** Builds the API path for a periodic note at a specific date. */
+  private periodicDatePath(period: string, year: number, month: number, day: number): string {
+    return `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+  }
 
   /** Sanitises and URL-encodes a vault file path for use in API request URLs. */
   private encodePath(filePath: string): string {
@@ -529,25 +554,9 @@ export class ObsidianClient {
   async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
-      const headers: Record<string, string> = {
-        "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
-        "Operation": options.operation,
-        "Target-Type": options.targetType,
-        "Target": encodeURIComponent(options.target),
-      };
-      if (options.targetDelimiter !== undefined) {
-        headers["Target-Delimiter"] = options.targetDelimiter;
-      }
-      if (options.trimTargetWhitespace !== undefined) {
-        headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
-      }
-      if (options.createIfMissing !== undefined) {
-        headers["Create-Target-If-Missing"] = String(options.createIfMissing);
-      }
-
       const res = await this.request("PATCH", `/vault/${encoded}`, {
         body: content,
-        headers,
+        headers: this.buildPatchHeaders(options),
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -619,25 +628,9 @@ export class ObsidianClient {
 
   /** Patches the currently open file at a specific target (not idempotent). */
   async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
-      "Operation": options.operation,
-      "Target-Type": options.targetType,
-      "Target": encodeURIComponent(options.target),
-    };
-    if (options.targetDelimiter !== undefined) {
-      headers["Target-Delimiter"] = options.targetDelimiter;
-    }
-    if (options.trimTargetWhitespace !== undefined) {
-      headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
-    }
-    if (options.createIfMissing !== undefined) {
-      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
-    }
-
     const res = await this.request("PATCH", "/active/", {
       body: content,
-      headers,
+      headers: this.buildPatchHeaders(options),
     });
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -785,25 +778,9 @@ export class ObsidianClient {
 
   /** Patches the current periodic note at a specific target (not idempotent). */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
-      "Operation": options.operation,
-      "Target-Type": options.targetType,
-      "Target": encodeURIComponent(options.target),
-    };
-    if (options.targetDelimiter !== undefined) {
-      headers["Target-Delimiter"] = options.targetDelimiter;
-    }
-    if (options.trimTargetWhitespace !== undefined) {
-      headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
-    }
-    if (options.createIfMissing !== undefined) {
-      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
-    }
-
     const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
       body: content,
-      headers,
+      headers: this.buildPatchHeaders(options),
     });
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -832,7 +809,7 @@ export class ObsidianClient {
     day: number,
     format: FileFormat = "markdown",
   ): Promise<FileContentsResult> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+    const path = this.periodicDatePath(period, year, month, day);
     const res = await this.request("GET", path, {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -849,7 +826,7 @@ export class ObsidianClient {
 
   /** Replaces the periodic note for a specific date (idempotent). */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+    const path = this.periodicDatePath(period, year, month, day);
     const res = await this.request("PUT", path, {
       body: content,
       headers: { "Content-Type": "text/markdown" },
@@ -863,7 +840,7 @@ export class ObsidianClient {
 
   /** Appends content to the periodic note for a specific date (not idempotent). */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+    const path = this.periodicDatePath(period, year, month, day);
     const res = await this.request("POST", path, {
       body: content,
       headers: { "Content-Type": "text/markdown" },
@@ -877,26 +854,10 @@ export class ObsidianClient {
 
   /** Patches the periodic note for a specific date at a target (not idempotent). */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
-    const headers: Record<string, string> = {
-      "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
-      "Operation": options.operation,
-      "Target-Type": options.targetType,
-      "Target": encodeURIComponent(options.target),
-    };
-    if (options.targetDelimiter !== undefined) {
-      headers["Target-Delimiter"] = options.targetDelimiter;
-    }
-    if (options.trimTargetWhitespace !== undefined) {
-      headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
-    }
-    if (options.createIfMissing !== undefined) {
-      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
-    }
-
+    const path = this.periodicDatePath(period, year, month, day);
     const res = await this.request("PATCH", path, {
       body: content,
-      headers,
+      headers: this.buildPatchHeaders(options),
     });
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -907,7 +868,7 @@ export class ObsidianClient {
 
   /** Deletes the periodic note for a specific date (idempotent). */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+    const path = this.periodicDatePath(period, year, month, day);
     const res = await this.request("DELETE", path);
 
     if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {

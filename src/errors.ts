@@ -1,3 +1,4 @@
+/** Thrown when the Obsidian REST API returns a non-success HTTP status. */
 export class ObsidianApiError extends Error {
   public readonly statusCode: number;
   public readonly errorCode: number | undefined;
@@ -10,6 +11,7 @@ export class ObsidianApiError extends Error {
   }
 }
 
+/** Thrown when Obsidian is unreachable (connection refused, timeout, DNS failure). */
 export class ObsidianConnectionError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
@@ -17,6 +19,7 @@ export class ObsidianConnectionError extends Error {
   }
 }
 
+/** Thrown when the API key is rejected (HTTP 401/403). */
 export class ObsidianAuthError extends Error {
   constructor() {
     super("Authentication failed. Check OBSIDIAN_API_KEY.");
@@ -29,6 +32,7 @@ interface ErrorContext {
   readonly path?: string;
 }
 
+/** Builds an LLM-friendly error message with actionable guidance based on error type. */
 export function buildErrorMessage(error: unknown, context: ErrorContext): string {
   if (error instanceof ObsidianConnectionError) {
     return "CONNECTION ERROR: Cannot reach Obsidian. Ensure Obsidian is running with Local REST API enabled.";

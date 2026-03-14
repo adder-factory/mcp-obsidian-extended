@@ -9,6 +9,7 @@ import { log } from "./config.js";
 
 // --- Types ---
 
+/** JSON representation of an Obsidian note returned by the REST API. */
 export interface NoteJson {
   readonly content: string;
   readonly frontmatter: Record<string, unknown>;
@@ -17,12 +18,14 @@ export interface NoteJson {
   readonly stat: { readonly ctime: number; readonly mtime: number; readonly size: number };
 }
 
+/** Document structure map showing headings, blocks, and frontmatter fields. */
 export interface DocumentMap {
   readonly headings: readonly string[];
   readonly blocks: readonly string[];
   readonly frontmatterFields: readonly string[];
 }
 
+/** Options for PATCH operations on vault files and periodic notes. */
 export interface PatchOptions {
   readonly operation: "append" | "prepend" | "replace";
   readonly targetType: "heading" | "block" | "frontmatter";
@@ -33,11 +36,13 @@ export interface PatchOptions {
   readonly contentType?: "markdown" | "json";
 }
 
+/** A single match within a search result, with position and surrounding context. */
 export interface SearchMatch {
   readonly match: { readonly start: number; readonly end: number };
   readonly context: string;
 }
 
+/** A file-level search result returned by the Obsidian search endpoints. */
 export interface SearchResult {
   readonly filename: string;
   readonly score?: number;
@@ -56,10 +61,19 @@ type FileFormat = "markdown" | "json" | "map";
 
 // --- Path Sanitization ---
 
+/**
+ * Sanitises a vault-relative file path for use in API requests.
+ * Normalises back-slashes and rejects paths containing `..` segments,
+ * leading slashes, or Windows-style drive letters.
+ *
+ * @throws {Error} If path traversal or absolute path is detected.
+ */
 export function sanitizeFilePath(filePath: string): string {
-  let normalized = filePath.replace(/\\/g, "/");
-  normalized = normalized.replace(/^\/+/, "");
-  if (normalized.includes("..")) {
+  const normalized = filePath.replace(/\\/g, "/");
+  if (normalized.startsWith("/")) {
+    throw new Error("Absolute paths not allowed");
+  }
+  if (normalized.split("/").some((seg) => seg === "..")) {
     throw new Error("Path traversal not allowed");
   }
   if (/^[a-zA-Z]:/.test(normalized)) {
@@ -83,25 +97,34 @@ function acceptHeaderForFormat(format: FileFormat): string {
 
 // --- Tool Result Helpers ---
 
+/** Standard MCP tool response shape. */
 export interface ToolResult {
   readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
   readonly isError?: boolean;
 }
 
+/** Wraps a plain text string as an MCP tool result. */
 export function textResult(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
 }
 
+/** Wraps an error message as an MCP tool error result. */
 export function errorResult(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
+/** Serialises data as pretty-printed JSON in an MCP tool result. */
 export function jsonResult(data: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
 // --- HTTP Client ---
 
+/**
+ * HTTP client for the Obsidian Local REST API.
+ * Handles authentication, TLS, timeouts, path sanitisation, case-insensitive
+ * fallback, per-file write locks, write verification, and connection health.
+ */
 export class ObsidianClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -262,16 +285,18 @@ export class ObsidianClient {
     }
 
     let message = body;
+    let errorCode: number | undefined;
     try {
       const parsed = JSON.parse(body) as { message?: string; errorCode?: number };
       if (parsed.message) {
         message = parsed.message;
       }
+      errorCode = parsed.errorCode;
     } catch {
       // Use raw body as message
     }
 
-    throw new ObsidianApiError(message, statusCode);
+    throw new ObsidianApiError(message, statusCode, errorCode);
   }
 
   private truncateResponse(text: string): string {
@@ -283,6 +308,13 @@ export class ObsidianClient {
 
   // --- Write Lock ---
 
+  /**
+   * Serialises concurrent writes to the same file path.
+   * Uses `.then(fn, fn)` intentionally: if a previous lock-holder fails,
+   * the next queued operation still runs (queue keeps moving). Each caller
+   * gets its own rejection if its `fn` throws — errors do not propagate
+   * across callers. This is the desired behaviour for independent write ops.
+   */
   private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
     const existing = this.fileLocks.get(filePath);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
@@ -412,10 +444,13 @@ export class ObsidianClient {
       // Invalidate cache
       this.cacheRef?.invalidate(filePath);
 
-      // Optional write verification
+      // Optional write verification — reads raw content (bypasses truncation)
+      // Uses trimmed comparison to account for trailing newline normalization by Obsidian
       if (this.verifyWrites) {
-        const readBack = await this.getFileContents(filePath, "markdown");
-        if (typeof readBack === "string" && readBack !== body) {
+        const verifyRes = await this.request("GET", `/vault/${encoded}`, {
+          headers: { "Accept": "text/markdown" },
+        });
+        if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== body.trim()) {
           log("warn", `Write verification failed for ${filePath}: content mismatch`);
         }
       }
@@ -471,14 +506,16 @@ export class ObsidianClient {
   }
 
   async deleteFile(filePath: string): Promise<void> {
-    const encoded = this.encodePath(filePath);
-    const res = await this.request("DELETE", `/vault/${encoded}`);
+    await this.withFileLock(filePath, async () => {
+      const encoded = this.encodePath(filePath);
+      const res = await this.request("DELETE", `/vault/${encoded}`);
 
-    if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-      this.handleErrorResponse(res.statusCode, res.body, filePath);
-    }
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
+        this.handleErrorResponse(res.statusCode, res.body, filePath);
+      }
 
-    this.cacheRef?.invalidate(filePath);
+      this.cacheRef?.invalidate(filePath);
+    });
   }
 
   // --- Active File ---
@@ -790,6 +827,7 @@ export class ObsidianClient {
 
 // --- Cache Interface (to avoid circular imports) ---
 
+/** Minimal cache interface used by ObsidianClient for write-through invalidation. */
 export interface VaultCacheInterface {
   invalidate(path: string): void;
   invalidateAll(): void;

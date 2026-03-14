@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 
+/** Fully resolved server configuration. All fields are populated from defaults, config file, or env vars. */
 export interface Config {
   readonly apiKey: string;
   readonly host: string;
@@ -79,6 +80,7 @@ function findConfigFile(): string | undefined {
     if (existsSync(resolved)) {
       return resolved;
     }
+    log("warn", `OBSIDIAN_CONFIG path does not exist: ${resolved}`);
     return undefined;
   }
 
@@ -139,6 +141,7 @@ function validateToolPreset(value: string | undefined): "full" | "read-only" | "
   return DEFAULTS.toolPreset;
 }
 
+/** Loads configuration from defaults, config file (auto-discovered), and env vars. Env vars always win. */
 export function loadConfig(): Config {
   const configFilePath = findConfigFile();
   let fileConfig: ConfigFileShape = {};
@@ -166,7 +169,7 @@ export function loadConfig(): Config {
     debug: parseBoolean(env["OBSIDIAN_DEBUG"], fileConfig.debug ?? DEFAULTS.debug),
     toolMode: validateToolMode(env["TOOL_MODE"] ?? fileConfig.tools?.mode),
     toolPreset: validateToolPreset(env["TOOL_PRESET"] ?? fileConfig.tools?.preset),
-    includeTools: parseCommaSeparated(env["INCLUDE_TOOLS"]) .length > 0
+    includeTools: parseCommaSeparated(env["INCLUDE_TOOLS"]).length > 0
       ? parseCommaSeparated(env["INCLUDE_TOOLS"])
       : (fileConfig.tools?.include ?? DEFAULTS.includeTools),
     excludeTools: parseCommaSeparated(env["EXCLUDE_TOOLS"]).length > 0
@@ -180,6 +183,7 @@ export function loadConfig(): Config {
   return config;
 }
 
+/** Returns a copy of the config safe for display — API key is shown as `[SET]` or `[NOT SET]`. */
 export function getRedactedConfig(config: Config): Record<string, unknown> {
   return {
     host: config.host,
@@ -202,6 +206,7 @@ export function getRedactedConfig(config: Config): Record<string, unknown> {
   };
 }
 
+/** Merges updates into an existing config file (or creates a new one). */
 export function saveConfigToFile(filePath: string, updates: Record<string, unknown>): void {
   let existing: Record<string, unknown> = {};
   if (existsSync(filePath)) {
@@ -215,6 +220,7 @@ export function saveConfigToFile(filePath: string, updates: Record<string, unkno
   writeFileSync(filePath, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
 }
 
+/** Writes a log message to stderr. stdout is reserved for the MCP transport. */
 export function log(level: "info" | "warn" | "error" | "debug", message: string): void {
   process.stderr.write(`[${level}] ${message}\n`);
 }

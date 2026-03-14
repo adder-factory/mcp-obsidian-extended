@@ -37,28 +37,26 @@ async function main(): Promise<void> {
 
   const toolCount = registerAllTools(server, client, cache, config);
 
-  // Startup health check (non-blocking)
-  try {
-    await client.getServerStatus();
-    log("info", "Connected to Obsidian REST API (authenticated)");
-
-    if (config.enableCache) {
-      cache.initialize().then(() => {
-        cache.startAutoRefresh();
-      }).catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        log("warn", `Cache build failed: ${message}. Graph tools unavailable.`);
-      });
-    }
-  } catch {
-    log("warn", "Could not connect to Obsidian. Tools will fail until Obsidian is running.");
-  }
-
   log("info", `mcp-obsidian-extended v${VERSION}`);
   if (config.configFilePath) {
     log("info", `Config: ${config.configFilePath} + env overrides`);
   }
   log("info", `Tools: ${config.toolMode} mode | preset: ${config.toolPreset} | ${String(toolCount)} registered`);
+
+  // Startup health check — runs in background so transport connects immediately
+  void (async () => {
+    try {
+      await client.getServerStatus();
+      log("info", "Connected to Obsidian REST API (authenticated)");
+      if (config.enableCache) {
+        await cache.initialize();
+        cache.startAutoRefresh();
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log("warn", `Startup check failed: ${message}. Tools may fail until Obsidian is running.`);
+    }
+  })();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

@@ -288,7 +288,17 @@ export function saveConfigToFile(filePath: string, updates: Record<string, unkno
   writeFileSync(filePath, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
 }
 
-/** Writes a log message to stderr. stdout is reserved for the MCP transport. */
+let debugEnabled = false;
+
+/** Enables or disables debug-level log output. */
+export function setDebugEnabled(enabled: boolean): void {
+  debugEnabled = enabled;
+}
+
+/** Writes a log message to stderr. Debug messages are suppressed unless setDebugEnabled(true) is called. */
 export function log(level: "info" | "warn" | "error" | "debug", message: string): void {
+  if (level === "debug" && !debugEnabled) {
+    return;
+  }
   process.stderr.write(`[${level}] ${message}\n`);
 }

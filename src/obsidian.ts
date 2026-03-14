@@ -354,14 +354,15 @@ export class ObsidianClient {
    * across callers. This is the desired behaviour for independent write ops.
    */
   private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-    const existing = this.fileLocks.get(filePath);
+    const lockKey = sanitizeFilePath(filePath);
+    const existing = this.fileLocks.get(lockKey);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
-    this.fileLocks.set(filePath, next);
+    this.fileLocks.set(lockKey, next);
     try {
       return await next;
     } finally {
-      if (this.fileLocks.get(filePath) === next) {
-        this.fileLocks.delete(filePath);
+      if (this.fileLocks.get(lockKey) === next) {
+        this.fileLocks.delete(lockKey);
       }
     }
   }
@@ -440,7 +441,7 @@ export class ObsidianClient {
     if (res.statusCode === 404) {
       // Check if dir exists in vault listing
       const vault = await this.listFilesInVault();
-      const normalizedDir = sanitizeFilePath(dirPath);
+      const normalizedDir = sanitizeFilePath(dirPath).replace(/\/+$/, "");
       const dirExists = vault.files.some((f) => f.startsWith(`${normalizedDir}/`) || f === `${normalizedDir}/`);
       if (dirExists) {
         return { files: [] };

@@ -93,7 +93,7 @@ function resolveRelativePath(target: string, currentDir: string): string {
   for (const part of parts) {
     if (part === "..") {
       resolved.pop();
-    } else if (part !== ".") {
+    } else if (part !== "." && part !== "") {
       resolved.push(part);
     }
   }
@@ -180,12 +180,12 @@ export class VaultCache implements VaultCacheInterface {
    * but the network cost is proportional to vault size.
    */
   async refresh(): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
-      return;
-    }
-
     try {
+      if (!this.isInitialized) {
+        await this.initialize();
+        return;
+      }
+
       const { files } = await this.client.listFilesInVault();
       const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
 

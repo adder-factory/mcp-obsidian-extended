@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { createRequire } from "node:module";
 
-import { loadConfig, log } from "./config.js";
+import { loadConfig, log, setDebugEnabled } from "./config.js";
 import { ObsidianClient } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
@@ -24,6 +24,8 @@ async function main(): Promise<void> {
   }
 
   const config = loadConfig();
+
+  setDebugEnabled(config.debug);
 
   if (!config.apiKey) {
     log("error", "OBSIDIAN_API_KEY is required. Set it as an environment variable or in config file.");

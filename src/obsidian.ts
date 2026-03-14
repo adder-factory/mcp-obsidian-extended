@@ -203,7 +203,10 @@ export class ObsidianClient {
       if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) {
         throw err;
       }
-      throw new ObsidianConnectionError("Cannot reach Obsidian. Ensure it is running with Local REST API enabled.");
+      throw new ObsidianConnectionError(
+        "Cannot reach Obsidian. Ensure it is running with Local REST API enabled.",
+        err instanceof Error ? { cause: err } : undefined,
+      );
     }
   }
 
@@ -321,8 +324,12 @@ export class ObsidianClient {
     });
   }
 
-  /** Safely parses a JSON response body, throwing a structured error on malformed JSON. */
-  private parseJsonResponse<T>(body: string, path: string): T {
+  /** Safely parses a JSON response body, validating Content-Type and throwing structured errors. */
+  private parseJsonResponse<T>(body: string, path: string, headers?: Record<string, string>): T {
+    const ct = headers?.["content-type"] ?? "";
+    if (ct && !ct.includes("json")) {
+      throw new ObsidianApiError(`Unexpected Content-Type "${ct}" from ${path} (expected JSON)`, 200);
+    }
     try {
       return JSON.parse(body) as T;
     } catch {
@@ -459,7 +466,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "/");
     }
-    return this.parseJsonResponse<ServerStatus>(res.body, "/");
+    return this.parseJsonResponse<ServerStatus>(res.body, "/", res.headers);
   }
 
   // --- Vault Files ---
@@ -470,7 +477,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "/vault/");
     }
-    return this.parseJsonResponse<{ files: string[] }>(res.body, "/vault/");
+    return this.parseJsonResponse<{ files: string[] }>(res.body, "/vault/", res.headers);
   }
 
   /** Lists files in a vault directory, returning an empty list for empty dirs that 404. */
@@ -492,7 +499,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, dirPath);
     }
-    return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath);
+    return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath, res.headers);
   }
 
   /** Reads a vault file in the specified format (markdown, JSON, or document map). */
@@ -508,7 +515,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, filePath);
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, filePath, res.headers);
   }
 
   /** Creates or overwrites a vault file with the given content (idempotent). */
@@ -612,7 +619,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, "/active/");
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, "/active/", res.headers);
   }
 
   /** Replaces the content of the currently open file (idempotent). */
@@ -675,7 +682,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "/commands/");
     }
 
-    return this.parseJsonResponse<{ commands: Array<{ id: string; name: string }> }>(res.body, "/commands/");
+    return this.parseJsonResponse<{ commands: Array<{ id: string; name: string }> }>(res.body, "/commands/", res.headers);
   }
 
   /** Executes an Obsidian command by its ID. */
@@ -707,6 +714,7 @@ export class ObsidianClient {
   async simpleSearch(query: string, contextLength = 100): Promise<readonly SearchResult[]> {
     const params = new URLSearchParams({ query, contextLength: String(contextLength) });
     const res = await this.request("POST", `/search/simple/?${params.toString()}`, {
+      body: "",
       timeoutMultiplier: 2,
     });
 
@@ -714,7 +722,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(search)");
     }
 
-    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/simple/");
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/simple/", res.headers);
   }
 
   /** Searches the vault using a JsonLogic query (glob, regexp, etc.). */
@@ -729,7 +737,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(search)");
     }
 
-    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/");
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/", res.headers);
   }
 
   /** Queries the vault using Dataview DQL (requires the Dataview plugin). */
@@ -744,7 +752,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(dataview search)");
     }
 
-    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/dataview");
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/dataview", res.headers);
   }
 
   // --- Periodic Notes (Current) ---
@@ -762,7 +770,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, `/periodic/${period}/`);
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, `/periodic/${period}/`, res.headers);
   }
 
   /** Replaces the current periodic note content (idempotent). */
@@ -837,7 +845,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, path);
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, path, res.headers);
   }
 
   /** Replaces the periodic note for a specific date (idempotent). */

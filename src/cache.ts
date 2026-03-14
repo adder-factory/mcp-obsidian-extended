@@ -475,9 +475,15 @@ export class VaultCache implements VaultCacheInterface {
     const shortName = normalized.split("/").pop() ?? normalized;
     const candidates = this.shortNameIndex.get(shortName);
     if (candidates) {
+      // Pass 1: exact normalized path match
       for (const candidate of candidates) {
-        const normalizedCandidate = this.normalizeLinkTarget(candidate);
-        if (normalizedCandidate === normalized || normalizedCandidate.endsWith(`/${normalized}`)) {
+        if (this.normalizeLinkTarget(candidate) === normalized) {
+          return candidate;
+        }
+      }
+      // Pass 2: suffix fallback for short-name wikilinks
+      for (const candidate of candidates) {
+        if (this.normalizeLinkTarget(candidate).endsWith(`/${normalized}`)) {
           return candidate;
         }
       }

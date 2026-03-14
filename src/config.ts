@@ -150,8 +150,12 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-/** Parses a string env var as a number with optional min/max bounds, returning the fallback if invalid. */
-function parseNumber(value: string | undefined, fallback: number, options?: { readonly min?: number; readonly max?: number }): number {
+/** Parses a string env var as a number with optional min/max/integer bounds, returning the fallback if invalid. */
+function parseNumber(
+  value: string | undefined,
+  fallback: number,
+  options?: { readonly min?: number; readonly max?: number; readonly integer?: boolean },
+): number {
   if (value === undefined) {
     return fallback;
   }
@@ -160,8 +164,8 @@ function parseNumber(value: string | undefined, fallback: number, options?: { re
     log("warn", `Invalid numeric value "${value}", using default ${String(fallback)}`);
     return fallback;
   }
-  if (parsed < 0) {
-    log("warn", `Invalid numeric value "${value}", using default ${String(fallback)}`);
+  if (options?.integer && !Number.isInteger(parsed)) {
+    log("warn", `Non-integer value "${value}", using default ${String(fallback)}`);
     return fallback;
   }
   if (options?.min !== undefined && parsed < options.min) {
@@ -234,7 +238,7 @@ export function loadConfig(): Config {
   const config: Config = {
     apiKey: env["OBSIDIAN_API_KEY"] ?? "",
     host: env["OBSIDIAN_HOST"] ?? fileConfig.host ?? DEFAULTS.host,
-    port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port, { min: 1, max: 65535 }),
+    port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port, { min: 1, max: 65535, integer: true }),
     scheme: validateScheme(env["OBSIDIAN_SCHEME"] ?? fileConfig.scheme),
     timeout: parseNumber(env["OBSIDIAN_TIMEOUT"], fileConfig.reliability?.timeout ?? DEFAULTS.timeout, { min: 1 }),
     certPath: env["OBSIDIAN_CERT_PATH"] ?? (fileConfig.tls?.certPath === null ? undefined : fileConfig.tls?.certPath) ?? DEFAULTS.certPath,

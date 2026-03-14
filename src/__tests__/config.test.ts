@@ -374,9 +374,9 @@ describe("parseNumber — via env vars", () => {
     expect(loadConfig().maxResponseChars).toBe(0);
   });
 
-  it("handles negative numbers", () => {
+  it("rejects negative numbers and uses default", () => {
     process.env["OBSIDIAN_TIMEOUT"] = "-100";
-    expect(loadConfig().timeout).toBe(-100);
+    expect(loadConfig().timeout).toBe(30000);
   });
 });
 

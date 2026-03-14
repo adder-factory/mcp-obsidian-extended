@@ -150,13 +150,17 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-/** Parses a string env var as a number, returning the fallback if undefined or NaN. */
+/** Parses a string env var as a non-negative number, returning the fallback if undefined, NaN, or negative. */
 function parseNumber(value: string | undefined, fallback: number): number {
   if (value === undefined) {
     return fallback;
   }
   const parsed = Number(value);
-  return Number.isNaN(parsed) ? fallback : parsed;
+  if (Number.isNaN(parsed) || parsed < 0) {
+    log("warn", `Invalid numeric value "${value}", using default ${String(fallback)}`);
+    return fallback;
+  }
+  return parsed;
 }
 
 /** Splits a comma-separated string into trimmed, non-empty entries. */

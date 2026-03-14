@@ -446,9 +446,7 @@ describe("ObsidianClient — setCache", () => {
   it("accepts a cache interface without error", () => {
     const client = new ObsidianClient(makeConfig());
     const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
-    client.setCache(mockCache);
-    // No assertion needed — just verifying no throw
-    expect(true).toBe(true);
+    expect(() => client.setCache(mockCache)).not.toThrow();
   });
 });
 

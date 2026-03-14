@@ -513,7 +513,7 @@ export class ObsidianClient {
       }
 
       // Invalidate cache
-      this.cacheRef?.invalidate(filePath);
+      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
 
       // Optional write verification — reads raw content (bypasses truncation)
       // Wrapped in try/catch so a verification failure doesn't mask a successful write
@@ -524,6 +524,8 @@ export class ObsidianClient {
           });
           if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== content.trim()) {
             log("warn", `Write verification failed for ${filePath}: content mismatch`);
+          } else if (verifyRes.statusCode !== 200) {
+            log("warn", `Write verification inconclusive for ${filePath}: read-back returned ${String(verifyRes.statusCode)}`);
           }
         } catch (error_: unknown) {
           const msg = error_ instanceof Error ? error_.message : String(error_);
@@ -546,7 +548,7 @@ export class ObsidianClient {
         this.handleErrorResponse(res.statusCode, res.body, filePath);
       }
 
-      this.cacheRef?.invalidate(filePath);
+      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
     });
   }
 
@@ -563,7 +565,7 @@ export class ObsidianClient {
         this.handleErrorResponse(res.statusCode, res.body, filePath);
       }
 
-      this.cacheRef?.invalidate(filePath);
+      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
     });
   }
 
@@ -577,7 +579,7 @@ export class ObsidianClient {
         this.handleErrorResponse(res.statusCode, res.body, filePath);
       }
 
-      this.cacheRef?.invalidate(filePath);
+      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
     });
   }
 

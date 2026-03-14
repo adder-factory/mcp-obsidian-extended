@@ -384,8 +384,9 @@ describe("VaultCache — invalidate", () => {
 
     cache.invalidate("folder/note.md");
 
-    // After invalidation, should no longer find
+    // After invalidation, should no longer find by full path or short name
     expect(cache.getNote("folder/note.md")).toBeUndefined();
+    expect(cache.getNote("note")).toBeUndefined();
   });
 });
 
@@ -793,11 +794,13 @@ describe("VaultCache — refresh", () => {
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
+    const before = cache.getNote("a.md");
 
     await cache.refresh();
-    // getFileContents is called again to check mtime, but content should not be re-parsed
-    // (the implementation still fetches, but doesn't update the cache entry)
+    // getFileContents is called again to check mtime, but cache entry should be unchanged
+    expect(cache.getNote("a.md")).toBe(before);
     expect(cache.getNote("a.md")?.content).toBe("content");
+    expect(fetchCount.value).toBe(2); // fetched during init and refresh
   });
 
   it("handles refresh failure gracefully", async () => {

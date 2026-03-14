@@ -6,6 +6,7 @@ export default [
   security.configs.recommended,
   {
     files: ["src/**/*.ts"],
+    ignores: ["src/__tests__/**"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {

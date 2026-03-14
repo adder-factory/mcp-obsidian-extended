@@ -190,8 +190,11 @@ export class ObsidianClient {
       await this.getServerStatus();
       this.isConnected = true;
       this.lastHealthCheck = now;
-    } catch {
+    } catch (err: unknown) {
       this.isConnected = false;
+      if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) {
+        throw err;
+      }
       throw new ObsidianConnectionError("Cannot reach Obsidian. Ensure it is running with Local REST API enabled.");
     }
   }
@@ -574,6 +577,9 @@ export class ObsidianClient {
     }
     if (options.trimTargetWhitespace !== undefined) {
       headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
+    }
+    if (options.createIfMissing !== undefined) {
+      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
     }
 
     const res = await this.request("PATCH", "/active/", {

@@ -47,7 +47,10 @@ async function main(): Promise<void> {
   void (async () => {
     try {
       await client.getServerStatus();
-      log("info", "Connected to Obsidian REST API (authenticated)");
+      log("info", "Connected to Obsidian REST API");
+      // Verify auth with an authenticated endpoint
+      await client.listFilesInVault();
+      log("info", "API key verified");
       if (config.enableCache) {
         await cache.initialize();
         cache.startAutoRefresh();

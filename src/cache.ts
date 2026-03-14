@@ -109,6 +109,8 @@ export class VaultCache implements VaultCacheInterface {
   private readonly cacheTtl: number;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
+  /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
+  private readonly shortNameIndex = new Map<string, Set<string>>();
 
   constructor(client: ObsidianClient, cacheTtl: number) {
     this.client = client;
@@ -153,6 +155,7 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
 
+      this.rebuildIndex();
       this.isInitialized = true;
       const elapsed = Date.now() - startTime;
       log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
@@ -224,6 +227,7 @@ export class VaultCache implements VaultCacheInterface {
       }
 
       if (updated > 0) {
+        this.rebuildIndex();
         log("debug", `Cache refreshed: ${String(updated)} notes updated`);
       }
     } catch (err: unknown) {
@@ -295,11 +299,10 @@ export class VaultCache implements VaultCacheInterface {
 
   getBacklinks(path: string): Array<{ source: string; context: string }> {
     const results: Array<{ source: string; context: string }> = [];
-    const normalizedTarget = this.normalizeLinkTarget(path);
 
     for (const note of this.notes.values()) {
       for (const link of note.links) {
-        if (this.linkMatchesPath(link.target, normalizedTarget)) {
+        if (this.resolveLinkToFullPath(link.target) === path) {
           results.push({ source: note.path, context: link.context });
         }
       }
@@ -318,11 +321,9 @@ export class VaultCache implements VaultCacheInterface {
     const notesWithInbound = new Set<string>();
     for (const note of this.notes.values()) {
       for (const link of note.links) {
-        // Find which cached note this link resolves to
-        for (const candidate of this.notes.keys()) {
-          if (this.linkMatchesPath(link.target, this.normalizeLinkTarget(candidate))) {
-            notesWithInbound.add(candidate);
-          }
+        const resolved = this.resolveLinkToFullPath(link.target);
+        if (this.notes.has(resolved)) {
+          notesWithInbound.add(resolved);
         }
       }
     }
@@ -339,15 +340,13 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   getMostConnectedNotes(limit: number): Array<{ path: string; inbound: number; outbound: number }> {
-    // Count inbound links per note using suffix-aware matching
     const inboundCounts = new Map<string, number>();
 
     for (const note of this.notes.values()) {
       for (const link of note.links) {
-        for (const candidate of this.notes.keys()) {
-          if (this.linkMatchesPath(link.target, this.normalizeLinkTarget(candidate))) {
-            inboundCounts.set(candidate, (inboundCounts.get(candidate) ?? 0) + 1);
-          }
+        const resolved = this.resolveLinkToFullPath(link.target);
+        if (this.notes.has(resolved)) {
+          inboundCounts.set(resolved, (inboundCounts.get(resolved) ?? 0) + 1);
         }
       }
     }
@@ -372,10 +371,7 @@ export class VaultCache implements VaultCacheInterface {
 
     for (const note of this.notes.values()) {
       for (const link of note.links) {
-        // Resolve wikilink short names to full vault paths for consistency with nodes
-        const resolvedTarget = [...this.notes.keys()].find((candidate) =>
-          this.linkMatchesPath(link.target, this.normalizeLinkTarget(candidate)),
-        ) ?? link.target;
+        const resolvedTarget = this.resolveLinkToFullPath(link.target);
         edges.push({ source: note.path, target: resolvedTarget });
       }
     }
@@ -408,15 +404,41 @@ export class VaultCache implements VaultCacheInterface {
     return normalized;
   }
 
+  /** Rebuilds the short-name index for O(1) wikilink resolution. */
+  private rebuildIndex(): void {
+    this.shortNameIndex.clear();
+    for (const path of this.notes.keys()) {
+      const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+      let bucket = this.shortNameIndex.get(shortName);
+      if (!bucket) {
+        bucket = new Set<string>();
+        this.shortNameIndex.set(shortName, bucket);
+      }
+      bucket.add(path);
+    }
+  }
+
   /**
-   * Checks if a link target matches a normalised note path.
-   * Supports both exact matches and filename-only suffix matches so that
-   * wikilinks like `[[NoteName]]` (stored as `notename.md`) correctly resolve
-   * to nested notes like `folder/notename.md`.
+   * Resolves a link target to a full vault path using the short-name index.
+   * Returns the first matching full path, or the original target if unresolved.
    */
-  private linkMatchesPath(linkTarget: string, normalizedNotePath: string): boolean {
-    const normalizedLink = this.normalizeLinkTarget(linkTarget);
-    return normalizedNotePath === normalizedLink
-      || normalizedNotePath.endsWith(`/${normalizedLink}`);
+  private resolveLinkToFullPath(linkTarget: string): string {
+    const normalized = this.normalizeLinkTarget(linkTarget);
+    // Exact match — already a full path
+    if (this.notes.has(linkTarget)) {
+      return linkTarget;
+    }
+    // Short-name lookup via index
+    const shortName = normalized.split("/").pop() ?? normalized;
+    const candidates = this.shortNameIndex.get(shortName);
+    if (candidates) {
+      for (const candidate of candidates) {
+        const normalizedCandidate = this.normalizeLinkTarget(candidate);
+        if (normalizedCandidate === normalized || normalizedCandidate.endsWith(`/${normalized}`)) {
+          return candidate;
+        }
+      }
+    }
+    return linkTarget;
   }
 }

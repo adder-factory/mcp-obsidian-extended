@@ -126,9 +126,8 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   const result = configFileSchema.safeParse(parsed);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-    log("warn", `Config file validation errors: ${issues}`);
-    // Fall through with raw parse — validators downstream handle individual fields
-    return parsed as ConfigFileShape;
+    log("warn", `Config file validation errors: ${issues}. Ignoring config file.`);
+    return {};
   }
   return result.data as ConfigFileShape;
 }
@@ -212,10 +211,10 @@ export function loadConfig(): Config {
     debug: parseBoolean(env["OBSIDIAN_DEBUG"], fileConfig.debug ?? DEFAULTS.debug),
     toolMode: validateToolMode(env["TOOL_MODE"] ?? fileConfig.tools?.mode),
     toolPreset: validateToolPreset(env["TOOL_PRESET"] ?? fileConfig.tools?.preset),
-    includeTools: parseCommaSeparated(env["INCLUDE_TOOLS"]).length > 0
+    includeTools: env["INCLUDE_TOOLS"] !== undefined
       ? parseCommaSeparated(env["INCLUDE_TOOLS"])
       : (fileConfig.tools?.include ?? DEFAULTS.includeTools),
-    excludeTools: parseCommaSeparated(env["EXCLUDE_TOOLS"]).length > 0
+    excludeTools: env["EXCLUDE_TOOLS"] !== undefined
       ? parseCommaSeparated(env["EXCLUDE_TOOLS"])
       : (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools),
     cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl),

@@ -32,45 +32,90 @@ export interface CachedNote {
  * @param currentPath - The vault path of the note containing the links.
  */
 export function parseLinks(content: string, currentPath: string): ParsedLink[] {
-  const links: ParsedLink[] = [];
   const currentDir = currentPath.includes("/") ? currentPath.slice(0, currentPath.lastIndexOf("/")) : "";
+  return [
+    ...parseWikilinks(content),
+    ...parseMarkdownLinks(content, currentDir),
+  ];
+}
 
-  // Wikilinks: [[note]], [[note|alias]], [[note#heading]]
-  // eslint-disable-next-line security/detect-unsafe-regex -- regex is safe: no nested quantifiers, character classes are bounded
-  const wikiRegex = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]+)?\]\]/g;
-  let match: RegExpExecArray | null = null;
-  while ((match = wikiRegex.exec(content)) !== null) {
-    const rawTarget = match[1];
-    if (!rawTarget) continue;
-    const target = resolveWikilink(rawTarget.trim());
-    const contextStart = Math.max(0, match.index - 25);
-    const contextEnd = Math.min(content.length, match.index + match[0].length + 25);
-    links.push({
-      target,
-      type: "wikilink",
-      context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
-    });
+/** Scans content for [[wikilink]] patterns using string scanning (no regex). */
+function parseWikilinks(content: string): ParsedLink[] {
+  const links: ParsedLink[] = [];
+  let pos = 0;
+  while (pos < content.length) {
+    const start = content.indexOf("[[", pos);
+    if (start === -1) break;
+    const end = content.indexOf("]]", start + 2);
+    if (end === -1) break;
+    const inner = content.slice(start + 2, end);
+    const rawTarget = extractWikilinkTarget(inner);
+    if (rawTarget.length > 0) {
+      const target = resolveWikilink(rawTarget);
+      const contextStart = Math.max(0, start - 25);
+      const contextEnd = Math.min(content.length, end + 2 + 25);
+      links.push({
+        target,
+        type: "wikilink",
+        context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
+      });
+    }
+    pos = end + 2;
   }
-
-  // Markdown links: [text](path.md) and [text](path.md#heading) and [text](path.md?query)
-  // Captures only the .md path portion, ignoring any #fragment or ?query suffix
-  // Note: won't match paths containing parentheses (e.g. "notes (archive)/file.md") — v2 enhancement
-  // eslint-disable-next-line security/detect-unsafe-regex -- no nested quantifiers, character classes are bounded
-  const mdRegex = /\[([^\]]+)\]\(([^)#?]+\.md)(?:[#?][^)]*)?\)/g;
-  while ((match = mdRegex.exec(content)) !== null) {
-    const rawTarget = match[2];
-    if (!rawTarget) continue;
-    const target = resolveRelativePath(rawTarget.trim(), currentDir);
-    const contextStart = Math.max(0, match.index - 25);
-    const contextEnd = Math.min(content.length, match.index + match[0].length + 25);
-    links.push({
-      target,
-      type: "markdown",
-      context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
-    });
-  }
-
   return links;
+}
+
+/** Extracts the note name from a wikilink inner text, stripping #heading and |alias. */
+function extractWikilinkTarget(inner: string): string {
+  const hashIdx = inner.indexOf("#");
+  const pipeIdx = inner.indexOf("|");
+  let raw = inner;
+  if (hashIdx !== -1 && (pipeIdx === -1 || hashIdx < pipeIdx)) {
+    raw = inner.slice(0, hashIdx);
+  } else if (pipeIdx !== -1) {
+    raw = inner.slice(0, pipeIdx);
+  }
+  return raw.trim();
+}
+
+/** Scans content for [text](path.md) patterns using string scanning (no regex). */
+function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
+  const links: ParsedLink[] = [];
+  let pos = 0;
+  while (pos < content.length) {
+    const bracketOpen = content.indexOf("[", pos);
+    if (bracketOpen === -1) break;
+    const bracketClose = content.indexOf("]", bracketOpen + 1);
+    if (bracketClose === -1) break;
+    if (content[bracketClose + 1] !== "(") { pos = bracketClose + 1; continue; }
+    const parenClose = content.indexOf(")", bracketClose + 2);
+    if (parenClose === -1) break;
+    const url = content.slice(bracketClose + 2, parenClose);
+    const urlPath = extractMdLinkPath(url);
+    if (urlPath !== undefined) {
+      const target = resolveRelativePath(urlPath, currentDir);
+      const contextStart = Math.max(0, bracketOpen - 25);
+      const contextEnd = Math.min(content.length, parenClose + 1 + 25);
+      links.push({
+        target,
+        type: "markdown",
+        context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
+      });
+    }
+    pos = parenClose + 1;
+  }
+  return links;
+}
+
+/** Extracts the .md path from a markdown link URL, stripping #fragment and ?query. Returns undefined if not a .md link. */
+function extractMdLinkPath(url: string): string | undefined {
+  const hashPos = url.indexOf("#");
+  const queryPos = url.indexOf("?");
+  let pathEnd = url.length;
+  if (hashPos !== -1 && hashPos < pathEnd) pathEnd = hashPos;
+  if (queryPos !== -1 && queryPos < pathEnd) pathEnd = queryPos;
+  const path = url.slice(0, pathEnd).trim();
+  return path.endsWith(".md") && path.length > 3 ? path : undefined;
 }
 
 /** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */

@@ -296,14 +296,23 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Invalidation ---
 
-  /** Removes a single note from the cache, typically after a write operation. */
+  /** Removes a single note from the cache and updates the short-name index. */
   invalidate(path: string): void {
     this.notes.delete(path);
+    const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+    const bucket = this.shortNameIndex.get(shortName);
+    if (bucket) {
+      bucket.delete(path);
+      if (bucket.size === 0) {
+        this.shortNameIndex.delete(shortName);
+      }
+    }
   }
 
-  /** Clears the entire cache and resets the initialised flag. */
+  /** Clears the entire cache, index, and resets the initialised flag. */
   invalidateAll(): void {
     this.notes.clear();
+    this.shortNameIndex.clear();
     this.isInitialized = false;
   }
 

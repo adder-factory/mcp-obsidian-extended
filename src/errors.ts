@@ -30,6 +30,7 @@ export class ObsidianAuthError extends Error {
   }
 }
 
+/** Context for building structured error messages. */
 interface ErrorContext {
   readonly tool: string;
   readonly path?: string;
@@ -37,26 +38,27 @@ interface ErrorContext {
 
 /** Builds an LLM-friendly error message with actionable guidance based on error type. */
 export function buildErrorMessage(error: unknown, context: ErrorContext): string {
+  const prefix = `[${context.tool}] `;
   if (error instanceof ObsidianConnectionError) {
-    return "CONNECTION ERROR: Cannot reach Obsidian. Ensure Obsidian is running with Local REST API enabled.";
+    return `${prefix}CONNECTION ERROR: Cannot reach Obsidian. Ensure Obsidian is running with Local REST API enabled.`;
   }
   if (error instanceof ObsidianAuthError) {
-    return "AUTH ERROR: API key rejected. Check OBSIDIAN_API_KEY.";
+    return `${prefix}AUTH ERROR: API key rejected. Check OBSIDIAN_API_KEY.`;
   }
   if (error instanceof ObsidianApiError) {
     if (error.statusCode === 404) {
-      return `NOT FOUND: ${context.path ?? "Resource"} does not exist. Use list_files_in_vault to find valid paths.`;
+      return `${prefix}NOT FOUND: ${context.path ?? "Resource"} does not exist. Use list_files_in_vault to find valid paths.`;
     }
     if (error.statusCode === 400) {
-      return `BAD REQUEST: ${error.message}`;
+      return `${prefix}BAD REQUEST: ${error.message}`;
     }
     if (error.statusCode === 405) {
-      return `NOT SUPPORTED: ${error.message}. May require a specific plugin.`;
+      return `${prefix}NOT SUPPORTED: ${error.message}. May require a specific plugin.`;
     }
-    return `API ERROR (${error.statusCode}): ${error.message}`;
+    return `${prefix}API ERROR (${error.statusCode}): ${error.message}`;
   }
   if (error instanceof Error) {
-    return `ERROR: ${error.message}`;
+    return `${prefix}ERROR: ${error.message}`;
   }
-  return `ERROR: ${String(error)}`;
+  return `${prefix}ERROR: ${String(error)}`;
 }

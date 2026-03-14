@@ -248,12 +248,21 @@ export class ObsidianClient {
     };
 
     return new Promise((resolve, reject) => {
+      let settled = false;
+
       const req = requestFn(reqOptions, (res: IncomingMessage) => {
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => {
           chunks.push(chunk);
         });
+        res.on("error", (err: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(new ObsidianConnectionError(`Response stream error: ${err.message}`, { cause: err }));
+        });
         res.on("end", () => {
+          if (settled) return;
+          settled = true;
           const elapsed = Date.now() - startTime;
           const responseBody = Buffer.concat(chunks).toString("utf-8");
           const statusCode = res.statusCode ?? 0;
@@ -275,10 +284,14 @@ export class ObsidianClient {
 
       req.on("timeout", () => {
         req.destroy();
+        if (settled) return;
+        settled = true;
         reject(new ObsidianConnectionError(`Request timed out after ${String(this.timeout * timeoutMultiplier)}ms: ${method} ${path}`));
       });
 
       req.on("error", (err: Error) => {
+        if (settled) return;
+        settled = true;
         if (err.message.includes("ECONNREFUSED") || err.message.includes("ECONNRESET") || err.message.includes("ENOTFOUND")) {
           reject(new ObsidianConnectionError(`Cannot reach Obsidian at ${this.baseUrl}: ${err.message}`, { cause: err }));
         } else {

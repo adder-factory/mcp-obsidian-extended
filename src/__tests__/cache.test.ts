@@ -107,6 +107,25 @@ describe("parseLinks — markdown links", () => {
     expect(links[0]?.target).toBe("other.md");
   });
 
+  it("extracts link with #heading anchor", () => {
+    const links = parseLinks("[text](note.md#heading)", "folder/current.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("folder/note.md");
+    expect(links[0]?.type).toBe("markdown");
+  });
+
+  it("extracts link with ?query parameter", () => {
+    const links = parseLinks("[text](note.md?param=1)", "folder/current.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("folder/note.md");
+  });
+
+  it("extracts link with both #anchor and relative path", () => {
+    const links = parseLinks("[text](../sibling/note.md#section)", "folder/sub/current.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("folder/sibling/note.md");
+  });
+
   it("does not match links to non-md files", () => {
     const links = parseLinks("[img](photo.png) [doc](file.pdf)", "test.md");
     expect(links).toHaveLength(0);

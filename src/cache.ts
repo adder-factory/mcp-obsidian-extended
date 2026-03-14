@@ -52,9 +52,11 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
     });
   }
 
-  // Markdown links: [text](path.md)
+  // Markdown links: [text](path.md) and [text](path.md#heading) and [text](path.md?query)
+  // Captures only the .md path portion, ignoring any #fragment or ?query suffix
   // Note: won't match paths containing parentheses (e.g. "notes (archive)/file.md") — v2 enhancement
-  const mdRegex = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
+  // eslint-disable-next-line security/detect-unsafe-regex -- no nested quantifiers, character classes are bounded
+  const mdRegex = /\[([^\]]+)\]\(([^)#?]+\.md)(?:[#?][^)]*)?\)/g;
   while ((match = mdRegex.exec(content)) !== null) {
     const rawTarget = match[2];
     if (!rawTarget) continue;

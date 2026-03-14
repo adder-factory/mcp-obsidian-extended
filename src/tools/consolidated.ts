@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ObsidianClient } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 
+/** Registers all 11 consolidated tools, filtered by the shouldRegister predicate. */
 export function registerConsolidatedTools(
   _server: McpServer,
   _client: ObsidianClient,

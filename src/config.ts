@@ -74,6 +74,7 @@ const CONFIG_SEARCH_PATHS: readonly string[] = [
   join(homedir(), ".config", "obsidian-mcp", "config.json"),
 ];
 
+/** Searches for a config file in the standard locations, returning its resolved path if found. */
 function findConfigFile(): string | undefined {
   const envPath = process.env["OBSIDIAN_CONFIG"];
   if (envPath) {
@@ -120,6 +121,7 @@ const configFileSchema = z.object({
   debug: z.boolean().optional(),
 }).strict();
 
+/** Reads and validates a JSON config file, returning its parsed contents or an empty object on error. */
 function loadConfigFile(filePath: string): ConfigFileShape {
   const raw = readFileSync(filePath, "utf-8");
   const parsed: unknown = JSON.parse(raw);
@@ -132,6 +134,7 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   return result.data as ConfigFileShape;
 }
 
+/** Parses a string env var as a boolean, accepting true/false/1/0/yes/no/on/off. */
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -147,6 +150,7 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+/** Parses a string env var as a number, returning the fallback if undefined or NaN. */
 function parseNumber(value: string | undefined, fallback: number): number {
   if (value === undefined) {
     return fallback;
@@ -155,6 +159,7 @@ function parseNumber(value: string | undefined, fallback: number): number {
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
+/** Splits a comma-separated string into trimmed, non-empty entries. */
 function parseCommaSeparated(value: string | undefined): readonly string[] {
   if (!value || value.trim() === "") {
     return [];
@@ -162,6 +167,7 @@ function parseCommaSeparated(value: string | undefined): readonly string[] {
   return value.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
+/** Validates the scheme value, returning the default if unrecognised. */
 function validateScheme(value: string | undefined): "https" | "http" {
   if (value === "http" || value === "https") {
     return value;
@@ -169,6 +175,7 @@ function validateScheme(value: string | undefined): "https" | "http" {
   return DEFAULTS.scheme;
 }
 
+/** Validates the tool mode value, returning the default if unrecognised. */
 function validateToolMode(value: string | undefined): "granular" | "consolidated" {
   if (value === "granular" || value === "consolidated") {
     return value;
@@ -176,6 +183,7 @@ function validateToolMode(value: string | undefined): "granular" | "consolidated
   return DEFAULTS.toolMode;
 }
 
+/** Validates the tool preset value, returning the default if unrecognised. */
 function validateToolPreset(value: string | undefined): "full" | "read-only" | "minimal" | "safe" {
   if (value === "full" || value === "read-only" || value === "minimal" || value === "safe") {
     return value;

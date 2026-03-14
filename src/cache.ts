@@ -69,6 +69,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
   return links;
 }
 
+/** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */
 function resolveWikilink(target: string, _currentDir: string): string {
   let resolved = target;
   if (!resolved.endsWith(".md")) {
@@ -78,6 +79,7 @@ function resolveWikilink(target: string, _currentDir: string): string {
   return resolved.replace(/\\/g, "/");
 }
 
+/** Resolves a relative markdown link path against the directory of the containing note. */
 function resolveRelativePath(target: string, currentDir: string): string {
   const normalized = target.replace(/\\/g, "/");
   if (normalized.startsWith("/")) {
@@ -112,6 +114,7 @@ export class VaultCache implements VaultCacheInterface {
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
   private readonly shortNameIndex = new Map<string, Set<string>>();
 
+  /** Creates a new vault cache backed by the given Obsidian client and refresh interval. */
   constructor(client: ObsidianClient, cacheTtl: number) {
     this.client = client;
     this.cacheTtl = cacheTtl;
@@ -119,6 +122,7 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Initialization ---
 
+  /** Performs a full cache build by fetching all markdown files from the vault. */
   async initialize(): Promise<void> {
     const startTime = Date.now();
     try {
@@ -236,6 +240,7 @@ export class VaultCache implements VaultCacheInterface {
     }
   }
 
+  /** Starts a background timer that periodically refreshes the cache. */
   startAutoRefresh(): void {
     if (this.refreshTimer) {
       return;
@@ -247,6 +252,7 @@ export class VaultCache implements VaultCacheInterface {
     }, interval);
   }
 
+  /** Stops the background auto-refresh timer if running. */
   stopAutoRefresh(): void {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
@@ -256,14 +262,17 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Accessors ---
 
+  /** Returns a cached note by exact path, falling back to filename-based lookup. */
   getNote(path: string): CachedNote | undefined {
     return this.notes.get(path) ?? this.findByName(path);
   }
 
+  /** Returns all cached notes as an array. */
   getAllNotes(): readonly CachedNote[] {
     return [...this.notes.values()];
   }
 
+  /** Returns all cached file paths. */
   getFileList(): readonly string[] {
     return [...this.notes.keys()];
   }
@@ -280,16 +289,19 @@ export class VaultCache implements VaultCacheInterface {
     return count;
   }
 
+  /** Returns whether the cache has completed its initial build. */
   getIsInitialized(): boolean {
     return this.isInitialized;
   }
 
   // --- Invalidation ---
 
+  /** Removes a single note from the cache, typically after a write operation. */
   invalidate(path: string): void {
     this.notes.delete(path);
   }
 
+  /** Clears the entire cache and resets the initialised flag. */
   invalidateAll(): void {
     this.notes.clear();
     this.isInitialized = false;
@@ -297,6 +309,7 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Graph Queries ---
 
+  /** Returns all notes that link to the given file path, with surrounding context. */
   getBacklinks(path: string): Array<{ source: string; context: string }> {
     const results: Array<{ source: string; context: string }> = [];
 
@@ -311,11 +324,13 @@ export class VaultCache implements VaultCacheInterface {
     return results;
   }
 
+  /** Returns all outbound links from the given note. */
   getForwardLinks(path: string): readonly ParsedLink[] {
     const note = this.getNote(path);
     return note?.links ?? [];
   }
 
+  /** Returns paths of notes with zero inbound links (orphans). */
   getOrphanNotes(): readonly string[] {
     // Build set of all note paths that have at least one inbound link
     const notesWithInbound = new Set<string>();
@@ -339,6 +354,7 @@ export class VaultCache implements VaultCacheInterface {
     return orphans;
   }
 
+  /** Returns the most connected notes sorted by total link count (inbound + outbound). */
   getMostConnectedNotes(limit: number): Array<{ path: string; inbound: number; outbound: number }> {
     const inboundCounts = new Map<string, number>();
 
@@ -365,6 +381,7 @@ export class VaultCache implements VaultCacheInterface {
     return results.slice(0, limit);
   }
 
+  /** Returns the full vault link graph as nodes (file paths) and edges (source-target pairs). */
   getVaultGraph(): { nodes: readonly string[]; edges: ReadonlyArray<{ source: string; target: string }> } {
     const nodes: string[] = [...this.notes.keys()];
     const edges: Array<{ source: string; target: string }> = [];
@@ -381,6 +398,7 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Helpers ---
 
+  /** Searches for a cached note by case-insensitive filename match. */
   private findByName(nameOrPath: string): CachedNote | undefined {
     // Support looking up by just the filename (without path)
     const lower = nameOrPath.toLowerCase();
@@ -396,6 +414,7 @@ export class VaultCache implements VaultCacheInterface {
     return undefined;
   }
 
+  /** Normalises a link target to lowercase with forward slashes and a `.md` extension. */
   private normalizeLinkTarget(path: string): string {
     let normalized = path.toLowerCase().replace(/\\/g, "/");
     if (!normalized.endsWith(".md")) {

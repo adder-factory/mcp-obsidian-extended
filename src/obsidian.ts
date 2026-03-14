@@ -84,6 +84,7 @@ export function sanitizeFilePath(filePath: string): string {
 
 // --- Accept Header Mapping ---
 
+/** Maps a file format to the corresponding Accept header value for the Obsidian REST API. */
 function acceptHeaderForFormat(format: FileFormat): string {
   switch (format) {
     case "markdown":
@@ -143,6 +144,7 @@ export class ObsidianClient {
   // Cache reference (set after construction)
   private cacheRef: VaultCacheInterface | undefined;
 
+  /** Creates an HTTP client configured with the given server settings, TLS options, and timeouts. */
   constructor(config: Config) {
     this.baseUrl = `${config.scheme}://${config.host}:${String(config.port)}`;
     this.apiKey = config.apiKey;
@@ -175,12 +177,14 @@ export class ObsidianClient {
     }
   }
 
+  /** Sets the cache reference for write-through invalidation on mutating operations. */
   setCache(cache: VaultCacheInterface): void {
     this.cacheRef = cache;
   }
 
   // --- Connection Health ---
 
+  /** Verifies connectivity to Obsidian, re-checking at most once per health check interval. */
   async ensureConnection(): Promise<void> {
     const now = Date.now();
     if (this.isConnected && now - this.lastHealthCheck < this.healthCheckInterval) {
@@ -199,12 +203,14 @@ export class ObsidianClient {
     }
   }
 
+  /** Returns whether the last health check succeeded. */
   getIsConnected(): boolean {
     return this.isConnected;
   }
 
   // --- Core HTTP ---
 
+  /** Performs a raw HTTP request against the Obsidian REST API with auth, timeout, and debug logging. */
   private async request(
     method: string,
     path: string,
@@ -287,6 +293,7 @@ export class ObsidianClient {
     });
   }
 
+  /** Parses an error response body and throws the appropriate custom error type. */
   private handleErrorResponse(statusCode: number, body: string, _path: string): never {
     if (statusCode === 401 || statusCode === 403) {
       throw new ObsidianAuthError();
@@ -307,6 +314,7 @@ export class ObsidianClient {
     throw new ObsidianApiError(message, statusCode, errorCode);
   }
 
+  /** Truncates a response body to the configured max character limit. */
   private truncateResponse(text: string): string {
     if (this.maxResponseChars <= 0 || text.length <= this.maxResponseChars) {
       return text;
@@ -338,6 +346,7 @@ export class ObsidianClient {
 
   // --- Encode Path ---
 
+  /** Sanitises and URL-encodes a vault file path for use in API request URLs. */
   private encodePath(filePath: string): string {
     const sanitized = sanitizeFilePath(filePath);
     return sanitized
@@ -348,6 +357,7 @@ export class ObsidianClient {
 
   // --- Case-insensitive Fallback ---
 
+  /** Sends a request and retries with a lowercased path on 404 (case-insensitive fallback). */
   private async requestWithFallback(
     method: string,
     basePath: string,
@@ -380,6 +390,7 @@ export class ObsidianClient {
 
   // --- System ---
 
+  /** Fetches the Obsidian REST API server status (no auth required). */
   async getServerStatus(): Promise<ServerStatus> {
     const res = await this.request("GET", "/", { auth: false });
     if (res.statusCode !== 200) {
@@ -390,6 +401,7 @@ export class ObsidianClient {
 
   // --- Vault Files ---
 
+  /** Lists all files and directories in the vault root. */
   async listFilesInVault(): Promise<{ files: string[] }> {
     const res = await this.request("GET", "/vault/");
     if (res.statusCode !== 200) {
@@ -398,6 +410,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as { files: string[] };
   }
 
+  /** Lists files in a vault directory, returning an empty list for empty dirs that 404. */
   async listFilesInDir(dirPath: string): Promise<{ files: string[] }> {
     const encoded = this.encodePath(dirPath);
     const res = await this.request("GET", `/vault/${encoded}/`);
@@ -419,6 +432,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as { files: string[] };
   }
 
+  /** Reads a vault file in the specified format (markdown, JSON, or document map). */
   async getFileContents(filePath: string, format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
     const res = await this.requestWithFallback("GET", "/vault/", filePath, {
       headers: { "Accept": acceptHeaderForFormat(format) },
@@ -434,6 +448,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as NoteJson | DocumentMap;
   }
 
+  /** Creates or overwrites a vault file with the given content (idempotent). */
   async putContent(filePath: string): Promise<void>;
   async putContent(filePath: string, content: string): Promise<void>;
   async putContent(filePath: string, content?: string): Promise<void> {
@@ -465,6 +480,7 @@ export class ObsidianClient {
     });
   }
 
+  /** Appends content to an existing vault file (not idempotent). */
   async appendContent(filePath: string, content: string): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
@@ -481,6 +497,7 @@ export class ObsidianClient {
     });
   }
 
+  /** Patches a vault file at a specific heading, block, or frontmatter target (not idempotent). */
   async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
@@ -513,6 +530,7 @@ export class ObsidianClient {
     });
   }
 
+  /** Deletes a vault file to Obsidian trash (idempotent, 404 is silently ignored). */
   async deleteFile(filePath: string): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
@@ -528,6 +546,7 @@ export class ObsidianClient {
 
   // --- Active File ---
 
+  /** Reads the currently open file in Obsidian in the specified format. */
   async getActiveFile(format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
     const res = await this.request("GET", "/active/", {
       headers: { "Accept": acceptHeaderForFormat(format) },
@@ -543,6 +562,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as NoteJson | DocumentMap;
   }
 
+  /** Replaces the content of the currently open file (idempotent). */
   async putActiveFile(content: string): Promise<void> {
     const res = await this.request("PUT", "/active/", {
       body: content,
@@ -554,6 +574,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Appends content to the currently open file (not idempotent). */
   async appendActiveFile(content: string): Promise<void> {
     const res = await this.request("POST", "/active/", {
       body: content,
@@ -565,6 +586,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Patches the currently open file at a specific target (not idempotent). */
   async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
     const headers: Record<string, string> = {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
@@ -592,6 +614,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Deletes the currently open file (idempotent). */
   async deleteActiveFile(): Promise<void> {
     const res = await this.request("DELETE", "/active/");
 
@@ -602,6 +625,7 @@ export class ObsidianClient {
 
   // --- Commands ---
 
+  /** Lists all available Obsidian command palette commands. */
   async listCommands(): Promise<{ commands: Array<{ id: string; name: string }> }> {
     const res = await this.request("GET", "/commands/");
 
@@ -612,6 +636,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as { commands: Array<{ id: string; name: string }> };
   }
 
+  /** Executes an Obsidian command by its ID. */
   async executeCommand(commandId: string): Promise<void> {
     const encoded = encodeURIComponent(commandId);
     const res = await this.request("POST", `/commands/${encoded}/`);
@@ -623,6 +648,7 @@ export class ObsidianClient {
 
   // --- Open ---
 
+  /** Opens a file in the Obsidian UI, optionally in a new leaf/tab. */
   async openFile(filePath: string, newLeaf?: boolean): Promise<void> {
     const encoded = this.encodePath(filePath);
     const query = newLeaf ? "?newLeaf=true" : "";
@@ -635,6 +661,7 @@ export class ObsidianClient {
 
   // --- Search ---
 
+  /** Performs a full-text search across all vault files with configurable context length. */
   async simpleSearch(query: string, contextLength = 100): Promise<readonly SearchResult[]> {
     const params = new URLSearchParams({ query, contextLength: String(contextLength) });
     const res = await this.request("POST", `/search/simple/?${params.toString()}`, {
@@ -648,6 +675,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as SearchResult[];
   }
 
+  /** Searches the vault using a JsonLogic query (glob, regexp, etc.). */
   async complexSearch(query: Record<string, unknown>): Promise<readonly SearchResult[]> {
     const res = await this.request("POST", "/search/", {
       body: JSON.stringify(query),
@@ -662,6 +690,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as SearchResult[];
   }
 
+  /** Queries the vault using Dataview DQL (requires the Dataview plugin). */
   async dataviewSearch(dql: string): Promise<readonly SearchResult[]> {
     const res = await this.request("POST", "/search/", {
       body: dql,
@@ -678,6 +707,7 @@ export class ObsidianClient {
 
   // --- Periodic Notes (Current) ---
 
+  /** Gets the current periodic note for the given period type. */
   async getPeriodicNote(period: string, format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
     const res = await this.request("GET", `/periodic/${encodeURIComponent(period)}/`, {
       headers: { "Accept": acceptHeaderForFormat(format) },
@@ -693,6 +723,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as NoteJson | DocumentMap;
   }
 
+  /** Replaces the current periodic note content (idempotent). */
   async putPeriodicNote(period: string, content: string): Promise<void> {
     const res = await this.request("PUT", `/periodic/${encodeURIComponent(period)}/`, {
       body: content,
@@ -704,6 +735,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Appends content to the current periodic note (not idempotent). */
   async appendPeriodicNote(period: string, content: string): Promise<void> {
     const res = await this.request("POST", `/periodic/${encodeURIComponent(period)}/`, {
       body: content,
@@ -715,6 +747,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Patches the current periodic note at a specific target (not idempotent). */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
     const headers: Record<string, string> = {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
@@ -742,6 +775,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Deletes the current periodic note (idempotent). */
   async deletePeriodicNote(period: string): Promise<void> {
     const res = await this.request("DELETE", `/periodic/${encodeURIComponent(period)}/`);
 
@@ -752,6 +786,7 @@ export class ObsidianClient {
 
   // --- Periodic Notes (By Date) ---
 
+  /** Gets the periodic note for a specific date. */
   async getPeriodicNoteForDate(
     period: string,
     year: number,
@@ -774,6 +809,7 @@ export class ObsidianClient {
     return JSON.parse(res.body) as NoteJson | DocumentMap;
   }
 
+  /** Replaces the periodic note for a specific date (idempotent). */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
     const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
     const res = await this.request("PUT", path, {
@@ -786,6 +822,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Appends content to the periodic note for a specific date (not idempotent). */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
     const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
     const res = await this.request("POST", path, {
@@ -798,6 +835,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Patches the periodic note for a specific date at a target (not idempotent). */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
     const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
     const headers: Record<string, string> = {
@@ -826,6 +864,7 @@ export class ObsidianClient {
     }
   }
 
+  /** Deletes the periodic note for a specific date (idempotent). */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
     const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
     const res = await this.request("DELETE", path);

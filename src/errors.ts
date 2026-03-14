@@ -3,6 +3,7 @@ export class ObsidianApiError extends Error {
   public readonly statusCode: number;
   public readonly errorCode: number | undefined;
 
+  /** Creates an API error with the HTTP status code and optional Obsidian error code. */
   constructor(message: string, statusCode: number, errorCode?: number, options?: ErrorOptions) {
     super(message, options);
     this.name = "ObsidianApiError";
@@ -13,6 +14,7 @@ export class ObsidianApiError extends Error {
 
 /** Thrown when Obsidian is unreachable (connection refused, timeout, DNS failure). */
 export class ObsidianConnectionError extends Error {
+  /** Creates a connection error with an optional cause for error chaining. */
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "ObsidianConnectionError";
@@ -21,6 +23,7 @@ export class ObsidianConnectionError extends Error {
 
 /** Thrown when the API key is rejected (HTTP 401/403). */
 export class ObsidianAuthError extends Error {
+  /** Creates an auth error with a fixed message directing the user to check OBSIDIAN_API_KEY. */
   constructor() {
     super("Authentication failed. Check OBSIDIAN_API_KEY.");
     this.name = "ObsidianAuthError";

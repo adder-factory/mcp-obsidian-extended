@@ -10,6 +10,7 @@ import { registerAllTools } from "./tools.js";
 
 const VERSION = "1.0.0";
 
+/** Entry point: parses CLI flags, loads config, creates client/cache/server, and connects transport. */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 

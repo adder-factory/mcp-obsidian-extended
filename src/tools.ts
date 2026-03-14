@@ -4,6 +4,7 @@ import type { ObsidianClient } from "./obsidian.js";
 import type { VaultCache } from "./cache.js";
 import type { Config } from "./config.js";
 
+/** Registers MCP tools based on the active mode, preset, and include/exclude filters. */
 export function registerAllTools(
   _server: McpServer,
   _client: ObsidianClient,

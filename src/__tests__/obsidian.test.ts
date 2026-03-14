@@ -66,8 +66,12 @@ describe("sanitizeFilePath", () => {
     expect(sanitizeFilePath("notes/日本語.md")).toBe("notes/日本語.md");
   });
 
-  it("allows empty string", () => {
-    expect(sanitizeFilePath("")).toBe("");
+  it("rejects empty string", () => {
+    expect(() => sanitizeFilePath("")).toThrow("Empty path not allowed");
+  });
+
+  it("rejects dot-only path", () => {
+    expect(() => sanitizeFilePath(".")).toThrow("Empty path not allowed");
   });
 });
 

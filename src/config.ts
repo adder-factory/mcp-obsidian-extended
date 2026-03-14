@@ -228,8 +228,9 @@ export function loadConfig(): Config {
   if (configFilePath) {
     try {
       fileConfig = loadConfigFile(configFilePath);
-    } catch {
-      log("warn", `Failed to parse config file: ${configFilePath}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", `Failed to load config file ${configFilePath}: ${msg}`);
     }
   }
 

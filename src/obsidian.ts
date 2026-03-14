@@ -83,6 +83,9 @@ export function sanitizeFilePath(filePath: string): string {
   }
   // Canonicalize: filter out empty and "." segments so foo//bar and foo/./bar → foo/bar
   const canonical = segments.filter((s) => s !== "" && s !== ".").join("/");
+  if (canonical === "") {
+    throw new Error("Empty path not allowed");
+  }
   return canonical;
 }
 
@@ -150,7 +153,8 @@ export class ObsidianClient {
 
   /** Creates an HTTP client configured with the given server settings, TLS options, and timeouts. */
   constructor(config: Config) {
-    this.baseUrl = `${config.scheme}://${config.host}:${String(config.port)}`;
+    const host = config.host.includes(":") ? `[${config.host}]` : config.host;
+    this.baseUrl = `${config.scheme}://${host}:${String(config.port)}`;
     this.apiKey = config.apiKey;
     this.isHttps = config.scheme === "https";
     this.timeout = config.timeout;
@@ -427,7 +431,7 @@ export class ObsidianClient {
 
   // --- Case-insensitive Fallback ---
 
-  /** Sends a request and retries with a lowercased path on 404 (case-insensitive fallback). */
+  /** Sends a GET request and retries with a lowercased path on 404 (case-insensitive fallback). Only safe for read-only methods — mutating fallback could corrupt data. */
   private async requestWithFallback(
     method: string,
     basePath: string,

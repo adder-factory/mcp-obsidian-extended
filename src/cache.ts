@@ -112,6 +112,7 @@ export class VaultCache implements VaultCacheInterface {
   private readonly cacheTtl: number;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
+  private isRefreshing = false;
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
   private readonly shortNameIndex = new Map<string, Set<string>>();
 
@@ -180,6 +181,10 @@ export class VaultCache implements VaultCacheInterface {
    * but the network cost is proportional to vault size.
    */
   async refresh(): Promise<void> {
+    if (this.isRefreshing) {
+      return;
+    }
+    this.isRefreshing = true;
     try {
       if (!this.isInitialized) {
         await this.initialize();
@@ -238,6 +243,8 @@ export class VaultCache implements VaultCacheInterface {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       log("warn", `Cache refresh failed: ${message}`);
+    } finally {
+      this.isRefreshing = false;
     }
   }
 
@@ -475,13 +482,13 @@ export class VaultCache implements VaultCacheInterface {
     const shortName = normalized.split("/").pop() ?? normalized;
     const candidates = this.shortNameIndex.get(shortName);
     if (candidates) {
-      // Pass 1: exact normalized path match
+      // Pass 1: exact normalized path match (also covers root-level notes like "notename.md")
       for (const candidate of candidates) {
         if (this.normalizeLinkTarget(candidate) === normalized) {
           return candidate;
         }
       }
-      // Pass 2: suffix fallback for short-name wikilinks
+      // Pass 2: suffix fallback for short-name wikilinks in subdirectories
       for (const candidate of candidates) {
         if (this.normalizeLinkTarget(candidate).endsWith(`/${normalized}`)) {
           return candidate;

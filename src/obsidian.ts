@@ -157,7 +157,12 @@ export class ObsidianClient {
         keepAlive: true,
       };
       if (config.certPath) {
-        agentOptions["ca"] = readFileSync(config.certPath);
+        try {
+          agentOptions["ca"] = readFileSync(config.certPath);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to read TLS certificate at "${config.certPath}": ${message}`);
+        }
         agentOptions["rejectUnauthorized"] = true;
       } else if (config.verifySsl) {
         agentOptions["rejectUnauthorized"] = true;

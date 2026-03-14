@@ -79,13 +79,22 @@ function resolveWikilink(target: string, _currentDir: string): string {
 }
 
 function resolveRelativePath(target: string, currentDir: string): string {
-  if (target.startsWith("/")) {
-    return target.slice(1);
+  const normalized = target.replace(/\\/g, "/");
+  if (normalized.startsWith("/")) {
+    return normalized.slice(1);
   }
-  if (currentDir && !target.includes("/")) {
-    return `${currentDir}/${target}`;
+  // Resolve relative paths (including ../) against the current directory
+  const base = currentDir ? `${currentDir}/` : "";
+  const parts = `${base}${normalized}`.split("/");
+  const resolved: string[] = [];
+  for (const part of parts) {
+    if (part === "..") {
+      resolved.pop();
+    } else if (part !== ".") {
+      resolved.push(part);
+    }
   }
-  return target.replace(/\\/g, "/");
+  return resolved.join("/");
 }
 
 // --- Vault Cache ---
@@ -227,9 +236,11 @@ export class VaultCache implements VaultCacheInterface {
     if (this.refreshTimer) {
       return;
     }
+    const MIN_TTL = 10_000;
+    const interval = Math.max(this.cacheTtl, MIN_TTL);
     this.refreshTimer = setInterval(() => {
       void this.refresh();
-    }, this.cacheTtl);
+    }, interval);
   }
 
   stopAutoRefresh(): void {
@@ -316,11 +327,10 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
 
+    // Orphan = no inbound links (standard Obsidian definition), regardless of outbound links
     const orphans: string[] = [];
     for (const note of this.notes.values()) {
-      const hasInbound = notesWithInbound.has(note.path);
-      const hasOutbound = note.links.length > 0;
-      if (!hasInbound && !hasOutbound) {
+      if (!notesWithInbound.has(note.path)) {
         orphans.push(note.path);
       }
     }
@@ -362,7 +372,11 @@ export class VaultCache implements VaultCacheInterface {
 
     for (const note of this.notes.values()) {
       for (const link of note.links) {
-        edges.push({ source: note.path, target: link.target });
+        // Resolve wikilink short names to full vault paths for consistency with nodes
+        const resolvedTarget = [...this.notes.keys()].find((candidate) =>
+          this.linkMatchesPath(link.target, this.normalizeLinkTarget(candidate)),
+        ) ?? link.target;
+        edges.push({ source: note.path, target: resolvedTarget });
       }
     }
 

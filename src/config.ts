@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
+import { z } from "zod";
 
 /** Fully resolved server configuration. All fields are populated from defaults, config file, or env vars. */
 export interface Config {
@@ -93,16 +94,58 @@ function findConfigFile(): string | undefined {
   return undefined;
 }
 
+const configFileSchema = z.object({
+  host: z.string().optional(),
+  port: z.number().int().positive().optional(),
+  scheme: z.string().optional(),
+  tools: z.object({
+    mode: z.string().optional(),
+    preset: z.string().optional(),
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+  }).optional(),
+  reliability: z.object({
+    timeout: z.number().positive().optional(),
+    verifyWrites: z.boolean().optional(),
+    maxResponseChars: z.number().nonnegative().optional(),
+  }).optional(),
+  tls: z.object({
+    certPath: z.string().nullable().optional(),
+    verifySsl: z.boolean().optional(),
+  }).optional(),
+  cache: z.object({
+    ttl: z.number().nonnegative().optional(),
+    enabled: z.boolean().optional(),
+  }).optional(),
+  debug: z.boolean().optional(),
+}).strict();
+
 function loadConfigFile(filePath: string): ConfigFileShape {
   const raw = readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as ConfigFileShape;
+  const parsed: unknown = JSON.parse(raw);
+  const result = configFileSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
+    log("warn", `Config file validation errors: ${issues}`);
+    // Fall through with raw parse — validators downstream handle individual fields
+    return parsed as ConfigFileShape;
+  }
+  return result.data as ConfigFileShape;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
   }
-  return value === "true" || value === "1";
+  const lower = value.toLowerCase();
+  if (lower === "true" || lower === "1" || lower === "yes" || lower === "on") {
+    return true;
+  }
+  if (lower === "false" || lower === "0" || lower === "no" || lower === "off") {
+    return false;
+  }
+  log("warn", `Unrecognised boolean env value "${value}", using default ${String(fallback)}`);
+  return fallback;
 }
 
 function parseNumber(value: string | undefined, fallback: number): number {
@@ -162,7 +205,7 @@ export function loadConfig(): Config {
     port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port),
     scheme: validateScheme(env["OBSIDIAN_SCHEME"] ?? fileConfig.scheme),
     timeout: parseNumber(env["OBSIDIAN_TIMEOUT"], fileConfig.reliability?.timeout ?? DEFAULTS.timeout),
-    certPath: env["OBSIDIAN_CERT_PATH"] ?? fileConfig.tls?.certPath ?? DEFAULTS.certPath,
+    certPath: env["OBSIDIAN_CERT_PATH"] ?? (fileConfig.tls?.certPath === null ? undefined : fileConfig.tls?.certPath) ?? DEFAULTS.certPath,
     verifySsl: parseBoolean(env["OBSIDIAN_VERIFY_SSL"], fileConfig.tls?.verifySsl ?? DEFAULTS.verifySsl),
     verifyWrites: parseBoolean(env["OBSIDIAN_VERIFY_WRITES"], fileConfig.reliability?.verifyWrites ?? DEFAULTS.verifyWrites),
     maxResponseChars: parseNumber(env["OBSIDIAN_MAX_RESPONSE_CHARS"], fileConfig.reliability?.maxResponseChars ?? DEFAULTS.maxResponseChars),

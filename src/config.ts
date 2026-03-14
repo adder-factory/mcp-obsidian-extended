@@ -1,0 +1,220 @@
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { homedir } from "node:os";
+
+export interface Config {
+  readonly apiKey: string;
+  readonly host: string;
+  readonly port: number;
+  readonly scheme: "https" | "http";
+  readonly timeout: number;
+  readonly certPath: string | undefined;
+  readonly verifySsl: boolean;
+  readonly verifyWrites: boolean;
+  readonly maxResponseChars: number;
+  readonly debug: boolean;
+  readonly toolMode: "granular" | "consolidated";
+  readonly toolPreset: "full" | "read-only" | "minimal" | "safe";
+  readonly includeTools: readonly string[];
+  readonly excludeTools: readonly string[];
+  readonly cacheTtl: number;
+  readonly enableCache: boolean;
+  readonly configFilePath: string | undefined;
+}
+
+interface ConfigFileShape {
+  readonly host?: string;
+  readonly port?: number;
+  readonly scheme?: string;
+  readonly tools?: {
+    readonly mode?: string;
+    readonly preset?: string;
+    readonly include?: readonly string[];
+    readonly exclude?: readonly string[];
+  };
+  readonly reliability?: {
+    readonly timeout?: number;
+    readonly verifyWrites?: boolean;
+    readonly maxResponseChars?: number;
+  };
+  readonly tls?: {
+    readonly certPath?: string | null;
+    readonly verifySsl?: boolean;
+  };
+  readonly cache?: {
+    readonly ttl?: number;
+    readonly enabled?: boolean;
+  };
+  readonly debug?: boolean;
+}
+
+const DEFAULTS: Omit<Config, "apiKey" | "configFilePath"> = {
+  host: "127.0.0.1",
+  port: 27124,
+  scheme: "https",
+  timeout: 30000,
+  certPath: undefined,
+  verifySsl: false,
+  verifyWrites: false,
+  maxResponseChars: 500000,
+  debug: false,
+  toolMode: "granular",
+  toolPreset: "full",
+  includeTools: [],
+  excludeTools: [],
+  cacheTtl: 600000,
+  enableCache: true,
+};
+
+const CONFIG_SEARCH_PATHS: readonly string[] = [
+  "./obsidian-mcp.config.json",
+  join(homedir(), ".obsidian-mcp.config.json"),
+  join(homedir(), ".config", "obsidian-mcp", "config.json"),
+];
+
+function findConfigFile(): string | undefined {
+  const envPath = process.env["OBSIDIAN_CONFIG"];
+  if (envPath) {
+    const resolved = resolve(envPath);
+    if (existsSync(resolved)) {
+      return resolved;
+    }
+    return undefined;
+  }
+
+  for (const searchPath of CONFIG_SEARCH_PATHS) {
+    const resolved = resolve(searchPath);
+    if (existsSync(resolved)) {
+      return resolved;
+    }
+  }
+  return undefined;
+}
+
+function loadConfigFile(filePath: string): ConfigFileShape {
+  const raw = readFileSync(filePath, "utf-8");
+  return JSON.parse(raw) as ConfigFileShape;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  return value === "true" || value === "1";
+}
+
+function parseNumber(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+function parseCommaSeparated(value: string | undefined): readonly string[] {
+  if (!value || value.trim() === "") {
+    return [];
+  }
+  return value.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
+function validateScheme(value: string | undefined): "https" | "http" {
+  if (value === "http" || value === "https") {
+    return value;
+  }
+  return DEFAULTS.scheme;
+}
+
+function validateToolMode(value: string | undefined): "granular" | "consolidated" {
+  if (value === "granular" || value === "consolidated") {
+    return value;
+  }
+  return DEFAULTS.toolMode;
+}
+
+function validateToolPreset(value: string | undefined): "full" | "read-only" | "minimal" | "safe" {
+  if (value === "full" || value === "read-only" || value === "minimal" || value === "safe") {
+    return value;
+  }
+  return DEFAULTS.toolPreset;
+}
+
+export function loadConfig(): Config {
+  const configFilePath = findConfigFile();
+  let fileConfig: ConfigFileShape = {};
+
+  if (configFilePath) {
+    try {
+      fileConfig = loadConfigFile(configFilePath);
+    } catch {
+      log("warn", `Failed to parse config file: ${configFilePath}`);
+    }
+  }
+
+  const env = process.env;
+
+  const config: Config = {
+    apiKey: env["OBSIDIAN_API_KEY"] ?? "",
+    host: env["OBSIDIAN_HOST"] ?? fileConfig.host ?? DEFAULTS.host,
+    port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port),
+    scheme: validateScheme(env["OBSIDIAN_SCHEME"] ?? fileConfig.scheme),
+    timeout: parseNumber(env["OBSIDIAN_TIMEOUT"], fileConfig.reliability?.timeout ?? DEFAULTS.timeout),
+    certPath: env["OBSIDIAN_CERT_PATH"] ?? fileConfig.tls?.certPath ?? DEFAULTS.certPath,
+    verifySsl: parseBoolean(env["OBSIDIAN_VERIFY_SSL"], fileConfig.tls?.verifySsl ?? DEFAULTS.verifySsl),
+    verifyWrites: parseBoolean(env["OBSIDIAN_VERIFY_WRITES"], fileConfig.reliability?.verifyWrites ?? DEFAULTS.verifyWrites),
+    maxResponseChars: parseNumber(env["OBSIDIAN_MAX_RESPONSE_CHARS"], fileConfig.reliability?.maxResponseChars ?? DEFAULTS.maxResponseChars),
+    debug: parseBoolean(env["OBSIDIAN_DEBUG"], fileConfig.debug ?? DEFAULTS.debug),
+    toolMode: validateToolMode(env["TOOL_MODE"] ?? fileConfig.tools?.mode),
+    toolPreset: validateToolPreset(env["TOOL_PRESET"] ?? fileConfig.tools?.preset),
+    includeTools: parseCommaSeparated(env["INCLUDE_TOOLS"]) .length > 0
+      ? parseCommaSeparated(env["INCLUDE_TOOLS"])
+      : (fileConfig.tools?.include ?? DEFAULTS.includeTools),
+    excludeTools: parseCommaSeparated(env["EXCLUDE_TOOLS"]).length > 0
+      ? parseCommaSeparated(env["EXCLUDE_TOOLS"])
+      : (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools),
+    cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl),
+    enableCache: parseBoolean(env["OBSIDIAN_ENABLE_CACHE"], fileConfig.cache?.enabled ?? DEFAULTS.enableCache),
+    configFilePath,
+  };
+
+  return config;
+}
+
+export function getRedactedConfig(config: Config): Record<string, unknown> {
+  return {
+    host: config.host,
+    port: config.port,
+    scheme: config.scheme,
+    apiKey: config.apiKey ? "[SET]" : "[NOT SET]",
+    timeout: config.timeout,
+    certPath: config.certPath ?? null,
+    verifySsl: config.verifySsl,
+    verifyWrites: config.verifyWrites,
+    maxResponseChars: config.maxResponseChars,
+    debug: config.debug,
+    toolMode: config.toolMode,
+    toolPreset: config.toolPreset,
+    includeTools: config.includeTools,
+    excludeTools: config.excludeTools,
+    cacheTtl: config.cacheTtl,
+    enableCache: config.enableCache,
+    configFilePath: config.configFilePath ?? null,
+  };
+}
+
+export function saveConfigToFile(filePath: string, updates: Record<string, unknown>): void {
+  let existing: Record<string, unknown> = {};
+  if (existsSync(filePath)) {
+    try {
+      existing = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+    } catch {
+      // Start fresh if file is corrupted
+    }
+  }
+  const merged = { ...existing, ...updates };
+  writeFileSync(filePath, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
+}
+
+export function log(level: "info" | "warn" | "error" | "debug", message: string): void {
+  process.stderr.write(`[${level}] ${message}\n`);
+}

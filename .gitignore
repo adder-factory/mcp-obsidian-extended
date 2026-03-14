@@ -1,13 +1,5 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
+node_modules/
 dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-.env
 .env
 .DS_Store
+*.tsbuildinfo

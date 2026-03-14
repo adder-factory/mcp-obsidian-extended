@@ -119,7 +119,7 @@ const configFileSchema = z.object({
     enabled: z.boolean().optional(),
   }).optional(),
   debug: z.boolean().optional(),
-}).strict();
+});
 
 /** Reads and validates a JSON config file, returning its parsed contents or an empty object on error. */
 function loadConfigFile(filePath: string): ConfigFileShape {

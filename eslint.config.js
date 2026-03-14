@@ -3,6 +3,7 @@ import tsparser from "@typescript-eslint/parser";
 import security from "eslint-plugin-security";
 
 export default [
+  security.configs.recommended,
   {
     files: ["src/**/*.ts"],
     languageOptions: {

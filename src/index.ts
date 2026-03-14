@@ -3,12 +3,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { createRequire } from "node:module";
+
 import { loadConfig, log } from "./config.js";
 import { ObsidianClient } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
 
-const VERSION = "1.0.0";
+const require = createRequire(import.meta.url);
+const VERSION: string = (require("../package.json") as { version: string }).version;
 
 /** Entry point: parses CLI flags, loads config, creates client/cache/server, and connects transport. */
 async function main(): Promise<void> {

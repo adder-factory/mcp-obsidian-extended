@@ -36,6 +36,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
   const currentDir = currentPath.includes("/") ? currentPath.slice(0, currentPath.lastIndexOf("/")) : "";
 
   // Wikilinks: [[note]], [[note|alias]], [[note#heading]]
+  // eslint-disable-next-line security/detect-unsafe-regex -- regex is safe: no nested quantifiers, character classes are bounded
   const wikiRegex = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]+)?\]\]/g;
   let match: RegExpExecArray | null = null;
   while ((match = wikiRegex.exec(content)) !== null) {

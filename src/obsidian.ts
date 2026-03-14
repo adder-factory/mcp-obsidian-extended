@@ -58,6 +58,7 @@ interface ServerStatus {
 }
 
 type FileFormat = "markdown" | "json" | "map";
+type FileContentsResult = string | NoteJson | DocumentMap;
 
 // --- Path Sanitization ---
 
@@ -69,11 +70,11 @@ type FileFormat = "markdown" | "json" | "map";
  * @throws {Error} If path traversal or absolute path is detected.
  */
 export function sanitizeFilePath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
+  const normalized = filePath.replaceAll("\\", "/");
   if (normalized.startsWith("/")) {
     throw new Error("Absolute paths not allowed");
   }
-  if (normalized.split("/").some((seg) => seg === "..")) {
+  if (normalized.split("/").includes("..")) {
     throw new Error("Path traversal not allowed");
   }
   if (/^[a-zA-Z]:/.test(normalized)) {
@@ -456,7 +457,7 @@ export class ObsidianClient {
   }
 
   /** Reads a vault file in the specified format (markdown, JSON, or document map). */
-  async getFileContents(filePath: string, format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
+  async getFileContents(filePath: string, format: FileFormat = "markdown"): Promise<FileContentsResult> {
     const res = await this.requestWithFallback("GET", "/vault/", filePath, {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -474,12 +475,11 @@ export class ObsidianClient {
   /** Creates or overwrites a vault file with the given content (idempotent). */
   async putContent(filePath: string): Promise<void>;
   async putContent(filePath: string, content: string): Promise<void>;
-  async putContent(filePath: string, content?: string): Promise<void> {
-    const body = content ?? "";
+  async putContent(filePath: string, content = ""): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
       const res = await this.request("PUT", `/vault/${encoded}`, {
-        body,
+        body: content,
         headers: { "Content-Type": "text/markdown" },
       });
 
@@ -497,11 +497,11 @@ export class ObsidianClient {
           const verifyRes = await this.request("GET", `/vault/${encoded}`, {
             headers: { "Accept": "text/markdown" },
           });
-          if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== body.trim()) {
+          if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== content.trim()) {
             log("warn", `Write verification failed for ${filePath}: content mismatch`);
           }
-        } catch (verifyErr: unknown) {
-          const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+        } catch (error_: unknown) {
+          const msg = error_ instanceof Error ? error_.message : String(error_);
           log("warn", `Write verification could not read back ${filePath}: ${msg}`);
         }
       }
@@ -575,7 +575,7 @@ export class ObsidianClient {
   // --- Active File ---
 
   /** Reads the currently open file in Obsidian in the specified format. */
-  async getActiveFile(format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
+  async getActiveFile(format: FileFormat = "markdown"): Promise<FileContentsResult> {
     const res = await this.request("GET", "/active/", {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -741,7 +741,7 @@ export class ObsidianClient {
   // --- Periodic Notes (Current) ---
 
   /** Gets the current periodic note for the given period type. */
-  async getPeriodicNote(period: string, format: FileFormat = "markdown"): Promise<string | NoteJson | DocumentMap> {
+  async getPeriodicNote(period: string, format: FileFormat = "markdown"): Promise<FileContentsResult> {
     const res = await this.request("GET", `/periodic/${encodeURIComponent(period)}/`, {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -831,7 +831,7 @@ export class ObsidianClient {
     month: number,
     day: number,
     format: FileFormat = "markdown",
-  ): Promise<string | NoteJson | DocumentMap> {
+  ): Promise<FileContentsResult> {
     const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const res = await this.request("GET", path, {
       headers: { "Accept": acceptHeaderForFormat(format) },

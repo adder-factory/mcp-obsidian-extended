@@ -15,10 +15,10 @@ const VERSION: string = (require("../package.json") as { version: string }).vers
 
 /** Entry point: parses CLI flags, loads config, creates client/cache/server, and connects transport. */
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const args = new Set(process.argv.slice(2));
 
   // CLI flags — Phase 2 will add --setup, --show-config, --validate
-  if (args.includes("--version") || args.includes("-v")) {
+  if (args.has("--version") || args.has("-v")) {
     process.stderr.write(`mcp-obsidian-extended v${VERSION}\n`);
     process.exit(0);
   }
@@ -71,8 +71,10 @@ async function main(): Promise<void> {
   await server.connect(transport);
 }
 
-main().catch((err: unknown) => {
+try {
+  await main();
+} catch (err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   log("error", `Fatal: ${message}`);
   process.exit(1);
-});
+}

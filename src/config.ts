@@ -219,12 +219,12 @@ export function loadConfig(): Config {
     debug: parseBoolean(env["OBSIDIAN_DEBUG"], fileConfig.debug ?? DEFAULTS.debug),
     toolMode: validateToolMode(env["TOOL_MODE"] ?? fileConfig.tools?.mode),
     toolPreset: validateToolPreset(env["TOOL_PRESET"] ?? fileConfig.tools?.preset),
-    includeTools: env["INCLUDE_TOOLS"] !== undefined
-      ? parseCommaSeparated(env["INCLUDE_TOOLS"])
-      : (fileConfig.tools?.include ?? DEFAULTS.includeTools),
-    excludeTools: env["EXCLUDE_TOOLS"] !== undefined
-      ? parseCommaSeparated(env["EXCLUDE_TOOLS"])
-      : (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools),
+    includeTools: env["INCLUDE_TOOLS"] === undefined
+      ? (fileConfig.tools?.include ?? DEFAULTS.includeTools)
+      : parseCommaSeparated(env["INCLUDE_TOOLS"]),
+    excludeTools: env["EXCLUDE_TOOLS"] === undefined
+      ? (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools)
+      : parseCommaSeparated(env["EXCLUDE_TOOLS"]),
     cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl),
     enableCache: parseBoolean(env["OBSIDIAN_ENABLE_CACHE"], fileConfig.cache?.enabled ?? DEFAULTS.enableCache),
     configFilePath,

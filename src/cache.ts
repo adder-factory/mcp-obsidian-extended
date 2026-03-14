@@ -48,7 +48,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
     links.push({
       target,
       type: "wikilink",
-      context: content.slice(contextStart, contextEnd).replace(/\n/g, " "),
+      context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
     });
   }
 
@@ -63,7 +63,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
     links.push({
       target,
       type: "markdown",
-      context: content.slice(contextStart, contextEnd).replace(/\n/g, " "),
+      context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
     });
   }
 
@@ -77,12 +77,12 @@ function resolveWikilink(target: string, _currentDir: string): string {
     resolved = `${resolved}.md`;
   }
   // Wikilinks are vault-wide; keep as short name — resolved at graph-query time via suffix match
-  return resolved.replace(/\\/g, "/");
+  return resolved.replaceAll("\\", "/");
 }
 
 /** Resolves a relative markdown link path against the directory of the containing note. */
 function resolveRelativePath(target: string, currentDir: string): string {
-  const normalized = target.replace(/\\/g, "/");
+  const normalized = target.replaceAll("\\", "/");
   if (normalized.startsWith("/")) {
     return normalized.slice(1);
   }
@@ -190,7 +190,7 @@ export class VaultCache implements VaultCacheInterface {
       const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
 
       // Remove deleted notes from cache (uses invalidate to also update shortNameIndex)
-      for (const cachedPath of [...this.notes.keys()]) {
+      for (const cachedPath of this.notes.keys()) {
         if (!mdFiles.has(cachedPath)) {
           this.invalidate(cachedPath);
         }
@@ -208,7 +208,7 @@ export class VaultCache implements VaultCacheInterface {
             const noteJson = await this.client.getFileContents(filePath, "json") as NoteJson;
             const existing = this.notes.get(filePath);
 
-            if (!existing || existing.stat.mtime !== noteJson.stat.mtime) {
+            if (existing?.stat.mtime !== noteJson.stat.mtime) {
               const links = parseLinks(noteJson.content, filePath);
               this.notes.set(filePath, {
                 path: filePath,
@@ -428,7 +428,7 @@ export class VaultCache implements VaultCacheInterface {
 
   /** Normalises a link target to lowercase with forward slashes and a `.md` extension. */
   private normalizeLinkTarget(path: string): string {
-    let normalized = path.toLowerCase().replace(/\\/g, "/");
+    let normalized = path.toLowerCase().replaceAll("\\", "/");
     if (!normalized.endsWith(".md")) {
       normalized = `${normalized}.md`;
     }

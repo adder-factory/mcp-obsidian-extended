@@ -53,6 +53,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
   }
 
   // Markdown links: [text](path.md)
+  // Note: won't match paths containing parentheses (e.g. "notes (archive)/file.md") — v2 enhancement
   const mdRegex = /\[([^\]]+)\]\(([^)]+\.md)\)/g;
   while ((match = mdRegex.exec(content)) !== null) {
     const rawTarget = match[2];

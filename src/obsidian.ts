@@ -653,11 +653,14 @@ export class ObsidianClient {
     this.cacheRef?.invalidateAll();
   }
 
-  /** Patches the currently open file at a specific target (not idempotent). */
+  /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. */
   async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
+    const headers = this.buildPatchHeaders(options);
+    // Active file PATCH does not support Create-Target-If-Missing (vault PATCH only)
+    delete headers["Create-Target-If-Missing"];
     const res = await this.request("PATCH", "/active/", {
       body: content,
-      headers: this.buildPatchHeaders(options),
+      headers,
     });
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {

@@ -13,7 +13,11 @@ import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const VERSION: string = (JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")) as { version: string }).version;
+const pkg: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
+const VERSION: string =
+  pkg !== null && typeof pkg === "object" && "version" in pkg && typeof (pkg as Record<string, unknown>)["version"] === "string"
+    ? (pkg as Record<string, unknown>)["version"] as string
+    : "unknown";
 
 /** Entry point: parses CLI flags, loads config, creates client/cache/server, and connects transport. */
 async function main(): Promise<void> {

@@ -321,7 +321,11 @@ export class VaultCache implements VaultCacheInterface {
     }
   }
 
-  /** Clears the entire cache, index, and resets the initialised flag. */
+  /**
+   * Clears the entire cache, index, and resets the initialised flag.
+   * Note: if called concurrently with refresh(), the next refresh cycle
+   * will re-initialise from scratch since isInitialized is set to false.
+   */
   invalidateAll(): void {
     this.notes.clear();
     this.shortNameIndex.clear();

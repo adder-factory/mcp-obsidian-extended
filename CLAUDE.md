@@ -8,9 +8,12 @@ Node >=22, ESM, `@modelcontextprotocol/sdk` + Zod.
 ```bash
 npm run build          # tsc — must pass with zero errors
 npm run lint           # ESLint — zero errors required
-npm run verify:all     # build + lint + npm audit + knip + madge
-npm run security:all   # snyk test + snyk code test + semgrep
+npm run test           # vitest run — all unit tests
+npm run test:coverage  # vitest run --coverage — must hit 80%+ overall, 70%+ per file
 npm run test:smoke     # live tests against Obsidian (Phase 3 only)
+npm run verify:all     # build + lint + audit + knip + madge
+npm run security:all   # snyk test + snyk code test + semgrep
+npm run sonar          # SonarQube scan — zero issues of any severity
 ```
 
 ## Architecture
@@ -103,6 +106,11 @@ API reference: @docs/cc-reference.md
 
 ## Testing
 
+- **Framework:** Vitest — native ESM + TypeScript, no config issues
+- **Coverage:** 80%+ overall, 70%+ per file minimum. No exceptions.
+- **Test file per source file:** errors.test.ts, config.test.ts, obsidian.test.ts, cache.test.ts, schemas.test.ts, etc.
+- **Unit tests mock HTTP calls** — do NOT hit real Obsidian in unit tests
+- **Smoke tests (test:smoke) hit real Obsidian** — only in Phase 3
 - Obsidian is running on this machine with `mcp-test-vault`
 - API key is in `.env` or `OBSIDIAN_API_KEY` env var
 - ALL file operations via REST API — NEVER filesystem access, NEVER `rm`
@@ -110,15 +118,34 @@ API reference: @docs/cc-reference.md
 - Test against `mcp-test-vault` ONLY — never destructive tests on real vault
 - Cannot stop/restart Obsidian — user handles offline fallback testing
 
+## SonarQube
+
+- Running locally at http://localhost:9000
+- Credentials in .env: SONAR_HOST_URL, SONAR_TOKEN, SONAR_LOGIN, SONAR_PASSWORD
+- Run scan before every PR: `npm run sonar`
+- **Zero issues of ANY severity** — not just critical/high, ALL of them including code smells
+- Coverage report fed to Sonar via sonar.javascript.lcov.reportPath=coverage/lcov.info
+- Security hotspots: review and mark as Safe via Sonar API when intentional (e.g. rejectUnauthorized: false)
+
+## JSDoc
+
+- ALL exported functions, classes, interfaces, and types must have JSDoc comments
+- Include @param, @returns, @throws where applicable
+- Keep JSDoc concise — one line description, params on separate lines
+
 ## Verification Checklist (Before Every PR)
 
 ```bash
 npm run build                              # Zero TS errors
 npm run lint                               # Zero ESLint errors
+npm run test:coverage                      # All tests pass, 80%+ coverage
 npm audit                                  # Zero high/critical
 npx knip                                   # Zero unused exports/files
 npx madge --circular --extensions ts src/   # Zero circular deps
 npx snyk test                              # Zero high/critical deps
 npx snyk code test                         # Zero high/critical SAST
 npx semgrep --config auto src/             # Zero findings
+npm run sonar                              # Zero issues of any severity in SonarQube
 ```
+
+Iterate with CodeRabbitAI + Greptile on PR until ALL comments resolved — including nitpicks.

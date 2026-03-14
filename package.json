@@ -20,8 +20,12 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:smoke": "tsx scripts/smoke-test.ts",
     "pack:mcpb": "npm run build && mcpb pack",
+    "sonar": "sonar-scanner -Dsonar.host.url=http://localhost:9000",
     "verify:all": "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/",
     "security:all": "npx snyk test && npx snyk code test && npx semgrep --config auto src/"
   },
@@ -33,9 +37,11 @@
     "@types/node": "^22.13.10",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9.0.0",
     "eslint-plugin-security": "^3.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.0"
   }
 }

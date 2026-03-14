@@ -256,7 +256,25 @@ export function getRedactedConfig(config: Config): Record<string, unknown> {
   };
 }
 
-/** Merges updates into an existing config file (or creates a new one). */
+/** Deep-merges two plain objects recursively (second wins on leaf conflicts). */
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
+  for (const key of Object.keys(source)) {
+    const srcVal = source[key];
+    const tgtVal = result[key];
+    if (
+      srcVal !== null && typeof srcVal === "object" && !Array.isArray(srcVal)
+      && tgtVal !== null && typeof tgtVal === "object" && !Array.isArray(tgtVal)
+    ) {
+      result[key] = deepMerge(tgtVal as Record<string, unknown>, srcVal as Record<string, unknown>);
+    } else {
+      result[key] = srcVal;
+    }
+  }
+  return result;
+}
+
+/** Deep-merges updates into an existing config file (or creates a new one). */
 export function saveConfigToFile(filePath: string, updates: Record<string, unknown>): void {
   let existing: Record<string, unknown> = {};
   if (existsSync(filePath)) {
@@ -266,7 +284,7 @@ export function saveConfigToFile(filePath: string, updates: Record<string, unkno
       // Start fresh if file is corrupted
     }
   }
-  const merged = { ...existing, ...updates };
+  const merged = deepMerge(existing, updates);
   writeFileSync(filePath, `${JSON.stringify(merged, null, 2)}\n`, "utf-8");
 }
 

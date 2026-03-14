@@ -481,13 +481,18 @@ export class ObsidianClient {
       this.cacheRef?.invalidate(filePath);
 
       // Optional write verification — reads raw content (bypasses truncation)
-      // Uses trimmed comparison to account for trailing newline normalization by Obsidian
+      // Wrapped in try/catch so a verification failure doesn't mask a successful write
       if (this.verifyWrites) {
-        const verifyRes = await this.request("GET", `/vault/${encoded}`, {
-          headers: { "Accept": "text/markdown" },
-        });
-        if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== body.trim()) {
-          log("warn", `Write verification failed for ${filePath}: content mismatch`);
+        try {
+          const verifyRes = await this.request("GET", `/vault/${encoded}`, {
+            headers: { "Accept": "text/markdown" },
+          });
+          if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== body.trim()) {
+            log("warn", `Write verification failed for ${filePath}: content mismatch`);
+          }
+        } catch (verifyErr: unknown) {
+          const msg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+          log("warn", `Write verification could not read back ${filePath}: ${msg}`);
         }
       }
     });
@@ -585,6 +590,8 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     }
+    // Active file path is unknown — invalidate all to ensure cache consistency
+    this.cacheRef?.invalidateAll();
   }
 
   /** Appends content to the currently open file (not idempotent). */
@@ -597,6 +604,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Patches the currently open file at a specific target (not idempotent). */
@@ -625,6 +633,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Deletes the currently open file (idempotent). */
@@ -634,6 +643,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     }
+    this.cacheRef?.invalidateAll();
   }
 
   // --- Commands ---
@@ -746,6 +756,8 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     }
+    // Periodic note path is resolved by Obsidian — invalidate all
+    this.cacheRef?.invalidateAll();
   }
 
   /** Appends content to the current periodic note (not idempotent). */
@@ -758,6 +770,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Patches the current periodic note at a specific target (not idempotent). */
@@ -786,6 +799,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Deletes the current periodic note (idempotent). */
@@ -795,6 +809,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   // --- Periodic Notes (By Date) ---
@@ -833,6 +848,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Appends content to the periodic note for a specific date (not idempotent). */
@@ -846,6 +862,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Patches the periodic note for a specific date at a target (not idempotent). */
@@ -875,6 +892,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     }
+    this.cacheRef?.invalidateAll();
   }
 
   /** Deletes the periodic note for a specific date (idempotent). */
@@ -885,6 +903,7 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
       this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     }
+    this.cacheRef?.invalidateAll();
   }
 }
 

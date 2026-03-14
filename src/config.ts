@@ -309,9 +309,15 @@ export function saveConfigToFile(filePath: string, updates: Record<string, unkno
   let existing: Record<string, unknown> = {};
   if (existsSync(filePath)) {
     try {
-      existing = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
-    } catch {
-      log("warn", `Failed to read existing config file at ${filePath}, starting fresh`);
+      const parsed: unknown = JSON.parse(readFileSync(filePath, "utf-8"));
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      } else {
+        log("warn", `Config file ${filePath} is not a JSON object, starting fresh`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("warn", `Failed to read existing config file at ${filePath} (${msg}), starting fresh`);
     }
   }
   const merged = deepMerge(existing, updates);

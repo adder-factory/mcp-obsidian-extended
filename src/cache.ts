@@ -42,7 +42,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
   while ((match = wikiRegex.exec(content)) !== null) {
     const rawTarget = match[1];
     if (!rawTarget) continue;
-    const target = resolveWikilink(rawTarget.trim(), currentDir);
+    const target = resolveWikilink(rawTarget.trim());
     const contextStart = Math.max(0, match.index - 25);
     const contextEnd = Math.min(content.length, match.index + match[0].length + 25);
     links.push({
@@ -71,7 +71,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
 }
 
 /** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */
-function resolveWikilink(target: string, _currentDir: string): string {
+function resolveWikilink(target: string): string {
   let resolved = target;
   if (!resolved.endsWith(".md")) {
     resolved = `${resolved}.md`;
@@ -195,9 +195,11 @@ export class VaultCache implements VaultCacheInterface {
       const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
 
       // Remove deleted notes from cache (uses invalidate to also update shortNameIndex)
+      let deleted = 0;
       for (const cachedPath of this.notes.keys()) {
         if (!mdFiles.has(cachedPath)) {
           this.invalidate(cachedPath);
+          deleted++;
         }
       }
 
@@ -236,9 +238,9 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
 
-      if (updated > 0) {
+      if (updated > 0 || deleted > 0) {
         this.rebuildIndex();
-        log("debug", `Cache refreshed: ${String(updated)} notes updated`);
+        log("debug", `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

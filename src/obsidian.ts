@@ -74,13 +74,16 @@ export function sanitizeFilePath(filePath: string): string {
   if (normalized.startsWith("/")) {
     throw new Error("Absolute paths not allowed");
   }
-  if (normalized.split("/").includes("..")) {
+  const segments = normalized.split("/");
+  if (segments.includes("..")) {
     throw new Error("Path traversal not allowed");
   }
   if (/^[a-zA-Z]:/.test(normalized)) {
     throw new Error("Absolute paths not allowed");
   }
-  return normalized;
+  // Canonicalize: filter out empty and "." segments so foo//bar and foo/./bar → foo/bar
+  const canonical = segments.filter((s) => s !== "" && s !== ".").join("/");
+  return canonical;
 }
 
 // --- Accept Header Mapping ---
@@ -248,12 +251,23 @@ export class ObsidianClient {
       timeout: this.timeout * timeoutMultiplier,
     };
 
+    const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
+
     return new Promise((resolve, reject) => {
       let settled = false;
 
       const req = requestFn(reqOptions, (res: IncomingMessage) => {
         const chunks: Buffer[] = [];
+        let accumulatedBytes = 0;
         res.on("data", (chunk: Buffer) => {
+          accumulatedBytes += chunk.length;
+          if (accumulatedBytes > MAX_RESPONSE_BYTES) {
+            res.destroy();
+            if (settled) return;
+            settled = true;
+            reject(new ObsidianConnectionError(`Response exceeded maximum size of ${String(MAX_RESPONSE_BYTES)} bytes`));
+            return;
+          }
           chunks.push(chunk);
         });
         res.on("error", (err: Error) => {

@@ -401,7 +401,10 @@ export class VaultCache implements VaultCacheInterface {
     for (const note of this.notes.values()) {
       for (const link of note.links) {
         const resolvedTarget = this.resolveLinkToFullPath(link.target);
-        edges.push({ source: note.path, target: resolvedTarget });
+        // Only include edges to notes that exist in the cache — skip unresolved/external links
+        if (this.notes.has(resolvedTarget)) {
+          edges.push({ source: note.path, target: resolvedTarget });
+        }
       }
     }
 
@@ -410,19 +413,28 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Helpers ---
 
-  /** Searches for a cached note by case-insensitive filename match. */
+  /** Searches for a cached note by short-name index (O(1)) with fallback for case-insensitive full-path match. */
   private findByName(nameOrPath: string): CachedNote | undefined {
-    // Support looking up by just the filename (without path)
     const lower = nameOrPath.toLowerCase();
+
+    // O(1) lookup via shortNameIndex: try exact short name first, then with .md appended
+    const shortNameCandidates = this.shortNameIndex.get(lower) ?? this.shortNameIndex.get(`${lower}.md`);
+    if (shortNameCandidates) {
+      for (const candidate of shortNameCandidates) {
+        const note = this.notes.get(candidate);
+        if (note) {
+          return note;
+        }
+      }
+    }
+
+    // Fallback: case-insensitive full-path match
     for (const note of this.notes.values()) {
       if (note.path.toLowerCase() === lower) {
         return note;
       }
-      const filename = note.path.split("/").pop()?.toLowerCase();
-      if (filename === lower || filename === `${lower}.md`) {
-        return note;
-      }
     }
+
     return undefined;
   }
 

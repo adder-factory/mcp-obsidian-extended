@@ -150,14 +150,26 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-/** Parses a string env var as a non-negative number, returning the fallback if undefined, NaN, or negative. */
-function parseNumber(value: string | undefined, fallback: number): number {
+/** Parses a string env var as a number with optional min/max bounds, returning the fallback if invalid. */
+function parseNumber(value: string | undefined, fallback: number, options?: { readonly min?: number; readonly max?: number }): number {
   if (value === undefined) {
     return fallback;
   }
   const parsed = Number(value);
-  if (Number.isNaN(parsed) || parsed < 0) {
+  if (!Number.isFinite(parsed)) {
     log("warn", `Invalid numeric value "${value}", using default ${String(fallback)}`);
+    return fallback;
+  }
+  if (parsed < 0) {
+    log("warn", `Invalid numeric value "${value}", using default ${String(fallback)}`);
+    return fallback;
+  }
+  if (options?.min !== undefined && parsed < options.min) {
+    log("warn", `Numeric value ${String(parsed)} below minimum ${String(options.min)}, using default ${String(fallback)}`);
+    return fallback;
+  }
+  if (options?.max !== undefined && parsed > options.max) {
+    log("warn", `Numeric value ${String(parsed)} above maximum ${String(options.max)}, using default ${String(fallback)}`);
     return fallback;
   }
   return parsed;
@@ -176,6 +188,9 @@ function validateScheme(value: string | undefined): "https" | "http" {
   if (value === "http" || value === "https") {
     return value;
   }
+  if (value !== undefined) {
+    log("warn", `Unrecognised scheme "${value}", using default "${DEFAULTS.scheme}"`);
+  }
   return DEFAULTS.scheme;
 }
 
@@ -184,6 +199,9 @@ function validateToolMode(value: string | undefined): "granular" | "consolidated
   if (value === "granular" || value === "consolidated") {
     return value;
   }
+  if (value !== undefined) {
+    log("warn", `Unrecognised tool mode "${value}", using default "${DEFAULTS.toolMode}"`);
+  }
   return DEFAULTS.toolMode;
 }
 
@@ -191,6 +209,9 @@ function validateToolMode(value: string | undefined): "granular" | "consolidated
 function validateToolPreset(value: string | undefined): "full" | "read-only" | "minimal" | "safe" {
   if (value === "full" || value === "read-only" || value === "minimal" || value === "safe") {
     return value;
+  }
+  if (value !== undefined) {
+    log("warn", `Unrecognised tool preset "${value}", using default "${DEFAULTS.toolPreset}"`);
   }
   return DEFAULTS.toolPreset;
 }
@@ -213,13 +234,13 @@ export function loadConfig(): Config {
   const config: Config = {
     apiKey: env["OBSIDIAN_API_KEY"] ?? "",
     host: env["OBSIDIAN_HOST"] ?? fileConfig.host ?? DEFAULTS.host,
-    port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port),
+    port: parseNumber(env["OBSIDIAN_PORT"], fileConfig.port ?? DEFAULTS.port, { min: 1, max: 65535 }),
     scheme: validateScheme(env["OBSIDIAN_SCHEME"] ?? fileConfig.scheme),
-    timeout: parseNumber(env["OBSIDIAN_TIMEOUT"], fileConfig.reliability?.timeout ?? DEFAULTS.timeout),
+    timeout: parseNumber(env["OBSIDIAN_TIMEOUT"], fileConfig.reliability?.timeout ?? DEFAULTS.timeout, { min: 1 }),
     certPath: env["OBSIDIAN_CERT_PATH"] ?? (fileConfig.tls?.certPath === null ? undefined : fileConfig.tls?.certPath) ?? DEFAULTS.certPath,
     verifySsl: parseBoolean(env["OBSIDIAN_VERIFY_SSL"], fileConfig.tls?.verifySsl ?? DEFAULTS.verifySsl),
     verifyWrites: parseBoolean(env["OBSIDIAN_VERIFY_WRITES"], fileConfig.reliability?.verifyWrites ?? DEFAULTS.verifyWrites),
-    maxResponseChars: parseNumber(env["OBSIDIAN_MAX_RESPONSE_CHARS"], fileConfig.reliability?.maxResponseChars ?? DEFAULTS.maxResponseChars),
+    maxResponseChars: parseNumber(env["OBSIDIAN_MAX_RESPONSE_CHARS"], fileConfig.reliability?.maxResponseChars ?? DEFAULTS.maxResponseChars, { min: 0 }),
     debug: parseBoolean(env["OBSIDIAN_DEBUG"], fileConfig.debug ?? DEFAULTS.debug),
     toolMode: validateToolMode(env["TOOL_MODE"] ?? fileConfig.tools?.mode),
     toolPreset: validateToolPreset(env["TOOL_PRESET"] ?? fileConfig.tools?.preset),
@@ -229,7 +250,7 @@ export function loadConfig(): Config {
     excludeTools: env["EXCLUDE_TOOLS"] === undefined
       ? (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools)
       : parseCommaSeparated(env["EXCLUDE_TOOLS"]),
-    cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl),
+    cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl, { min: 0 }),
     enableCache: parseBoolean(env["OBSIDIAN_ENABLE_CACHE"], fileConfig.cache?.enabled ?? DEFAULTS.enableCache),
     configFilePath,
   };
@@ -285,7 +306,7 @@ export function saveConfigToFile(filePath: string, updates: Record<string, unkno
     try {
       existing = JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
     } catch {
-      // Start fresh if file is corrupted
+      log("warn", `Failed to read existing config file at ${filePath}, starting fresh`);
     }
   }
   const merged = deepMerge(existing, updates);

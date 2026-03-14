@@ -306,6 +306,15 @@ export class ObsidianClient {
     });
   }
 
+  /** Safely parses a JSON response body, throwing a structured error on malformed JSON. */
+  private parseJsonResponse<T>(body: string, path: string): T {
+    try {
+      return JSON.parse(body) as T;
+    } catch {
+      throw new ObsidianApiError(`Invalid JSON response from ${path}`, 200);
+    }
+  }
+
   /** Parses an error response body and throws the appropriate custom error type. */
   private handleErrorResponse(statusCode: number, body: string, _path: string): never {
     if (statusCode === 401 || statusCode === 403) {
@@ -409,7 +418,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "/");
     }
-    return JSON.parse(res.body) as ServerStatus;
+    return this.parseJsonResponse<ServerStatus>(res.body, "/");
   }
 
   // --- Vault Files ---
@@ -420,7 +429,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, "/vault/");
     }
-    return JSON.parse(res.body) as { files: string[] };
+    return this.parseJsonResponse<{ files: string[] }>(res.body, "/vault/");
   }
 
   /** Lists files in a vault directory, returning an empty list for empty dirs that 404. */
@@ -442,7 +451,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, dirPath);
     }
-    return JSON.parse(res.body) as { files: string[] };
+    return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath);
   }
 
   /** Reads a vault file in the specified format (markdown, JSON, or document map). */
@@ -458,7 +467,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return JSON.parse(res.body) as NoteJson | DocumentMap;
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, filePath);
   }
 
   /** Creates or overwrites a vault file with the given content (idempotent). */
@@ -577,7 +586,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return JSON.parse(res.body) as NoteJson | DocumentMap;
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, "/active/");
   }
 
   /** Replaces the content of the currently open file (idempotent). */
@@ -656,7 +665,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "/commands/");
     }
 
-    return JSON.parse(res.body) as { commands: Array<{ id: string; name: string }> };
+    return this.parseJsonResponse<{ commands: Array<{ id: string; name: string }> }>(res.body, "/commands/");
   }
 
   /** Executes an Obsidian command by its ID. */
@@ -695,7 +704,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(search)");
     }
 
-    return JSON.parse(res.body) as SearchResult[];
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/simple/");
   }
 
   /** Searches the vault using a JsonLogic query (glob, regexp, etc.). */
@@ -710,7 +719,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(search)");
     }
 
-    return JSON.parse(res.body) as SearchResult[];
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/");
   }
 
   /** Queries the vault using Dataview DQL (requires the Dataview plugin). */
@@ -725,7 +734,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body, "(dataview search)");
     }
 
-    return JSON.parse(res.body) as SearchResult[];
+    return this.parseJsonResponse<SearchResult[]>(res.body, "/search/dataview");
   }
 
   // --- Periodic Notes (Current) ---
@@ -743,7 +752,7 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return JSON.parse(res.body) as NoteJson | DocumentMap;
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, `/periodic/${period}/`);
   }
 
   /** Replaces the current periodic note content (idempotent). */
@@ -822,7 +831,7 @@ export class ObsidianClient {
     day: number,
     format: FileFormat = "markdown",
   ): Promise<string | NoteJson | DocumentMap> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
+    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const res = await this.request("GET", path, {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -834,12 +843,12 @@ export class ObsidianClient {
     if (format === "markdown") {
       return this.truncateResponse(res.body);
     }
-    return JSON.parse(res.body) as NoteJson | DocumentMap;
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, path);
   }
 
   /** Replaces the periodic note for a specific date (idempotent). */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
+    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const res = await this.request("PUT", path, {
       body: content,
       headers: { "Content-Type": "text/markdown" },
@@ -853,7 +862,7 @@ export class ObsidianClient {
 
   /** Appends content to the periodic note for a specific date (not idempotent). */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
+    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const res = await this.request("POST", path, {
       body: content,
       headers: { "Content-Type": "text/markdown" },
@@ -867,7 +876,7 @@ export class ObsidianClient {
 
   /** Patches the periodic note for a specific date at a target (not idempotent). */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
+    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const headers: Record<string, string> = {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
@@ -897,7 +906,7 @@ export class ObsidianClient {
 
   /** Deletes the periodic note for a specific date (idempotent). */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
-    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month)}/${String(day)}/`;
+    const path = `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
     const res = await this.request("DELETE", path);
 
     if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {

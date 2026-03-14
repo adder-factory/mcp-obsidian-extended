@@ -188,10 +188,10 @@ export class VaultCache implements VaultCacheInterface {
       const { files } = await this.client.listFilesInVault();
       const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
 
-      // Remove deleted notes from cache
-      for (const cachedPath of this.notes.keys()) {
+      // Remove deleted notes from cache (uses invalidate to also update shortNameIndex)
+      for (const cachedPath of [...this.notes.keys()]) {
         if (!mdFiles.has(cachedPath)) {
-          this.notes.delete(cachedPath);
+          this.invalidate(cachedPath);
         }
       }
 
@@ -250,6 +250,8 @@ export class VaultCache implements VaultCacheInterface {
     this.refreshTimer = setInterval(() => {
       void this.refresh();
     }, interval);
+    // Allow Node.js to exit when the MCP transport closes
+    this.refreshTimer.unref();
   }
 
   /** Stops the background auto-refresh timer if running. */

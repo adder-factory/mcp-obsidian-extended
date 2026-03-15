@@ -456,13 +456,15 @@ export class ObsidianClient {
 
   // --- Helpers ---
 
-  /** Builds HTTP headers for PATCH operations from PatchOptions. */
-  private buildPatchHeaders(options: PatchOptions): Record<string, string> {
+  /** Builds HTTP headers for PATCH operations from PatchOptions (createIfMissing is optional). */
+  private buildPatchHeaders(options: Omit<PatchOptions, "createIfMissing"> & { createIfMissing?: boolean }): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment)
+      // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment).
+      // TODO(Phase 3): validate against live API — if Obsidian does plain-text matching,
+      // encoding may cause silent failures for headings with spaces/special chars.
       "Target": encodeURIComponent(options.target),
     };
     if (options.targetDelimiter !== undefined) {
@@ -771,7 +773,7 @@ export class ObsidianClient {
   /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. Serialized via active-file lock. */
   async patchActiveFile(content: string, options: Omit<PatchOptions, "createIfMissing">): Promise<void> {
     await this.withSyntheticLock("active", async () => {
-      const headers = this.buildPatchHeaders(options as PatchOptions);
+      const headers = this.buildPatchHeaders(options);
       // Active file PATCH does not support Create-Target-If-Missing — enforced at type level
       delete headers["Create-Target-If-Missing"];
       const res = await this.request("PATCH", "/active/", {

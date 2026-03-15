@@ -124,10 +124,13 @@ export function registerAllTools(
   const isConsolidated = config.toolMode === "consolidated";
   const presets = isConsolidated ? CONSOLIDATED_PRESETS : GRANULAR_PRESETS;
   const protectedTools = isConsolidated ? PROTECTED_CONSOLIDATED : PROTECTED_GRANULAR;
-  const preset = presets[config.toolPreset] ?? presets["full"];
+  const preset = presets[config.toolPreset];
+  if (!preset) {
+    // toolPreset is validated in config.ts — this is a defensive guard
+    throw new Error(`Unknown tool preset: "${config.toolPreset}". Valid presets: ${Object.keys(presets).join(", ")}`);
+  }
 
-  // preset is guaranteed defined since we default to "full" above
-  const shouldRegister = buildFilter(preset!, config.includeTools, config.excludeTools, protectedTools);
+  const shouldRegister = buildFilter(preset, config.includeTools, config.excludeTools, protectedTools);
 
   if (isConsolidated) {
     return registerConsolidatedTools(server, client, cache, shouldRegister, config);

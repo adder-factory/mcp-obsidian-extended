@@ -122,7 +122,7 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
   return links;
 }
 
-/** Extracts the .md path from a markdown link URL, stripping #fragment and ?query. Returns undefined for non-.md or external links. */
+/** Extracts the .md path from a markdown link URL, stripping #fragment, ?query, and "title". Returns undefined for non-.md or external links. */
 function extractMdLinkPath(url: string): string | undefined {
   // Reject absolute URLs (http://, https://, obsidian://, etc.)
   if (/^[a-z][a-z0-9+\-.]*:/i.test(url)) {
@@ -133,7 +133,12 @@ function extractMdLinkPath(url: string): string | undefined {
   let pathEnd = url.length;
   if (hashPos !== -1 && hashPos < pathEnd) pathEnd = hashPos;
   if (queryPos !== -1 && queryPos < pathEnd) pathEnd = queryPos;
-  const path = url.slice(0, pathEnd).trim();
+  let path = url.slice(0, pathEnd).trim();
+  // Strip optional title: [text](path.md "title") or [text](path.md 'title')
+  const titleMatch = path.match(/^(.+\.md)\s+["']/);
+  if (titleMatch?.[1]) {
+    path = titleMatch[1];
+  }
   return path.endsWith(".md") && path.length > 3 ? path : undefined;
 }
 

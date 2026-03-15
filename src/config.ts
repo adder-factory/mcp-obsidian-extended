@@ -144,10 +144,17 @@ function loadConfigFile(filePath: string): ConfigFileShape {
       const fieldResult = fieldSchema.safeParse(obj[key]);
       if (fieldResult.success) {
         recovered[key] = fieldResult.data;
-      } else if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key]) && "shape" in fieldSchema) {
+      } else if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
         // Nested object with mixed valid/invalid fields — recover valid nested keys
+        // Unwrap .optional() wrapper to access the inner z.object shape
+        const innerSchema = "unwrap" in fieldSchema && typeof fieldSchema.unwrap === "function"
+          ? (fieldSchema.unwrap() as z.ZodType)
+          : fieldSchema;
+        if (!("shape" in innerSchema)) {
+          continue;
+        }
         const nestedObj = obj[key] as Record<string, unknown>;
-        const nestedSchema = fieldSchema as unknown as { shape: Record<string, z.ZodType> };
+        const nestedSchema = innerSchema as unknown as { shape: Record<string, z.ZodType> };
         const nestedRecovered: Record<string, unknown> = {};
         for (const nestedKey of Object.keys(nestedObj)) {
           const nestedFieldSchema = nestedSchema.shape[nestedKey];

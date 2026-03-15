@@ -193,7 +193,7 @@ function registerVaultTools(
     server.registerTool(
       "search_replace",
       {
-        description: "Find and replace text in a vault file (not idempotent)",
+        description: "Find and replace in a vault file (not idempotent, do not retry)",
         inputSchema: z.object({
           filePath: z.string().describe("File path"),
           search: z.string().describe("Text to find"),
@@ -296,7 +296,7 @@ function registerActiveFileTools(
     server.registerTool(
       "patch_active_file",
       {
-        description: "Patch the active file at a target (not idempotent)",
+        description: "Patch the active file at a target (not idempotent, do not retry)",
         inputSchema: z.object({
           content: z.string().describe("Content to insert"),
           operation: patchOperationSchema,
@@ -523,7 +523,7 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "append_periodic_note",
       {
-        description: "Append to current periodic note (not idempotent)",
+        description: "Append to current periodic note (not idempotent, do not retry)",
         inputSchema: z.object({ period: periodSchema, content: z.string().describe("Content to append") }),
       },
       async ({ period, content }) => {
@@ -543,7 +543,7 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "patch_periodic_note",
       {
-        description: "Patch current periodic note at a target (not idempotent)",
+        description: "Patch current periodic note at target (not idempotent, do not retry)",
         inputSchema: z.object({
           period: periodSchema,
           content: z.string().describe("Content to insert"),
@@ -655,7 +655,7 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "append_periodic_note_for_date",
       {
-        description: "Append to periodic note for a date (not idempotent)",
+        description: "Append to periodic note for a date (not idempotent, do not retry)",
         inputSchema: z.object({
           period: periodSchema,
           year: z.number().int().describe("Year"),
@@ -681,7 +681,7 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "patch_periodic_note_for_date",
       {
-        description: "Patch periodic note for a date (not idempotent)",
+        description: "Patch periodic note for a date (not idempotent, do not retry)",
         inputSchema: z.object({
           period: periodSchema,
           year: z.number().int().describe("Year"),

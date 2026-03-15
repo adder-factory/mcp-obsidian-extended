@@ -180,6 +180,11 @@ export function handleConfigureReset(setting: string | undefined, config: Config
     return errorResult(`[configure] Unknown setting: ${setting}`);
   }
   saveConfigToFile(configPath, resetUpdates);
+  // Apply immediately for settings that take effect without restart
+  if (setting === "debug") {
+    applyImmediateSetting(setting, "false");
+    return textResult(`Setting "${setting}" reset to default (effective immediately)`);
+  }
   return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);
 }
 

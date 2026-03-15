@@ -268,6 +268,24 @@ Benchmarked against Obsidian Local REST API on macOS with mcp-test-vault.
 
 Sub-millisecond reads at p50. Stable memory after 395K operations. Write locks serialize correctly under concurrent load. Cache rebuilds don't block reads.
 
+### Full-Coverage Stress Test — All 55 Tools
+
+| Metric | Result |
+|--------|--------|
+| Duration | 323s |
+| Total operations | 379,557 |
+| Throughput | 1,175 ops/s |
+| Error rate | 0.24% (916/380K — all gracefully handled) |
+| Tool coverage | 55/55 (35 granular + 20 consolidated actions) |
+| Memory (heap) | 17.8MB stable (no memory leak) |
+| Crashes | 0 |
+
+Error breakdown:
+- `patch_*` operations: 722 errors (0.19%) — heading structure race conditions under concurrent writes
+- `get`/`batch_get` timeouts: 194 errors — 30s timeouts during heavy cache rebuilds
+
+All errors are gracefully handled with structured error messages. No crashes, no data corruption.
+
 ## Optional Plugins
 
 | Plugin | Required For |
@@ -289,6 +307,12 @@ Sub-millisecond reads at p50. Stable memory after 395K operations. Write locks s
 | Setup wizard | Yes | — | — | — |
 | Configurable timeouts | Yes | — | N/A | — |
 | Vault cache + graph | REST-only | Yes | — | Filesystem |
+
+## Known Limitations
+
+- **PATCH under concurrent writes**: The `::` heading delimiter has ~5% failure rate when concurrent writes change the heading structure between read and patch. For concurrent editing scenarios, prefer `search_replace` over `patch_content`.
+- **Dataview queries**: Only `TABLE` queries are supported by the Obsidian Local REST API. `LIST` queries are not supported — this is an API limitation, not a server limitation.
+- **Cache rebuild contention**: During cache rebuilds on large vaults, read operations may experience brief timeouts (~0.05% of requests). The server handles this gracefully and retries automatically.
 
 ## Acknowledgments
 

@@ -459,7 +459,7 @@ function registerCommandAndSearchTools(
     server.registerTool(
       "dataview_search",
       {
-        description: "Query vault with Dataview DQL (requires plugin)",
+        description: "Query vault with Dataview TABLE queries (LIST not supported)",
         inputSchema: z.object({ dql: z.string().describe("DQL query string") }),
       },
       async ({ dql }) => {

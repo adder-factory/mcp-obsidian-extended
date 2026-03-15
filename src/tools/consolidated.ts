@@ -511,7 +511,7 @@ export function registerConsolidatedTools(
     server.registerTool(
       "search",
       {
-        description: "Search vault with text, JsonLogic, or Dataview DQL",
+        description: "Search vault with text, JsonLogic, or Dataview TABLE",
         inputSchema: z.object({
           type: z.enum(["simple", "jsonlogic", "dataview"]).describe("Search type"),
           query: z.string().optional().describe("Query for simple/dataview"),

@@ -1,0 +1,22 @@
+{
+  "host": "127.0.0.1",
+  "port": 27124,
+  "scheme": "https",
+  "tools": {
+    "mode": "granular",
+    "preset": "full"
+  },
+  "reliability": {
+    "timeout": 30000,
+    "verifyWrites": false,
+    "maxResponseChars": 500000
+  },
+  "tls": {
+    "verifySsl": false
+  },
+  "cache": {
+    "ttl": 600000,
+    "enabled": true
+  },
+  "debug": false
+}

@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { ObsidianClient, NoteJson, DocumentMap } from "../obsidian.js";
+import type { ObsidianClient, NoteJson, DocumentMap, ToolResult } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
@@ -28,6 +28,95 @@ function formatFileContents(result: string | NoteJson | DocumentMap): ReturnType
   return jsonResult(result);
 }
 
+// --- Extracted Handlers ---
+
+/** Handles the configure "set" action. */
+function handleConfigureSet(
+  setting: string | undefined,
+  value: string | undefined,
+  config: Config,
+): ToolResult {
+  if (!setting) {
+    return errorResult("[configure] Setting name is required for 'set' action");
+  }
+  if (value === undefined) {
+    return errorResult("[configure] Value is required for 'set' action");
+  }
+  const immediateSettings = new Set(["debug", "timeout", "verifyWrites", "maxResponseChars"]);
+  const restartSettings = new Set(["toolMode", "toolPreset"]);
+  if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
+    return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
+  }
+  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
+  const updates = buildConfigUpdate(setting, value);
+  if (updates === undefined) {
+    return errorResult(`[configure] Invalid value "${value}" for setting "${setting}"`);
+  }
+  saveConfigToFile(configPath, updates);
+  if (immediateSettings.has(setting)) {
+    applyImmediateSetting(setting, value, config);
+    return textResult(`Setting "${setting}" updated to "${value}" (effective immediately)`);
+  }
+  return textResult(`Setting "${setting}" saved to config file. Restart the server for this change to take effect.`);
+}
+
+/** Fetches recent changes using cache or fallback API calls. */
+async function handleRecentChanges(
+  client: ObsidianClient,
+  cache: VaultCache,
+  config: Config,
+  limit: number,
+): Promise<ToolResult> {
+  if (config.enableCache && cache.getIsInitialized()) {
+    const allNotes = cache.getAllNotes();
+    const sorted = [...allNotes]
+      .sort((a, b) => b.stat.mtime - a.stat.mtime)
+      .slice(0, limit)
+      .map((n) => ({ path: n.path, mtime: n.stat.mtime }));
+    return jsonResult(sorted);
+  }
+  const { files } = await client.listFilesInVault();
+  const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+  const withStats = await Promise.allSettled(
+    mdFiles.map(async (fp) => {
+      const result = await client.getFileContents(fp, "json");
+      if (typeof result !== "string" && "stat" in result) {
+        return { path: fp, mtime: result.stat.mtime };
+      }
+      return { path: fp, mtime: 0 };
+    }),
+  );
+  const sorted = withStats
+    .filter((r): r is PromiseFulfilledResult<{ path: string; mtime: number }> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit);
+  return jsonResult(sorted);
+}
+
+/** Builds vault structure statistics from cache. */
+function buildVaultStructure(cache: VaultCache, limit: number): ToolResult {
+  const orphans = cache.getOrphanNotes();
+  const mostConnected = cache.getMostConnectedNotes(limit);
+  const graph = cache.getVaultGraph();
+  const dirs = new Set<string>();
+  for (const path of cache.getFileList()) {
+    const lastSlash = path.lastIndexOf("/");
+    if (lastSlash !== -1) {
+      dirs.add(path.slice(0, lastSlash));
+    }
+  }
+  return jsonResult({
+    noteCount: cache.noteCount,
+    linkCount: cache.linkCount,
+    directoryCount: dirs.size,
+    orphanCount: orphans.length,
+    orphans: orphans.slice(0, 20),
+    mostConnected,
+    edgeCount: graph.edges.length,
+  });
+}
+
 // --- Registration ---
 
 /** Registers all 38 individual granular tools, filtered by the shouldRegister predicate. */
@@ -42,10 +131,11 @@ export function registerGranularTools(
 
   // --- 1. list_files_in_vault ---
   if (shouldRegister("list_files_in_vault")) {
-    server.tool(
+    server.registerTool(
       "list_files_in_vault",
-      "List all files and directories in vault root",
-      {},
+      {
+        description: "List all files and directories in vault root",
+      },
       async () => {
         try {
           return jsonResult(await client.listFilesInVault());
@@ -59,10 +149,12 @@ export function registerGranularTools(
 
   // --- 2. list_files_in_dir ---
   if (shouldRegister("list_files_in_dir")) {
-    server.tool(
+    server.registerTool(
       "list_files_in_dir",
-      "List files in a vault directory",
-      { dirPath: z.string().describe("Directory path") },
+      {
+        description: "List files in a vault directory",
+        inputSchema: z.object({ dirPath: z.string().describe("Directory path") }),
+      },
       async ({ dirPath }) => {
         try {
           return jsonResult(await client.listFilesInDir(dirPath));
@@ -76,12 +168,14 @@ export function registerGranularTools(
 
   // --- 3. get_file_contents ---
   if (shouldRegister("get_file_contents")) {
-    server.tool(
+    server.registerTool(
       "get_file_contents",
-      "Read a vault file as markdown, JSON, or document map",
       {
-        filePath: z.string().describe("File path"),
-        format: formatSchema.optional(),
+        description: "Read a vault file as markdown, JSON, or document map",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          format: formatSchema.optional(),
+        }),
       },
       async ({ filePath, format }) => {
         try {
@@ -97,12 +191,14 @@ export function registerGranularTools(
 
   // --- 4. put_content ---
   if (shouldRegister("put_content")) {
-    server.tool(
+    server.registerTool(
       "put_content",
-      "Create or overwrite a vault file (idempotent)",
       {
-        filePath: z.string().describe("File path"),
-        content: z.string().describe("File content"),
+        description: "Create or overwrite a vault file (idempotent)",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          content: z.string().describe("File content"),
+        }),
       },
       async ({ filePath, content }) => {
         try {
@@ -118,12 +214,14 @@ export function registerGranularTools(
 
   // --- 5. append_content ---
   if (shouldRegister("append_content")) {
-    server.tool(
+    server.registerTool(
       "append_content",
-      "Append to a vault file (not idempotent, do not retry)",
       {
-        filePath: z.string().describe("File path"),
-        content: z.string().describe("Content to append"),
+        description: "Append to a vault file (not idempotent, do not retry)",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          content: z.string().describe("Content to append"),
+        }),
       },
       async ({ filePath, content }) => {
         try {
@@ -139,19 +237,21 @@ export function registerGranularTools(
 
   // --- 6. patch_content ---
   if (shouldRegister("patch_content")) {
-    server.tool(
+    server.registerTool(
       "patch_content",
-      "Insert at heading/block/frontmatter (not idempotent, do not retry)",
       {
-        filePath: z.string().describe("File path"),
-        content: z.string().describe("Content to insert"),
-        operation: patchOperationSchema,
-        targetType: patchTargetTypeSchema,
-        target: z.string().describe("Target heading/block/field"),
-        targetDelimiter: z.string().optional().describe("Heading delimiter"),
-        trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-        createIfMissing: z.boolean().optional().describe("Create target if missing"),
-        contentType: patchContentTypeSchema.optional(),
+        description: "Insert at heading/block/frontmatter (not idempotent, do not retry)",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          content: z.string().describe("Content to insert"),
+          operation: patchOperationSchema,
+          targetType: patchTargetTypeSchema,
+          target: z.string().describe("Target heading/block/field"),
+          targetDelimiter: z.string().optional().describe("Heading delimiter"),
+          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+          createIfMissing: z.boolean().optional().describe("Create target if missing"),
+          contentType: patchContentTypeSchema.optional(),
+        }),
       },
       async ({ filePath, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
@@ -175,10 +275,12 @@ export function registerGranularTools(
 
   // --- 7. delete_file ---
   if (shouldRegister("delete_file")) {
-    server.tool(
+    server.registerTool(
       "delete_file",
-      "Delete a vault file to Obsidian trash (idempotent)",
-      { filePath: z.string().describe("File path") },
+      {
+        description: "Delete a vault file to Obsidian trash (idempotent)",
+        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+      },
       async ({ filePath }) => {
         try {
           await client.deleteFile(filePath);
@@ -193,16 +295,18 @@ export function registerGranularTools(
 
   // --- 8. search_replace ---
   if (shouldRegister("search_replace")) {
-    server.tool(
+    server.registerTool(
       "search_replace",
-      "Find and replace text in a vault file (not idempotent)",
       {
-        filePath: z.string().describe("File path"),
-        search: z.string().describe("Text to find"),
-        replace: z.string().describe("Replacement text"),
-        useRegex: z.boolean().default(false).describe("Use regex matching"),
-        caseSensitive: z.boolean().default(true).describe("Case-sensitive match"),
-        replaceAll: z.boolean().default(true).describe("Replace all occurrences"),
+        description: "Find and replace text in a vault file (not idempotent)",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          search: z.string().describe("Text to find"),
+          replace: z.string().describe("Replacement text"),
+          useRegex: z.boolean().default(false).describe("Use regex matching"),
+          caseSensitive: z.boolean().default(true).describe("Case-sensitive match"),
+          replaceAll: z.boolean().default(true).describe("Replace all occurrences"),
+        }),
       },
       async ({ filePath, search, replace, useRegex, caseSensitive, replaceAll }) => {
         try {
@@ -228,10 +332,12 @@ export function registerGranularTools(
 
   // --- 9. get_active_file ---
   if (shouldRegister("get_active_file")) {
-    server.tool(
+    server.registerTool(
       "get_active_file",
-      "Read the currently open file in Obsidian",
-      { format: formatSchema.optional() },
+      {
+        description: "Read the currently open file in Obsidian",
+        inputSchema: z.object({ format: formatSchema.optional() }),
+      },
       async ({ format }) => {
         try {
           const result = await client.getActiveFile(format);
@@ -246,10 +352,12 @@ export function registerGranularTools(
 
   // --- 10. put_active_file ---
   if (shouldRegister("put_active_file")) {
-    server.tool(
+    server.registerTool(
       "put_active_file",
-      "Replace content of the open file (idempotent)",
-      { content: z.string().describe("New file content") },
+      {
+        description: "Replace content of the open file (idempotent)",
+        inputSchema: z.object({ content: z.string().describe("New file content") }),
+      },
       async ({ content }) => {
         try {
           await client.putActiveFile(content);
@@ -264,10 +372,12 @@ export function registerGranularTools(
 
   // --- 11. append_active_file ---
   if (shouldRegister("append_active_file")) {
-    server.tool(
+    server.registerTool(
       "append_active_file",
-      "Append to the open file (not idempotent, do not retry)",
-      { content: z.string().describe("Content to append") },
+      {
+        description: "Append to the open file (not idempotent, do not retry)",
+        inputSchema: z.object({ content: z.string().describe("Content to append") }),
+      },
       async ({ content }) => {
         try {
           await client.appendActiveFile(content);
@@ -282,17 +392,19 @@ export function registerGranularTools(
 
   // --- 12. patch_active_file ---
   if (shouldRegister("patch_active_file")) {
-    server.tool(
+    server.registerTool(
       "patch_active_file",
-      "Patch the active file at a target (not idempotent)",
       {
-        content: z.string().describe("Content to insert"),
-        operation: patchOperationSchema,
-        targetType: patchTargetTypeSchema,
-        target: z.string().describe("Target heading/block/field"),
-        targetDelimiter: z.string().optional().describe("Heading delimiter"),
-        trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-        contentType: patchContentTypeSchema.optional(),
+        description: "Patch the active file at a target (not idempotent)",
+        inputSchema: z.object({
+          content: z.string().describe("Content to insert"),
+          operation: patchOperationSchema,
+          targetType: patchTargetTypeSchema,
+          target: z.string().describe("Target heading/block/field"),
+          targetDelimiter: z.string().optional().describe("Heading delimiter"),
+          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+          contentType: patchContentTypeSchema.optional(),
+        }),
       },
       async ({ content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType }) => {
         try {
@@ -315,10 +427,11 @@ export function registerGranularTools(
 
   // --- 13. delete_active_file ---
   if (shouldRegister("delete_active_file")) {
-    server.tool(
+    server.registerTool(
       "delete_active_file",
-      "Delete the currently open file (idempotent)",
-      {},
+      {
+        description: "Delete the currently open file (idempotent)",
+      },
       async () => {
         try {
           await client.deleteActiveFile();
@@ -333,10 +446,11 @@ export function registerGranularTools(
 
   // --- 14. list_commands ---
   if (shouldRegister("list_commands")) {
-    server.tool(
+    server.registerTool(
       "list_commands",
-      "List all Obsidian command palette commands",
-      {},
+      {
+        description: "List all Obsidian command palette commands",
+      },
       async () => {
         try {
           return jsonResult(await client.listCommands());
@@ -350,10 +464,12 @@ export function registerGranularTools(
 
   // --- 15. execute_command ---
   if (shouldRegister("execute_command")) {
-    server.tool(
+    server.registerTool(
       "execute_command",
-      "Run an Obsidian command by ID",
-      { commandId: z.string().describe("Command ID") },
+      {
+        description: "Run an Obsidian command by ID",
+        inputSchema: z.object({ commandId: z.string().describe("Command ID") }),
+      },
       async ({ commandId }) => {
         try {
           await client.executeCommand(commandId);
@@ -368,12 +484,14 @@ export function registerGranularTools(
 
   // --- 16. open_file ---
   if (shouldRegister("open_file")) {
-    server.tool(
+    server.registerTool(
       "open_file",
-      "Open a file in the Obsidian UI",
       {
-        filePath: z.string().describe("File path"),
-        newLeaf: z.boolean().default(false).describe("Open in new tab"),
+        description: "Open a file in the Obsidian UI",
+        inputSchema: z.object({
+          filePath: z.string().describe("File path"),
+          newLeaf: z.boolean().default(false).describe("Open in new tab"),
+        }),
       },
       async ({ filePath, newLeaf }) => {
         try {
@@ -389,12 +507,14 @@ export function registerGranularTools(
 
   // --- 17. simple_search ---
   if (shouldRegister("simple_search")) {
-    server.tool(
+    server.registerTool(
       "simple_search",
-      "Full-text search across all vault files",
       {
-        query: z.string().describe("Search query"),
-        contextLength: z.number().default(100).describe("Context chars"),
+        description: "Full-text search across all vault files",
+        inputSchema: z.object({
+          query: z.string().describe("Search query"),
+          contextLength: z.number().default(100).describe("Context chars"),
+        }),
       },
       async ({ query, contextLength }) => {
         try {
@@ -409,11 +529,13 @@ export function registerGranularTools(
 
   // --- 18. complex_search ---
   if (shouldRegister("complex_search")) {
-    server.tool(
+    server.registerTool(
       "complex_search",
-      "Search vault with JsonLogic queries (glob, regexp)",
       {
-        query: z.record(z.unknown()).describe("JsonLogic query object"),
+        description: "Search vault with JsonLogic queries (glob, regexp)",
+        inputSchema: z.object({
+          query: z.record(z.unknown()).describe("JsonLogic query object"),
+        }),
       },
       async ({ query }) => {
         try {
@@ -428,10 +550,12 @@ export function registerGranularTools(
 
   // --- 19. dataview_search ---
   if (shouldRegister("dataview_search")) {
-    server.tool(
+    server.registerTool(
       "dataview_search",
-      "Query vault with Dataview DQL (requires plugin)",
-      { dql: z.string().describe("DQL query string") },
+      {
+        description: "Query vault with Dataview DQL (requires plugin)",
+        inputSchema: z.object({ dql: z.string().describe("DQL query string") }),
+      },
       async ({ dql }) => {
         try {
           return jsonResult(await client.dataviewSearch(dql));
@@ -445,12 +569,14 @@ export function registerGranularTools(
 
   // --- 20. get_periodic_note ---
   if (shouldRegister("get_periodic_note")) {
-    server.tool(
+    server.registerTool(
       "get_periodic_note",
-      "Get the current periodic note",
       {
-        period: periodSchema,
-        format: formatSchema.optional(),
+        description: "Get the current periodic note",
+        inputSchema: z.object({
+          period: periodSchema,
+          format: formatSchema.optional(),
+        }),
       },
       async ({ period, format }) => {
         try {
@@ -466,12 +592,14 @@ export function registerGranularTools(
 
   // --- 21. put_periodic_note ---
   if (shouldRegister("put_periodic_note")) {
-    server.tool(
+    server.registerTool(
       "put_periodic_note",
-      "Replace current periodic note content (idempotent)",
       {
-        period: periodSchema,
-        content: z.string().describe("Note content"),
+        description: "Replace current periodic note content (idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          content: z.string().describe("Note content"),
+        }),
       },
       async ({ period, content }) => {
         try {
@@ -487,12 +615,14 @@ export function registerGranularTools(
 
   // --- 22. append_periodic_note ---
   if (shouldRegister("append_periodic_note")) {
-    server.tool(
+    server.registerTool(
       "append_periodic_note",
-      "Append to current periodic note (not idempotent)",
       {
-        period: periodSchema,
-        content: z.string().describe("Content to append"),
+        description: "Append to current periodic note (not idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          content: z.string().describe("Content to append"),
+        }),
       },
       async ({ period, content }) => {
         try {
@@ -508,19 +638,21 @@ export function registerGranularTools(
 
   // --- 23. patch_periodic_note ---
   if (shouldRegister("patch_periodic_note")) {
-    server.tool(
+    server.registerTool(
       "patch_periodic_note",
-      "Patch current periodic note at a target (not idempotent)",
       {
-        period: periodSchema,
-        content: z.string().describe("Content to insert"),
-        operation: patchOperationSchema,
-        targetType: patchTargetTypeSchema,
-        target: z.string().describe("Target heading/block/field"),
-        targetDelimiter: z.string().optional().describe("Heading delimiter"),
-        trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-        createIfMissing: z.boolean().optional().describe("Create target if missing"),
-        contentType: patchContentTypeSchema.optional(),
+        description: "Patch current periodic note at a target (not idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          content: z.string().describe("Content to insert"),
+          operation: patchOperationSchema,
+          targetType: patchTargetTypeSchema,
+          target: z.string().describe("Target heading/block/field"),
+          targetDelimiter: z.string().optional().describe("Heading delimiter"),
+          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+          createIfMissing: z.boolean().optional().describe("Create target if missing"),
+          contentType: patchContentTypeSchema.optional(),
+        }),
       },
       async ({ period, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
@@ -544,10 +676,12 @@ export function registerGranularTools(
 
   // --- 24. delete_periodic_note ---
   if (shouldRegister("delete_periodic_note")) {
-    server.tool(
+    server.registerTool(
       "delete_periodic_note",
-      "Delete current periodic note (idempotent)",
-      { period: periodSchema },
+      {
+        description: "Delete current periodic note (idempotent)",
+        inputSchema: z.object({ period: periodSchema }),
+      },
       async ({ period }) => {
         try {
           await client.deletePeriodicNote(period);
@@ -562,15 +696,17 @@ export function registerGranularTools(
 
   // --- 25. get_periodic_note_for_date ---
   if (shouldRegister("get_periodic_note_for_date")) {
-    server.tool(
+    server.registerTool(
       "get_periodic_note_for_date",
-      "Get periodic note for a specific date",
       {
-        period: periodSchema,
-        year: z.number().int().describe("Year"),
-        month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-        day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-        format: formatSchema.optional(),
+        description: "Get periodic note for a specific date",
+        inputSchema: z.object({
+          period: periodSchema,
+          year: z.number().int().describe("Year"),
+          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
+          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+          format: formatSchema.optional(),
+        }),
       },
       async ({ period, year, month, day, format }) => {
         try {
@@ -586,15 +722,17 @@ export function registerGranularTools(
 
   // --- 26. put_periodic_note_for_date ---
   if (shouldRegister("put_periodic_note_for_date")) {
-    server.tool(
+    server.registerTool(
       "put_periodic_note_for_date",
-      "Replace periodic note for a date (idempotent)",
       {
-        period: periodSchema,
-        year: z.number().int().describe("Year"),
-        month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-        day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-        content: z.string().describe("Note content"),
+        description: "Replace periodic note for a date (idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          year: z.number().int().describe("Year"),
+          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
+          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+          content: z.string().describe("Note content"),
+        }),
       },
       async ({ period, year, month, day, content }) => {
         try {
@@ -610,15 +748,17 @@ export function registerGranularTools(
 
   // --- 27. append_periodic_note_for_date ---
   if (shouldRegister("append_periodic_note_for_date")) {
-    server.tool(
+    server.registerTool(
       "append_periodic_note_for_date",
-      "Append to periodic note for a date (not idempotent)",
       {
-        period: periodSchema,
-        year: z.number().int().describe("Year"),
-        month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-        day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-        content: z.string().describe("Content to append"),
+        description: "Append to periodic note for a date (not idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          year: z.number().int().describe("Year"),
+          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
+          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+          content: z.string().describe("Content to append"),
+        }),
       },
       async ({ period, year, month, day, content }) => {
         try {
@@ -634,22 +774,24 @@ export function registerGranularTools(
 
   // --- 28. patch_periodic_note_for_date ---
   if (shouldRegister("patch_periodic_note_for_date")) {
-    server.tool(
+    server.registerTool(
       "patch_periodic_note_for_date",
-      "Patch periodic note for a date (not idempotent)",
       {
-        period: periodSchema,
-        year: z.number().int().describe("Year"),
-        month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-        day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-        content: z.string().describe("Content to insert"),
-        operation: patchOperationSchema,
-        targetType: patchTargetTypeSchema,
-        target: z.string().describe("Target heading/block/field"),
-        targetDelimiter: z.string().optional().describe("Heading delimiter"),
-        trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-        createIfMissing: z.boolean().optional().describe("Create target if missing"),
-        contentType: patchContentTypeSchema.optional(),
+        description: "Patch periodic note for a date (not idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          year: z.number().int().describe("Year"),
+          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
+          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+          content: z.string().describe("Content to insert"),
+          operation: patchOperationSchema,
+          targetType: patchTargetTypeSchema,
+          target: z.string().describe("Target heading/block/field"),
+          targetDelimiter: z.string().optional().describe("Heading delimiter"),
+          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+          createIfMissing: z.boolean().optional().describe("Create target if missing"),
+          contentType: patchContentTypeSchema.optional(),
+        }),
       },
       async ({ period, year, month, day, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
@@ -673,14 +815,16 @@ export function registerGranularTools(
 
   // --- 29. delete_periodic_note_for_date ---
   if (shouldRegister("delete_periodic_note_for_date")) {
-    server.tool(
+    server.registerTool(
       "delete_periodic_note_for_date",
-      "Delete periodic note for a date (idempotent)",
       {
-        period: periodSchema,
-        year: z.number().int().describe("Year"),
-        month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-        day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+        description: "Delete periodic note for a date (idempotent)",
+        inputSchema: z.object({
+          period: periodSchema,
+          year: z.number().int().describe("Year"),
+          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
+          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
+        }),
       },
       async ({ period, year, month, day }) => {
         try {
@@ -696,10 +840,11 @@ export function registerGranularTools(
 
   // --- 30. get_server_status (PROTECTED) ---
   if (shouldRegister("get_server_status")) {
-    server.tool(
+    server.registerTool(
       "get_server_status",
-      "Check Obsidian API connection and version",
-      {},
+      {
+        description: "Check Obsidian API connection and version",
+      },
       async () => {
         try {
           return jsonResult(await client.getServerStatus());
@@ -713,12 +858,14 @@ export function registerGranularTools(
 
   // --- 31. batch_get_file_contents ---
   if (shouldRegister("batch_get_file_contents")) {
-    server.tool(
+    server.registerTool(
       "batch_get_file_contents",
-      "Read multiple vault files in one call",
       {
-        filePaths: z.array(z.string()).min(1).describe("File paths"),
-        format: formatSchema.optional(),
+        description: "Read multiple vault files in one call",
+        inputSchema: z.object({
+          filePaths: z.array(z.string()).min(1).describe("File paths"),
+          format: formatSchema.optional(),
+        }),
       },
       async ({ filePaths, format }) => {
         try {
@@ -748,38 +895,15 @@ export function registerGranularTools(
 
   // --- 32. get_recent_changes ---
   if (shouldRegister("get_recent_changes")) {
-    server.tool(
+    server.registerTool(
       "get_recent_changes",
-      "Get recently modified files sorted by date",
-      { limit: z.number().int().min(1).default(10).describe("Max results") },
+      {
+        description: "Get recently modified files sorted by date",
+        inputSchema: z.object({ limit: z.number().int().min(1).default(10).describe("Max results") }),
+      },
       async ({ limit }) => {
         try {
-          if (!config.enableCache || !cache.getIsInitialized()) {
-            // Fallback: list vault and fetch stat info
-            const { files } = await client.listFilesInVault();
-            const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
-            const withStats = await Promise.allSettled(
-              mdFiles.map(async (fp) => {
-                const result = await client.getFileContents(fp, "json");
-                if (typeof result !== "string" && "stat" in result) {
-                  return { path: fp, mtime: result.stat.mtime };
-                }
-                return { path: fp, mtime: 0 };
-              }),
-            );
-            const sorted = withStats
-              .filter((r): r is PromiseFulfilledResult<{ path: string; mtime: number }> => r.status === "fulfilled")
-              .map((r) => r.value)
-              .sort((a, b) => b.mtime - a.mtime)
-              .slice(0, limit);
-            return jsonResult(sorted);
-          }
-          const allNotes = cache.getAllNotes();
-          const sorted = [...allNotes]
-            .sort((a, b) => b.stat.mtime - a.stat.mtime)
-            .slice(0, limit)
-            .map((n) => ({ path: n.path, mtime: n.stat.mtime }));
-          return jsonResult(sorted);
+          return await handleRecentChanges(client, cache, config, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_recent_changes" }));
         }
@@ -790,12 +914,14 @@ export function registerGranularTools(
 
   // --- 33. get_recent_periodic_notes ---
   if (shouldRegister("get_recent_periodic_notes")) {
-    server.tool(
+    server.registerTool(
       "get_recent_periodic_notes",
-      "Get recent periodic notes for a period type",
       {
-        period: periodSchema,
-        limit: z.number().int().min(1).default(5).describe("Max results"),
+        description: "Get recent periodic notes for a period type",
+        inputSchema: z.object({
+          period: periodSchema,
+          limit: z.number().int().min(1).default(5).describe("Max results"),
+        }),
       },
       async ({ period, limit }) => {
         try {
@@ -811,8 +937,7 @@ export function registerGranularTools(
           const dirName = periodDirs[period] ?? period;
           const periodFiles = files
             .filter((f) => f.startsWith(`${dirName}/`) && f.toLowerCase().endsWith(".md"))
-            .sort()
-            .reverse()
+            .sort((a, b) => b.localeCompare(a))
             .slice(0, limit);
           return jsonResult(periodFiles);
         } catch (err: unknown) {
@@ -825,13 +950,15 @@ export function registerGranularTools(
 
   // --- 34. configure (PROTECTED) ---
   if (shouldRegister("configure")) {
-    server.tool(
+    server.registerTool(
       "configure",
-      "View or change server settings",
       {
-        action: z.enum(["show", "set", "reset"]).describe("Action"),
-        setting: z.string().optional().describe("Setting name for set/reset"),
-        value: z.string().optional().describe("New value for set"),
+        description: "View or change server settings",
+        inputSchema: z.object({
+          action: z.enum(["show", "set", "reset"]).describe("Action"),
+          setting: z.string().optional().describe("Setting name for set/reset"),
+          value: z.string().optional().describe("New value for set"),
+        }),
       },
       async ({ action, setting, value }) => {
         try {
@@ -839,34 +966,8 @@ export function registerGranularTools(
             case "show":
               return jsonResult(getRedactedConfig(config));
 
-            case "set": {
-              if (!setting) {
-                return errorResult("[configure] Setting name is required for 'set' action");
-              }
-              if (value === undefined) {
-                return errorResult("[configure] Value is required for 'set' action");
-              }
-              const immediateSettings = new Set(["debug", "timeout", "verifyWrites", "maxResponseChars"]);
-              const restartSettings = new Set(["toolMode", "toolPreset"]);
-
-              if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
-                return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
-              }
-
-              const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
-              const updates = buildConfigUpdate(setting, value);
-              if (updates === undefined) {
-                return errorResult(`[configure] Invalid value "${value}" for setting "${setting}"`);
-              }
-
-              saveConfigToFile(configPath, updates);
-
-              if (immediateSettings.has(setting)) {
-                applyImmediateSetting(setting, value, config);
-                return textResult(`Setting "${setting}" updated to "${value}" (effective immediately)`);
-              }
-              return textResult(`Setting "${setting}" saved to config file. Restart the server for this change to take effect.`);
-            }
+            case "set":
+              return handleConfigureSet(setting, value, config);
 
             case "reset": {
               if (!setting) {
@@ -896,10 +997,12 @@ export function registerGranularTools(
 
   // --- 35. get_backlinks ---
   if (shouldRegister("get_backlinks")) {
-    server.tool(
+    server.registerTool(
       "get_backlinks",
-      "Get all notes that link to a file (from cache)",
-      { filePath: z.string().describe("File path") },
+      {
+        description: "Get all notes that link to a file (from cache)",
+        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+      },
       async ({ filePath }) => {
         try {
           if (!config.enableCache) {
@@ -919,10 +1022,12 @@ export function registerGranularTools(
 
   // --- 36. get_vault_structure ---
   if (shouldRegister("get_vault_structure")) {
-    server.tool(
+    server.registerTool(
       "get_vault_structure",
-      "Get vault stats: note count, links, orphans, most connected",
-      { limit: z.number().int().min(1).default(10).describe("Top N connected") },
+      {
+        description: "Get vault stats: note count, links, orphans, most connected",
+        inputSchema: z.object({ limit: z.number().int().min(1).default(10).describe("Top N connected") }),
+      },
       async ({ limit }) => {
         try {
           if (!config.enableCache) {
@@ -931,28 +1036,7 @@ export function registerGranularTools(
           if (!cache.getIsInitialized()) {
             return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
           }
-          const orphans = cache.getOrphanNotes();
-          const mostConnected = cache.getMostConnectedNotes(limit);
-          const graph = cache.getVaultGraph();
-
-          // Build directory tree summary
-          const dirs = new Set<string>();
-          for (const path of cache.getFileList()) {
-            const lastSlash = path.lastIndexOf("/");
-            if (lastSlash !== -1) {
-              dirs.add(path.slice(0, lastSlash));
-            }
-          }
-
-          return jsonResult({
-            noteCount: cache.noteCount,
-            linkCount: cache.linkCount,
-            directoryCount: dirs.size,
-            orphanCount: orphans.length,
-            orphans: orphans.slice(0, 20),
-            mostConnected,
-            edgeCount: graph.edges.length,
-          });
+          return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
         }
@@ -963,10 +1047,12 @@ export function registerGranularTools(
 
   // --- 37. get_note_connections ---
   if (shouldRegister("get_note_connections")) {
-    server.tool(
+    server.registerTool(
       "get_note_connections",
-      "Get backlinks and forward links for a note",
-      { filePath: z.string().describe("File path") },
+      {
+        description: "Get backlinks and forward links for a note",
+        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+      },
       async ({ filePath }) => {
         try {
           if (!config.enableCache) {
@@ -988,10 +1074,11 @@ export function registerGranularTools(
 
   // --- 38. refresh_cache (PROTECTED) ---
   if (shouldRegister("refresh_cache")) {
-    server.tool(
+    server.registerTool(
       "refresh_cache",
-      "Force refresh vault cache and link graph",
-      {},
+      {
+        description: "Force refresh vault cache and link graph",
+      },
       async () => {
         try {
           if (!config.enableCache) {

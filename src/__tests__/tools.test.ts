@@ -59,7 +59,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 /**
- * A captured tool registration: the four arguments passed to server.tool().
+ * A captured tool registration: the arguments passed to server.registerTool().
  * The handler signature matches the SDK: (args: unknown) => Promise<ToolResult>.
  */
 interface CapturedTool {
@@ -70,28 +70,32 @@ interface CapturedTool {
 }
 
 /**
- * Creates a mock McpServer that captures every server.tool() call.
+ * Creates a mock McpServer that captures every server.registerTool() call.
  * Returns both the mock server and a helper to look up captured tools.
  */
 function makeMockServer(): {
-  server: { tool: ReturnType<typeof vi.fn> };
+  server: { registerTool: ReturnType<typeof vi.fn> };
   getTool: (name: string) => CapturedTool;
   getRegistered: () => string[];
 } {
   const captured: CapturedTool[] = [];
 
-  const toolFn = vi.fn(
+  const registerToolFn = vi.fn(
     (
       name: string,
-      description: string,
-      schema: Record<string, unknown>,
+      config: { description?: string; inputSchema?: unknown },
       handler: (args: Record<string, unknown>) => Promise<ToolResult>,
     ) => {
-      captured.push({ name, description, schema, handler });
+      captured.push({
+        name,
+        description: config.description ?? "",
+        schema: config as Record<string, unknown>,
+        handler,
+      });
     },
   );
 
-  const server = { tool: toolFn };
+  const server = { registerTool: registerToolFn };
 
   return {
     server,

@@ -30,10 +30,10 @@ export interface PatchOptions {
   readonly operation: "append" | "prepend" | "replace";
   readonly targetType: "heading" | "block" | "frontmatter";
   readonly target: string;
-  readonly targetDelimiter?: string;
-  readonly trimTargetWhitespace?: boolean;
-  readonly createIfMissing?: boolean;
-  readonly contentType?: "markdown" | "json";
+  readonly targetDelimiter?: string | undefined;
+  readonly trimTargetWhitespace?: boolean | undefined;
+  readonly createIfMissing?: boolean | undefined;
+  readonly contentType?: "markdown" | "json" | undefined;
 }
 
 /** A single match within a search result, with position and surrounding context. */
@@ -105,10 +105,11 @@ function acceptHeaderForFormat(format: FileFormat): string {
 
 // --- Tool Result Helpers ---
 
-/** Standard MCP tool response shape. */
+/** Standard MCP tool response shape (index signature required by MCP SDK). */
 export interface ToolResult {
-  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
-  readonly isError?: boolean;
+  [key: string]: unknown;
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
 }
 
 /** Wraps a plain text string as an MCP tool result. */
@@ -457,7 +458,7 @@ export class ObsidianClient {
   // --- Helpers ---
 
   /** Builds HTTP headers for PATCH operations from PatchOptions (createIfMissing is optional). */
-  private buildPatchHeaders(options: Omit<PatchOptions, "createIfMissing"> & { createIfMissing?: boolean }): Record<string, string> {
+  private buildPatchHeaders(options: Omit<PatchOptions, "createIfMissing"> & { createIfMissing?: boolean | undefined }): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,

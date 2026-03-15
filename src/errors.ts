@@ -33,7 +33,7 @@ export class ObsidianAuthError extends Error {
 /** Context for building structured error messages. */
 interface ErrorContext {
   readonly tool: string;
-  readonly path?: string;
+  readonly path?: string | undefined;
 }
 
 /** Builds an LLM-friendly error message with actionable guidance based on error type. */

@@ -237,6 +237,37 @@ Get-Content "$env:APPDATA\Claude\Logs\mcp-server-mcp-obsidian-extended.log" -Wai
 - **Vault cache** — in-memory cache with auto-refresh, serves cached reads when offline
 - **Case-insensitive paths** — automatic fallback on 404 for mismatched case
 
+## Performance
+
+Benchmarked against Obsidian Local REST API on macOS with mcp-test-vault.
+
+### Stress Test — 395K Operations
+
+| Metric | Result |
+|--------|--------|
+| Duration | 307.6s |
+| Total operations | 394,607 |
+| Throughput | 1,282 ops/s |
+| Error rate | 0.01% (33/394K — read timeouts during cache rebuild, expected) |
+| Memory (heap) | 27.9MB stable (no memory leak) |
+| Crashes | 0 |
+
+### Latency Percentiles
+
+| Operation | Count | p50 | p95 | p99 |
+|-----------|-------|-----|-----|-----|
+| get | 98,750 | 0ms | 1ms | 3ms |
+| put | 59,261 | 1ms | 2ms | 3ms |
+| append | 39,619 | 1ms | 2ms | 4ms |
+| search | 39,522 | 0ms | 1ms | 2ms |
+| list | 39,406 | 0ms | 1ms | 1ms |
+| get_json | 39,329 | 0ms | 1ms | 3ms |
+| cache_rebuild | 19,714 | 6ms | 9ms | 12ms |
+| delete_put | 19,667 | 1ms | 3ms | 5ms |
+| search_replace | 19,643 | 1ms | 4ms | 6ms |
+
+Sub-millisecond reads at p50. Stable memory after 395K operations. Write locks serialize correctly under concurrent load. Cache rebuilds don't block reads.
+
 ## Optional Plugins
 
 | Plugin | Required For |

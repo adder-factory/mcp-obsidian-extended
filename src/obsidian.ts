@@ -466,7 +466,7 @@ export class ObsidianClient {
       // Encode only non-ASCII characters (emoji, accented chars) to satisfy Node.js HTTP
       // header validation, while preserving ASCII special chars (+, &, ::, spaces) that
       // encodeURIComponent would break. Obsidian decodes percent-encoded non-ASCII on its end.
-      "Target": options.target.replace(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
+      "Target": options.target.replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

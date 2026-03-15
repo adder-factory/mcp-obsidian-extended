@@ -155,9 +155,12 @@ async function setup(): Promise<void> {
 
   // Step 3: Reliability
   process.stderr.write("\nStep 3/4: Reliability\n\n");
-  const verifyWrites = await ask("  Verify writes (true/false)", "false");
+  const validBools = new Set(["true", "false"] as const);
+  const verifyWritesRaw = await ask("  Verify writes (true/false)", "false");
+  const verifyWrites = validateEnum(verifyWritesRaw, validBools, "verify writes", "false" as const);
   const maxResponseChars = await ask("  Max response chars (0 = unlimited)", "500000");
-  const debug = await ask("  Debug logging (true/false)", "false");
+  const debugRaw = await ask("  Debug logging (true/false)", "false");
+  const debug = validateEnum(debugRaw, validBools, "debug", "false" as const);
 
   // Step 4: Save
   process.stderr.write("\nStep 4/4: Save\n\n");

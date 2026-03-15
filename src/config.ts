@@ -115,7 +115,7 @@ const configFileSchema = z.object({
     verifySsl: z.boolean().optional(),
   }).optional(),
   cache: z.object({
-    ttl: z.number().nonnegative().optional(),
+    ttl: z.number().min(10000).optional(),
     enabled: z.boolean().optional(),
   }).optional(),
   debug: z.boolean().optional(),

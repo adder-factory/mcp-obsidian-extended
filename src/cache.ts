@@ -440,8 +440,12 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Invalidation ---
 
-  /** Removes a single note from the cache and updates the short-name index. */
+  /** Removes a single note from the cache and updates the short-name index and link count. */
   invalidate(path: string): void {
+    const existing = this.notes.get(path);
+    if (existing) {
+      this.cachedLinkCount -= existing.links.length;
+    }
     this.notes.delete(path);
     const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
     const bucket = this.shortNameIndex.get(shortName);
@@ -569,6 +573,9 @@ export class VaultCache implements VaultCacheInterface {
     const lower = nameOrPath.toLowerCase();
 
     // O(1) lookup via shortNameIndex: try exact short name first, then with .md appended
+    // Short-name index lookup. When multiple notes share a basename (e.g. a/note.md
+    // and b/note.md), returns the first match. This mirrors Obsidian's own behavior
+    // with ambiguous wikilinks — it picks one arbitrarily.
     const shortNameCandidates = this.shortNameIndex.get(lower) ?? this.shortNameIndex.get(`${lower}.md`);
     if (shortNameCandidates) {
       for (const candidate of shortNameCandidates) {

@@ -526,21 +526,17 @@ export class ObsidianClient {
   }
 
   /**
-   * Searches the vault for a case-insensitive match when the exact path returns 404.
-   * Lists the parent directory and finds a unique file whose basename matches
-   * case-insensitively. Returns the corrected path or undefined if no unique match.
+   * Searches the full vault listing for a case-insensitive match when the exact path returns 404.
+   * Compares the entire path case-insensitively, handling both filename and directory case mismatches.
+   * Returns the corrected path or undefined if no unique match.
    */
   private async findCaseInsensitivePath(filePath: string): Promise<string | undefined> {
     try {
       const sanitized = sanitizeFilePath(filePath);
-      const lastSlash = sanitized.lastIndexOf("/");
-      const dirPath = lastSlash >= 0 ? sanitized.slice(0, lastSlash) : "";
-      const fileName = lastSlash >= 0 ? sanitized.slice(lastSlash + 1) : sanitized;
-      const fileNameLower = fileName.toLowerCase();
+      const targetLower = sanitized.toLowerCase();
 
-      // List the directory contents
-      const dirEncoded = dirPath ? `${this.encodePath(dirPath)}/` : "";
-      const listRes = await this.request("GET", `/vault/${dirEncoded}`);
+      // List the full vault to handle case mismatches at any path segment
+      const listRes = await this.request("GET", "/vault/");
       if (listRes.statusCode !== 200) {
         return undefined;
       }
@@ -555,12 +551,8 @@ export class ObsidianClient {
       }
       const files = filesVal as string[];
 
-      // Find files in this directory whose basename matches case-insensitively
-      const matches = files.filter((f) => {
-        if (f.endsWith("/")) return false;
-        const base = f.includes("/") ? f.slice(f.lastIndexOf("/") + 1) : f;
-        return base.toLowerCase() === fileNameLower;
-      });
+      // Find files whose full path matches case-insensitively
+      const matches = files.filter((f) => !f.endsWith("/") && f.toLowerCase() === targetLower);
 
       if (matches.length === 1) {
         // Unique match — use the corrected path

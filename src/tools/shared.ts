@@ -1,6 +1,5 @@
-import type { NoteJson, DocumentMap, ToolResult } from "../obsidian.js";
+import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
-import type { ObsidianClient } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
@@ -275,8 +274,8 @@ export async function handleRecentChanges(
       }
     }
   }
-  const sorted = withStats.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
-  return jsonResult(sorted);
+  withStats.sort((a, b) => b.mtime - a.mtime);
+  return jsonResult(withStats.slice(0, limit));
 }
 
 /**

@@ -73,6 +73,23 @@ async function validate(): Promise<void> {
   process.exit(0);
 }
 
+// --- CLI: --setup helpers ---
+
+/** Validates and returns a port number, warning and defaulting on invalid input. */
+function validatePort(portStr: string): number {
+  const portNum = Number(portStr);
+  if (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535) return portNum;
+  process.stderr.write(`  Warning: invalid port "${portStr}" — using default 27124\n`);
+  return 27124;
+}
+
+/** Validates and returns an enum value, warning and defaulting on invalid input. */
+function validateEnum<T extends string>(value: string, valid: ReadonlySet<T>, label: string, fallback: T): T {
+  if (valid.has(value as T)) return value as T;
+  process.stderr.write(`  Warning: invalid ${label} "${value}" — using default "${fallback}"\n`);
+  return fallback;
+}
+
 // --- CLI: --setup ---
 
 /** Interactive setup wizard. Prompts for connection details, tests, and saves config. */
@@ -104,22 +121,9 @@ async function setup(): Promise<void> {
   }
   const host = await ask("  Host", "127.0.0.1");
   const portStr = await ask("  Port", "27124");
-  const portNum = Number(portStr);
-  let port: number;
-  if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
-    process.stderr.write(`  Warning: invalid port "${portStr}" — using default 27124\n`);
-    port = 27124;
-  } else {
-    port = portNum;
-  }
+  const port = validatePort(portStr);
   const schemeRaw = await ask("  Scheme (https/http)", "https");
-  let scheme: string;
-  if (schemeRaw !== "http" && schemeRaw !== "https") {
-    process.stderr.write(`  Warning: invalid scheme "${schemeRaw}" — using default "https"\n`);
-    scheme = "https";
-  } else {
-    scheme = schemeRaw;
-  }
+  const scheme = validateEnum(schemeRaw, new Set(["http", "https"] as const), "scheme", "https" as const);
 
   // Test connection
   process.stderr.write("\n  Testing connection...\n");
@@ -145,22 +149,9 @@ async function setup(): Promise<void> {
   // Step 2: Tool Mode
   process.stderr.write("Step 2/4: Tool Mode\n\n");
   const toolModeRaw = await ask("  Mode (granular = 38 tools, consolidated = 11 tools)", "granular");
-  let toolMode: string;
-  if (toolModeRaw !== "granular" && toolModeRaw !== "consolidated") {
-    process.stderr.write(`  Warning: invalid mode "${toolModeRaw}" — using default "granular"\n`);
-    toolMode = "granular";
-  } else {
-    toolMode = toolModeRaw;
-  }
+  const toolMode = validateEnum(toolModeRaw, new Set(["granular", "consolidated"] as const), "mode", "granular" as const);
   const toolPresetRaw = await ask("  Preset (full, read-only, minimal, safe)", "full");
-  const validPresets = new Set(["full", "read-only", "minimal", "safe"]);
-  let toolPreset: string;
-  if (!validPresets.has(toolPresetRaw)) {
-    process.stderr.write(`  Warning: invalid preset "${toolPresetRaw}" — using default "full"\n`);
-    toolPreset = "full";
-  } else {
-    toolPreset = toolPresetRaw;
-  }
+  const toolPreset = validateEnum(toolPresetRaw, new Set(["full", "read-only", "minimal", "safe"] as const), "preset", "full" as const);
 
   // Step 3: Reliability
   process.stderr.write("\nStep 3/4: Reliability\n\n");

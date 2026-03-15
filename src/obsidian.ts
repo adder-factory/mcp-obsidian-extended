@@ -991,8 +991,9 @@ export class ObsidianClient {
 
   /** Replaces the periodic note for a specific date (idempotent). Serialized per period+date. */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
-    await this.withSyntheticLock(lockKey, async () => {
+    // Use the same lock key as current-period mutations — the API may resolve
+    // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("PUT", path, {
         body: content,
@@ -1008,8 +1009,9 @@ export class ObsidianClient {
 
   /** Appends content to the periodic note for a specific date (not idempotent). Serialized per period+date. */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
-    await this.withSyntheticLock(lockKey, async () => {
+    // Use the same lock key as current-period mutations — the API may resolve
+    // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("POST", path, {
         body: content,
@@ -1025,8 +1027,9 @@ export class ObsidianClient {
 
   /** Patches the periodic note for a specific date at a target (not idempotent). Serialized per period+date. */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
-    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
-    await this.withSyntheticLock(lockKey, async () => {
+    // Use the same lock key as current-period mutations — the API may resolve
+    // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("PATCH", path, {
         body: content,
@@ -1042,8 +1045,9 @@ export class ObsidianClient {
 
   /** Deletes the periodic note for a specific date (idempotent). Serialized per period+date. */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
-    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
-    await this.withSyntheticLock(lockKey, async () => {
+    // Use the same lock key as current-period mutations — the API may resolve
+    // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("DELETE", path);
 

@@ -13,14 +13,17 @@ import { ObsidianApiError } from "../src/errors.js";
 
 // --- Helpers ---
 
+/** Writes a message to stderr. */
 function write(msg: string): void {
   process.stderr.write(`${msg}\n`);
 }
 
+/** Logs a passing test step to stderr. */
 function pass(step: number, description: string): void {
   write(`  \u2713 Step ${String(step)}: ${description}`);
 }
 
+/** Logs a failing test step with error details to stderr. */
 function fail(step: number, description: string, error: unknown): void {
   const msg = error instanceof Error ? error.message : String(error);
   write(`  \u2717 Step ${String(step)}: ${description} \u2014 ${msg}`);
@@ -82,6 +85,7 @@ function loadDotenv(): void {
  */
 const VAULT_FILE_LIMIT = 50;
 
+/** Refuses to run if the vault exceeds the file count limit, preventing accidental runs on real vaults. */
 async function guardTestVault(client: ObsidianClient): Promise<void> {
   if (process.env["SMOKE_TEST_CONFIRM"] === "true") {
     return;
@@ -104,11 +108,13 @@ const APPEND_CONTENT = "\n\nAppended content.";
 
 const LINK_FILE_A = "_smoke_link_a.md";
 const LINK_FILE_B = "_smoke_link_b.md";
+// Explicit .md extension in wikilink to avoid relying on VaultCache's implicit .md appending
 const LINK_CONTENT_A = "# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n";
 const LINK_CONTENT_B = "# Target Note\n\nTarget note content.\n";
 
 // --- Test Steps ---
 
+/** Verifies connectivity to the Obsidian REST API by checking the server status endpoint. */
 async function step1StatusCheck(client: ObsidianClient): Promise<void> {
   const status = await client.getServerStatus();
   // The REST API returns { status: "OK", service: "...", authenticated: bool, ... }
@@ -120,6 +126,7 @@ async function step1StatusCheck(client: ObsidianClient): Promise<void> {
   write(`    (${status.service})`);
 }
 
+/** Lists all vault files to verify authenticated API access. */
 async function step2ListVaultFiles(client: ObsidianClient): Promise<void> {
   const result = await client.listFilesInVault();
   if (!Array.isArray(result.files)) {
@@ -128,10 +135,12 @@ async function step2ListVaultFiles(client: ObsidianClient): Promise<void> {
   write(`    (${String(result.files.length)} files found)`);
 }
 
+/** Creates a test file in the vault using PUT. */
 async function step3PutTestFile(client: ObsidianClient): Promise<void> {
   await client.putContent(TEST_FILE, TEST_CONTENT);
 }
 
+/** Reads back the test file and verifies content matches what was written. */
 async function step4ReadBack(client: ObsidianClient): Promise<void> {
   const content = await client.getFileContents(TEST_FILE, "markdown");
   if (typeof content !== "string") {
@@ -143,6 +152,7 @@ async function step4ReadBack(client: ObsidianClient): Promise<void> {
   }
 }
 
+/** Appends content to the test file and verifies the appended text is present. */
 async function step5AppendAndVerify(client: ObsidianClient): Promise<void> {
   await client.appendContent(TEST_FILE, APPEND_CONTENT);
   const content = await client.getFileContents(TEST_FILE, "markdown");
@@ -154,17 +164,28 @@ async function step5AppendAndVerify(client: ObsidianClient): Promise<void> {
   }
 }
 
+/** Searches for the test file content with retries to account for indexing delay. */
 async function step6Search(client: ObsidianClient): Promise<void> {
-  // Brief wait for Obsidian's search index to pick up the recently written file
-  await sleep(500);
-  const results = await client.simpleSearch("smoke test");
-  const found = results.some((r) => r.filename.includes("_smoke_test"));
-  if (!found) {
-    const filenames = results.map((r) => r.filename).join(", ");
-    throw new Error(`_smoke_test.md not found in search results. Got: [${filenames}]`);
+  // Poll/retry loop: Obsidian's search index may not be immediately up to date
+  const maxAttempts = 5;
+  const retryDelay = 1000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await sleep(retryDelay);
+    const results = await client.simpleSearch("smoke test");
+    const found = results.some((r) => r.filename.includes("_smoke_test"));
+    if (found) {
+      return;
+    }
+    if (attempt < maxAttempts) {
+      write(`    (search attempt ${String(attempt)}/${String(maxAttempts)} — not indexed yet, retrying...)`);
+    } else {
+      const filenames = results.map((r) => r.filename).join(", ");
+      throw new Error(`_smoke_test.md not found after ${String(maxAttempts)} search attempts. Got: [${filenames}]`);
+    }
   }
 }
 
+/** Deletes the test file and verifies it returns 404 on subsequent read. */
 async function step7Delete(client: ObsidianClient): Promise<void> {
   await client.deleteFile(TEST_FILE);
   // Verify it's gone — expect a 404
@@ -185,6 +206,7 @@ const CACHE_SEED_FILE = "_smoke_cache_seed.md";
 // Short TTL for smoke tests — auto-refresh is stopped immediately, so this only affects the constructor
 const SMOKE_CACHE_TTL = 60_000;
 
+/** Builds a vault cache and verifies it contains at least one note. */
 async function step8CacheCheck(client: ObsidianClient): Promise<void> {
   // Note: client.setCache() is called again in step9 with a fresh cache instance,
   // so the stopped cache from this step is never used for write-through invalidation.
@@ -205,6 +227,7 @@ async function step8CacheCheck(client: ObsidianClient): Promise<void> {
   }
 }
 
+/** Creates two linked notes and verifies backlink detection through the cache. */
 async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
   // Create two linked notes
   await client.putContent(LINK_FILE_A, LINK_CONTENT_A);
@@ -230,6 +253,7 @@ async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
   }
 }
 
+/** Cleans up the link test files created by the backlinks test. */
 async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
   try { await client.deleteFile(LINK_FILE_A); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`); }
   try { await client.deleteFile(LINK_FILE_B); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`); }
@@ -237,6 +261,7 @@ async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
 
 // --- Cleanup ---
 
+/** Performs best-effort removal of all test artifact files from the vault. */
 async function cleanup(client: ObsidianClient): Promise<void> {
   // Best-effort removal of all test artifacts
   const testFiles = [TEST_FILE, LINK_FILE_A, LINK_FILE_B, CACHE_SEED_FILE];
@@ -252,6 +277,7 @@ async function cleanup(client: ObsidianClient): Promise<void> {
 
 // --- Types ---
 
+/** A single numbered test step with a name and async function. */
 interface Step {
   readonly num: number;
   readonly name: string;
@@ -260,6 +286,7 @@ interface Step {
 
 // --- Main ---
 
+/** Entry point: loads config, runs all smoke test steps, and reports results. */
 async function main(): Promise<void> {
   write("");
   write("=== mcp-obsidian-extended smoke tests ===");

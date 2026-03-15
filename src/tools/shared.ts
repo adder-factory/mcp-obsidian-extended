@@ -194,6 +194,9 @@ export function handleConfigureReset(setting: string | undefined, config: Config
  * @returns A JSON tool result with the redacted config.
  */
 export function handleConfigureShow(config: Config): ToolResult {
+  // Note: config is the startup snapshot. Live runtime changes (e.g. debug toggle)
+  // are not reflected here — they take effect on the process but this shows the
+  // persisted config. A restart will pick up any file-based changes.
   return jsonResult(getRedactedConfig(config));
 }
 
@@ -210,10 +213,14 @@ export function buildVaultStructure(cache: VaultCache, limit: number): ToolResul
   const mostConnected = cache.getMostConnectedNotes(limit);
   const graph = cache.getVaultGraph();
   const dirs = new Set<string>();
-  for (const path of cache.getFileList()) {
-    const lastSlash = path.lastIndexOf("/");
-    if (lastSlash !== -1) {
-      dirs.add(path.slice(0, lastSlash));
+  for (const p of cache.getFileList()) {
+    let dir = p;
+    while (true) {
+      const lastSlash = dir.lastIndexOf("/");
+      if (lastSlash === -1) break;
+      dir = dir.slice(0, lastSlash);
+      if (dirs.has(dir)) break; // already added this and all parents
+      dirs.add(dir);
     }
   }
   return jsonResult({

@@ -3,7 +3,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -182,6 +182,7 @@ async function setup(): Promise<void> {
     debug: debug === "true",
   };
 
+  mkdirSync(dirname(resolvedPath), { recursive: true });
   saveConfigToFile(resolvedPath, configToSave);
   process.stderr.write(`\n  Config saved to: ${resolvedPath}\n\n`);
 
@@ -193,7 +194,8 @@ async function setup(): Promise<void> {
     resolve("./obsidian-mcp.config.json"),
   ];
   const isNonDefaultPath = !defaultPaths.includes(resolvedPath);
-  const envBlock: Record<string, string> = { OBSIDIAN_API_KEY: apiKey };
+  const maskedKey = apiKey.length > 4 ? `${apiKey.slice(0, 4)}${"*".repeat(apiKey.length - 4)}` : "****";
+  const envBlock: Record<string, string> = { OBSIDIAN_API_KEY: maskedKey };
   if (isNonDefaultPath) {
     envBlock["OBSIDIAN_CONFIG"] = resolvedPath;
   }
@@ -207,6 +209,7 @@ async function setup(): Promise<void> {
     },
   };
   process.stderr.write(`${JSON.stringify(snippet, null, 2)}\n\n`);
+  process.stderr.write("  (API key shown masked — replace with your actual key in the config above)\n\n");
 
   rl.close();
   process.exit(0);

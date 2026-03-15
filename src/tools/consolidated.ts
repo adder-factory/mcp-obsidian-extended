@@ -33,7 +33,7 @@ const READ_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
   active_file: new Set(["get"]),
   commands: new Set(["list"]),
   periodic_note: new Set(["get"]),
-  recent: new Set(["changes", "periodic_notes"]),
+  // recent and search are inherently read-only — no action restrictions needed
   vault_analysis: new Set(["backlinks", "connections", "structure", "refresh"]),
 };
 
@@ -181,7 +181,7 @@ async function handleVaultSearchReplace(
   } else {
     pattern = new RegExp(escapeRegex(search), flags);
   }
-  const updated = result.replace(pattern, replaceText);
+  const updated = useRegex ? result.replace(pattern, replaceText) : result.replace(pattern, () => replaceText);
   if (updated === result) {
     return textResult(`No matches found for "${search}" in ${path}`);
   }
@@ -688,6 +688,9 @@ export function registerConsolidatedTools(
               return buildVaultStructure(cache, limit);
             case "refresh":
               await cache.refresh();
+              if (!cache.getIsInitialized()) {
+                return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");
+              }
               return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
             default: {
               const _exhaustive: never = action;

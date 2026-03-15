@@ -214,7 +214,7 @@ function registerVaultTools(
           } else {
             pattern = new RegExp(escapeRegex(search), flags);
           }
-          const updated = result.replace(pattern, replace);
+          const updated = useRegex ? result.replace(pattern, replace) : result.replace(pattern, () => replace);
           if (updated === result) return textResult(`No matches found for "${search}" in ${filePath}`);
           await client.putContent(filePath, updated);
           return textResult(`Replaced in: ${filePath}`);
@@ -937,6 +937,9 @@ function registerSystemAndAnalysisTools(
         try {
           if (!config.enableCache) return errorResult("[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
           await cache.refresh();
+          if (!cache.getIsInitialized()) {
+            return errorResult("[refresh_cache] Cache refresh failed — Obsidian may be unreachable");
+          }
           return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "refresh_cache" }));

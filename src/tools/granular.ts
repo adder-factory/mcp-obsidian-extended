@@ -1107,19 +1107,19 @@ function buildConfigUpdate(setting: string, value: string): Record<string, unkno
   switch (setting) {
     case "debug": {
       const b = parseBoolValue(value);
-      return b !== undefined ? { debug: b } : undefined;
+      return b === undefined ? undefined : { debug: b };
     }
     case "timeout": {
       const n = parsePosIntValue(value, 1);
-      return n !== undefined ? { reliability: { timeout: n } } : undefined;
+      return n === undefined ? undefined : { reliability: { timeout: n } };
     }
     case "verifyWrites": {
       const b = parseBoolValue(value);
-      return b !== undefined ? { reliability: { verifyWrites: b } } : undefined;
+      return b === undefined ? undefined : { reliability: { verifyWrites: b } };
     }
     case "maxResponseChars": {
       const n = parsePosIntValue(value, 0);
-      return n !== undefined ? { reliability: { maxResponseChars: n } } : undefined;
+      return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
     }
     case "toolMode":
       if (value !== "granular" && value !== "consolidated") return undefined;

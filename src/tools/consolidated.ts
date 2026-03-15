@@ -57,38 +57,104 @@ function isActionAllowed(toolName: string, action: string, preset: string): bool
   }
   if (preset === "safe") {
     const blocked = SAFE_BLOCKED_ACTIONS[toolName];
-    return blocked === undefined || !blocked.has(action);
+    return !blocked?.has(action);
   }
   return true;
 }
 
+// --- Vault action args type ---
+
+/** Inferred args shape for the vault consolidated tool. */
+interface VaultArgs {
+  readonly action: "list" | "list_dir" | "get" | "put" | "append" | "patch" | "delete" | "search_replace";
+  readonly path?: string | undefined;
+  readonly content?: string | undefined;
+  readonly format?: "markdown" | "json" | "map" | undefined;
+  readonly operation?: "append" | "prepend" | "replace" | undefined;
+  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly target?: string | undefined;
+  readonly targetDelimiter?: string | undefined;
+  readonly trimTargetWhitespace?: boolean | undefined;
+  readonly createIfMissing?: boolean | undefined;
+  readonly contentType?: "markdown" | "json" | undefined;
+  readonly search?: string | undefined;
+  readonly replace?: string | undefined;
+  readonly useRegex: boolean;
+  readonly caseSensitive: boolean;
+  readonly replaceAll: boolean;
+}
+
+/** Dispatches a vault action to the appropriate client method. */
+async function handleVaultAction(
+  client: ObsidianClient,
+  action: VaultArgs["action"],
+  path: string | undefined,
+  args: VaultArgs,
+): Promise<ToolResult> {
+  switch (action) {
+    case "list":
+      return jsonResult(await client.listFilesInVault());
+    case "list_dir":
+      if (!path) return errorResult("[vault] path is required for list_dir");
+      return jsonResult(await client.listFilesInDir(path));
+    case "get":
+      if (!path) return errorResult("[vault] path is required for get");
+      return formatFileContents(await client.getFileContents(path, args.format));
+    case "put":
+      if (!path) return errorResult("[vault] path is required for put");
+      if (args.content === undefined) return errorResult("[vault] content is required for put");
+      await client.putContent(path, args.content);
+      return textResult(`Written: ${path}`);
+    case "append":
+      if (!path) return errorResult("[vault] path is required for append");
+      if (args.content === undefined) return errorResult("[vault] content is required for append");
+      await client.appendContent(path, args.content);
+      return textResult(`Appended to: ${path}`);
+    case "patch":
+      if (!path) return errorResult("[vault] path is required for patch");
+      return handleVaultPatch(client, path, args);
+    case "delete":
+      if (!path) return errorResult("[vault] path is required for delete");
+      await client.deleteFile(path);
+      return textResult(`Deleted: ${path}`);
+    case "search_replace":
+      if (!path) return errorResult("[vault] path is required for search_replace");
+      return handleVaultSearchReplace(client, path, args.search, args.replace, args.caseSensitive, args.replaceAll, args.useRegex);
+    default: {
+      const _exhaustive: never = action;
+      return errorResult(`[vault] Unknown action: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 // --- Extracted vault action handlers ---
 
+/** Args for the vault "patch" action. */
+interface VaultPatchArgs {
+  readonly content?: string | undefined;
+  readonly operation?: "append" | "prepend" | "replace" | undefined;
+  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly target?: string | undefined;
+  readonly targetDelimiter?: string | undefined;
+  readonly trimTargetWhitespace?: boolean | undefined;
+  readonly createIfMissing?: boolean | undefined;
+  readonly contentType?: "markdown" | "json" | undefined;
+}
+
 /** Handles the vault "patch" action. */
-async function handleVaultPatch(
-  client: ObsidianClient,
-  path: string,
-  content: string | undefined,
-  operation: "append" | "prepend" | "replace" | undefined,
-  targetType: "heading" | "block" | "frontmatter" | undefined,
-  target: string | undefined,
-  targetDelimiter: string | undefined,
-  trimTargetWhitespace: boolean | undefined,
-  createIfMissing: boolean | undefined,
-  contentType: "markdown" | "json" | undefined,
-): Promise<ToolResult> {
-  if (content === undefined) return errorResult("[vault] content is required for patch");
-  if (!operation) return errorResult("[vault] operation is required for patch");
-  if (!targetType) return errorResult("[vault] targetType is required for patch");
-  if (!target) return errorResult("[vault] target is required for patch");
-  await client.patchContent(path, content, {
-    operation,
-    targetType,
-    target,
-    targetDelimiter,
-    trimTargetWhitespace,
-    createIfMissing,
-    contentType,
+async function handleVaultPatch(client: ObsidianClient, path: string, args: VaultPatchArgs): Promise<ToolResult> {
+  if (args.content === undefined) return errorResult("[vault] content is required for patch");
+  if (!args.operation) return errorResult("[vault] operation is required for patch");
+  if (!args.targetType) return errorResult("[vault] targetType is required for patch");
+  if (!args.target) return errorResult("[vault] target is required for patch");
+  await client.patchContent(path, args.content, {
+    operation: args.operation,
+    targetType: args.targetType,
+    target: args.target,
+    targetDelimiter: args.targetDelimiter,
+    trimTargetWhitespace: args.trimTargetWhitespace,
+    createIfMissing: args.createIfMissing,
+    contentType: args.contentType,
   });
   return textResult(`Patched: ${path}`);
 }
@@ -121,34 +187,94 @@ async function handleVaultSearchReplace(
 
 // --- Extracted periodic_note action handlers ---
 
+/** Args for the periodic_note "patch" action. */
+interface PeriodicPatchArgs {
+  readonly period: string;
+  readonly isByDate: boolean;
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+  readonly content: string | undefined;
+  readonly operation: "append" | "prepend" | "replace" | undefined;
+  readonly targetType: "heading" | "block" | "frontmatter" | undefined;
+  readonly target: string | undefined;
+  readonly targetDelimiter: string | undefined;
+  readonly trimTargetWhitespace: boolean | undefined;
+  readonly createIfMissing: boolean | undefined;
+  readonly contentType: "markdown" | "json" | undefined;
+}
+
 /** Handles periodic_note "patch" action. */
-async function handlePeriodicPatch(
-  client: ObsidianClient,
-  period: string,
-  isByDate: boolean,
-  year: number,
-  month: number,
-  day: number,
-  content: string | undefined,
-  operation: "append" | "prepend" | "replace" | undefined,
-  targetType: "heading" | "block" | "frontmatter" | undefined,
-  target: string | undefined,
-  targetDelimiter: string | undefined,
-  trimTargetWhitespace: boolean | undefined,
-  createIfMissing: boolean | undefined,
-  contentType: "markdown" | "json" | undefined,
-): Promise<ToolResult> {
-  if (content === undefined) return errorResult("[periodic_note] content is required for patch");
-  if (!operation) return errorResult("[periodic_note] operation is required for patch");
-  if (!targetType) return errorResult("[periodic_note] targetType is required for patch");
-  if (!target) return errorResult("[periodic_note] target is required for patch");
-  const patchOpts = { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType };
-  if (isByDate) {
-    await client.patchPeriodicNoteForDate(period, year, month, day, content, patchOpts);
+async function handlePeriodicPatch(client: ObsidianClient, args: PeriodicPatchArgs): Promise<ToolResult> {
+  if (args.content === undefined) return errorResult("[periodic_note] content is required for patch");
+  if (!args.operation) return errorResult("[periodic_note] operation is required for patch");
+  if (!args.targetType) return errorResult("[periodic_note] targetType is required for patch");
+  if (!args.target) return errorResult("[periodic_note] target is required for patch");
+  const patchOpts = {
+    operation: args.operation, targetType: args.targetType, target: args.target,
+    targetDelimiter: args.targetDelimiter, trimTargetWhitespace: args.trimTargetWhitespace,
+    createIfMissing: args.createIfMissing, contentType: args.contentType,
+  };
+  if (args.isByDate) {
+    await client.patchPeriodicNoteForDate(args.period, args.year, args.month, args.day, args.content, patchOpts);
   } else {
-    await client.patchPeriodicNote(period, content, patchOpts);
+    await client.patchPeriodicNote(args.period, args.content, patchOpts);
   }
-  return textResult(`Patched ${period} note`);
+  return textResult(`Patched ${args.period} note`);
+}
+
+// --- Extracted periodic_note handler ---
+
+/** Periodic note args shape. */
+interface PeriodicNoteArgs {
+  readonly action: "get" | "put" | "append" | "patch" | "delete";
+  readonly period: string;
+  readonly year?: number | undefined;
+  readonly month?: number | undefined;
+  readonly day?: number | undefined;
+  readonly content?: string | undefined;
+  readonly format?: "markdown" | "json" | "map" | undefined;
+  readonly operation?: "append" | "prepend" | "replace" | undefined;
+  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly target?: string | undefined;
+  readonly targetDelimiter?: string | undefined;
+  readonly trimTargetWhitespace?: boolean | undefined;
+  readonly createIfMissing?: boolean | undefined;
+  readonly contentType?: "markdown" | "json" | undefined;
+}
+
+/** Dispatches a periodic_note action to the appropriate client method. */
+async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNoteArgs): Promise<ToolResult> {
+  const { action, period, year, month, day } = args;
+  const isByDate = year !== undefined && month !== undefined && day !== undefined;
+  switch (action) {
+    case "get":
+      return isByDate
+        ? formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, args.format))
+        : formatFileContents(await client.getPeriodicNote(period, args.format));
+    case "put":
+      if (args.content === undefined) return errorResult("[periodic_note] content is required for put");
+      await (isByDate ? client.putPeriodicNoteForDate(period, year, month, day, args.content) : client.putPeriodicNote(period, args.content));
+      return textResult(`Updated ${period} note`);
+    case "append":
+      if (args.content === undefined) return errorResult("[periodic_note] content is required for append");
+      await (isByDate ? client.appendPeriodicNoteForDate(period, year, month, day, args.content) : client.appendPeriodicNote(period, args.content));
+      return textResult(`Appended to ${period} note`);
+    case "patch":
+      return handlePeriodicPatch(client, {
+        period, isByDate, year: year ?? 0, month: month ?? 0, day: day ?? 0,
+        content: args.content, operation: args.operation, targetType: args.targetType,
+        target: args.target, targetDelimiter: args.targetDelimiter, trimTargetWhitespace: args.trimTargetWhitespace,
+        createIfMissing: args.createIfMissing, contentType: args.contentType,
+      });
+    case "delete":
+      await (isByDate ? client.deletePeriodicNoteForDate(period, year, month, day) : client.deletePeriodicNote(period));
+      return textResult(`Deleted ${period} note`);
+    default: {
+      const _exhaustive: never = action;
+      return errorResult(`[periodic_note] Unknown action: ${String(_exhaustive)}`);
+    }
+  }
 }
 
 // --- Extracted recent handlers ---
@@ -317,40 +443,7 @@ export function registerConsolidatedTools(
           return errorResult(`[vault] Action "${action}" is not allowed in "${config.toolPreset}" preset`);
         }
         try {
-          switch (action) {
-            case "list":
-              return jsonResult(await client.listFilesInVault());
-            case "list_dir":
-              if (!path) return errorResult("[vault] path is required for list_dir");
-              return jsonResult(await client.listFilesInDir(path));
-            case "get":
-              if (!path) return errorResult("[vault] path is required for get");
-              return formatFileContents(await client.getFileContents(path, args.format));
-            case "put":
-              if (!path) return errorResult("[vault] path is required for put");
-              if (args.content === undefined) return errorResult("[vault] content is required for put");
-              await client.putContent(path, args.content);
-              return textResult(`Written: ${path}`);
-            case "append":
-              if (!path) return errorResult("[vault] path is required for append");
-              if (args.content === undefined) return errorResult("[vault] content is required for append");
-              await client.appendContent(path, args.content);
-              return textResult(`Appended to: ${path}`);
-            case "patch":
-              if (!path) return errorResult("[vault] path is required for patch");
-              return handleVaultPatch(client, path, args.content, args.operation, args.targetType, args.target, args.targetDelimiter, args.trimTargetWhitespace, args.createIfMissing, args.contentType);
-            case "delete":
-              if (!path) return errorResult("[vault] path is required for delete");
-              await client.deleteFile(path);
-              return textResult(`Deleted: ${path}`);
-            case "search_replace":
-              if (!path) return errorResult("[vault] path is required for search_replace");
-              return handleVaultSearchReplace(client, path, args.search, args.replace, args.caseSensitive, args.replaceAll, args.useRegex);
-            default: {
-              const _exhaustive: never = action;
-              return errorResult(`[vault] Unknown action: ${String(_exhaustive)}`);
-            }
-          }
+          return await handleVaultAction(client, action, path, args);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "vault", path }));
         }
@@ -543,41 +636,11 @@ export function registerConsolidatedTools(
         }),
       },
       async (args) => {
-        const { action, period, year, month, day } = args;
-        if (!isActionAllowed("periodic_note", action, config.toolPreset)) {
-          return errorResult(`[periodic_note] Action "${action}" is not allowed in "${config.toolPreset}" preset`);
+        if (!isActionAllowed("periodic_note", args.action, config.toolPreset)) {
+          return errorResult(`[periodic_note] Action "${args.action}" is not allowed in "${config.toolPreset}" preset`);
         }
-        const isByDate = year !== undefined && month !== undefined && day !== undefined;
         try {
-          switch (action) {
-            case "get":
-              return isByDate
-                ? formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, args.format))
-                : formatFileContents(await client.getPeriodicNote(period, args.format));
-            case "put":
-              if (args.content === undefined) return errorResult("[periodic_note] content is required for put");
-              await (isByDate
-                ? client.putPeriodicNoteForDate(period, year, month, day, args.content)
-                : client.putPeriodicNote(period, args.content));
-              return textResult(`Updated ${period} note`);
-            case "append":
-              if (args.content === undefined) return errorResult("[periodic_note] content is required for append");
-              await (isByDate
-                ? client.appendPeriodicNoteForDate(period, year, month, day, args.content)
-                : client.appendPeriodicNote(period, args.content));
-              return textResult(`Appended to ${period} note`);
-            case "patch":
-              return handlePeriodicPatch(client, period, isByDate, year ?? 0, month ?? 0, day ?? 0, args.content, args.operation, args.targetType, args.target, args.targetDelimiter, args.trimTargetWhitespace, args.createIfMissing, args.contentType);
-            case "delete":
-              await (isByDate
-                ? client.deletePeriodicNoteForDate(period, year, month, day)
-                : client.deletePeriodicNote(period));
-              return textResult(`Deleted ${period} note`);
-            default: {
-              const _exhaustive: never = action;
-              return errorResult(`[periodic_note] Unknown action: ${String(_exhaustive)}`);
-            }
-          }
+          return await handlePeriodicNoteAction(client, args);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "periodic_note" }));
         }
@@ -780,19 +843,19 @@ function buildConfigUpdate(setting: string, value: string): Record<string, unkno
   switch (setting) {
     case "debug": {
       const b = parseBoolValue(value);
-      return b !== undefined ? { debug: b } : undefined;
+      return b === undefined ? undefined : { debug: b };
     }
     case "timeout": {
       const n = parsePosIntValue(value, 1);
-      return n !== undefined ? { reliability: { timeout: n } } : undefined;
+      return n === undefined ? undefined : { reliability: { timeout: n } };
     }
     case "verifyWrites": {
       const b = parseBoolValue(value);
-      return b !== undefined ? { reliability: { verifyWrites: b } } : undefined;
+      return b === undefined ? undefined : { reliability: { verifyWrites: b } };
     }
     case "maxResponseChars": {
       const n = parsePosIntValue(value, 0);
-      return n !== undefined ? { reliability: { maxResponseChars: n } } : undefined;
+      return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
     }
     case "toolMode":
       if (value !== "granular" && value !== "consolidated") return undefined;

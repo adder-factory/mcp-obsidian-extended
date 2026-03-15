@@ -638,8 +638,8 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
       // Pass 2: suffix fallback for short-name wikilinks in subdirectories
-      // Require a `/` boundary to prevent partial directory segment matches
-      // (e.g. "bar/note.md" should not match "foobar/note.md")
+      // The `/${normalized}` prefix guarantees a segment boundary — endsWith("/b.md")
+      // cannot match "xb.md" because the `/` must be present in the candidate.
       for (const candidate of candidates) {
         const candidateNorm = this.normalizeLinkTarget(candidate);
         if (candidateNorm.endsWith(`/${normalized}`)) {

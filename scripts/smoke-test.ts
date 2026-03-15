@@ -187,14 +187,17 @@ async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promis
   await client.putContent(CACHE_SEED_FILE, "# Cache Seed\n\nEnsures cache is non-empty for testing.\n");
   const cache = new VaultCache(client, cacheTtl);
   client.setCache(cache);
-  await cache.initialize();
-  if (cache.noteCount <= 0) {
-    throw new Error(`Expected noteCount > 0, got ${String(cache.noteCount)}`);
+  try {
+    await cache.initialize();
+    if (cache.noteCount <= 0) {
+      throw new Error(`Expected noteCount > 0, got ${String(cache.noteCount)}`);
+    }
+    write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
+  } finally {
+    cache.stopAutoRefresh();
+    // Clean up seed file
+    try { await client.deleteFile(CACHE_SEED_FILE); } catch (e: unknown) { write(`    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`); }
   }
-  write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
-  cache.stopAutoRefresh();
-  // Clean up seed file
-  try { await client.deleteFile(CACHE_SEED_FILE); } catch (e: unknown) { write(`    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`); }
 }
 
 async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Promise<void> {

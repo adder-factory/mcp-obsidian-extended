@@ -205,8 +205,9 @@ function parseCommaSeparated(value: string | undefined): readonly string[] {
 
 /** Validates the scheme value, returning the default if unrecognised. */
 function validateScheme(value: string | undefined): "https" | "http" {
-  if (value === "http" || value === "https") {
-    return value;
+  const lower = value?.toLowerCase();
+  if (lower === "http" || lower === "https") {
+    return lower;
   }
   if (value !== undefined) {
     log("warn", `Unrecognised scheme "${value}", using default "${DEFAULTS.scheme}"`);
@@ -214,10 +215,11 @@ function validateScheme(value: string | undefined): "https" | "http" {
   return DEFAULTS.scheme;
 }
 
-/** Validates the tool mode value, returning the default if unrecognised. */
+/** Validates the tool mode value (case-insensitive), returning the default if unrecognised. */
 function validateToolMode(value: string | undefined): "granular" | "consolidated" {
-  if (value === "granular" || value === "consolidated") {
-    return value;
+  const lower = value?.toLowerCase();
+  if (lower === "granular" || lower === "consolidated") {
+    return lower;
   }
   if (value !== undefined) {
     log("warn", `Unrecognised tool mode "${value}", using default "${DEFAULTS.toolMode}"`);
@@ -225,10 +227,11 @@ function validateToolMode(value: string | undefined): "granular" | "consolidated
   return DEFAULTS.toolMode;
 }
 
-/** Validates the tool preset value, returning the default if unrecognised. */
+/** Validates the tool preset value (case-insensitive), returning the default if unrecognised. */
 function validateToolPreset(value: string | undefined): "full" | "read-only" | "minimal" | "safe" {
-  if (value === "full" || value === "read-only" || value === "minimal" || value === "safe") {
-    return value;
+  const lower = value?.toLowerCase();
+  if (lower === "full" || lower === "read-only" || lower === "minimal" || lower === "safe") {
+    return lower;
   }
   if (value !== undefined) {
     log("warn", `Unrecognised tool preset "${value}", using default "${DEFAULTS.toolPreset}"`);

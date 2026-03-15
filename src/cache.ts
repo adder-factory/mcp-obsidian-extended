@@ -579,7 +579,11 @@ export class VaultCache implements VaultCacheInterface {
     if (this.notes.has(linkTarget)) {
       return linkTarget;
     }
-    // Short-name lookup via index (handles case-insensitive resolution)
+    // Normalized exact match — covers case-insensitive full paths without index scan
+    if (this.notes.has(normalized)) {
+      return normalized;
+    }
+    // Short-name lookup via index (handles short-name wikilinks and remaining case variants)
     const shortName = normalized.split("/").pop() ?? normalized;
     const candidates = this.shortNameIndex.get(shortName);
     if (candidates) {

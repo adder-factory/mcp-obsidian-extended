@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
@@ -153,7 +155,7 @@ export function handleConfigureSet(
   if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
     return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
   }
-  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
+  const configPath = config.configFilePath ?? resolve("obsidian-mcp.config.json");
   const updates = buildConfigUpdate(setting, value);
   if (updates === undefined) {
     return errorResult(`[configure] Invalid value "${value}" for setting "${setting}"`);
@@ -174,7 +176,7 @@ export function handleConfigureSet(
  */
 export function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
   if (!setting) return errorResult("[configure] Setting name is required for 'reset' action");
-  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
+  const configPath = config.configFilePath ?? resolve("obsidian-mcp.config.json");
   const resetUpdates = buildConfigReset(setting);
   if (resetUpdates === undefined) {
     return errorResult(`[configure] Unknown setting: ${setting}`);

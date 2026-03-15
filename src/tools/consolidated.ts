@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { ObsidianClient, NoteJson, DocumentMap, ToolResult } from "../obsidian.js";
+import type { ObsidianClient, NoteJson, DocumentMap, ToolResult, PatchOptions } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
@@ -70,18 +70,24 @@ interface VaultArgs {
   readonly path?: string | undefined;
   readonly content?: string | undefined;
   readonly format?: "markdown" | "json" | "map" | undefined;
-  readonly operation?: "append" | "prepend" | "replace" | undefined;
-  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly operation?: PatchOptions["operation"] | undefined;
+  readonly targetType?: PatchOptions["targetType"] | undefined;
   readonly target?: string | undefined;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: "markdown" | "json" | undefined;
+  readonly contentType?: PatchOptions["contentType"];
   readonly search?: string | undefined;
   readonly replace?: string | undefined;
   readonly useRegex: boolean;
   readonly caseSensitive: boolean;
   readonly replaceAll: boolean;
+}
+
+/** Validates that path is present, returning an error result if missing. */
+function requirePath(action: string, path: string | undefined): ToolResult | undefined {
+  if (!path) return errorResult(`[vault] path is required for ${action}`);
+  return undefined;
 }
 
 /** Dispatches a vault action to the appropriate client method. */
@@ -91,35 +97,31 @@ async function handleVaultAction(
   path: string | undefined,
   args: VaultArgs,
 ): Promise<ToolResult> {
+  if (action === "list") return jsonResult(await client.listFilesInVault());
+  const pathErr = requirePath(action, path);
+  if (pathErr) return pathErr;
+  // After requirePath, path is guaranteed non-empty
+  const safePath = path!;
   switch (action) {
-    case "list":
-      return jsonResult(await client.listFilesInVault());
     case "list_dir":
-      if (!path) return errorResult("[vault] path is required for list_dir");
-      return jsonResult(await client.listFilesInDir(path));
+      return jsonResult(await client.listFilesInDir(safePath));
     case "get":
-      if (!path) return errorResult("[vault] path is required for get");
-      return formatFileContents(await client.getFileContents(path, args.format));
+      return formatFileContents(await client.getFileContents(safePath, args.format));
     case "put":
-      if (!path) return errorResult("[vault] path is required for put");
       if (args.content === undefined) return errorResult("[vault] content is required for put");
-      await client.putContent(path, args.content);
-      return textResult(`Written: ${path}`);
+      await client.putContent(safePath, args.content);
+      return textResult(`Written: ${safePath}`);
     case "append":
-      if (!path) return errorResult("[vault] path is required for append");
       if (args.content === undefined) return errorResult("[vault] content is required for append");
-      await client.appendContent(path, args.content);
-      return textResult(`Appended to: ${path}`);
+      await client.appendContent(safePath, args.content);
+      return textResult(`Appended to: ${safePath}`);
     case "patch":
-      if (!path) return errorResult("[vault] path is required for patch");
-      return handleVaultPatch(client, path, args);
+      return handleVaultPatch(client, safePath, args);
     case "delete":
-      if (!path) return errorResult("[vault] path is required for delete");
-      await client.deleteFile(path);
-      return textResult(`Deleted: ${path}`);
+      await client.deleteFile(safePath);
+      return textResult(`Deleted: ${safePath}`);
     case "search_replace":
-      if (!path) return errorResult("[vault] path is required for search_replace");
-      return handleVaultSearchReplace(client, path, args.search, args.replace, args.caseSensitive, args.replaceAll, args.useRegex);
+      return handleVaultSearchReplace(client, safePath, args.search, args.replace, args.caseSensitive, args.replaceAll, args.useRegex);
     default: {
       const _exhaustive: never = action;
       return errorResult(`[vault] Unknown action: ${String(_exhaustive)}`);
@@ -132,13 +134,13 @@ async function handleVaultAction(
 /** Args for the vault "patch" action. */
 interface VaultPatchArgs {
   readonly content?: string | undefined;
-  readonly operation?: "append" | "prepend" | "replace" | undefined;
-  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly operation?: PatchOptions["operation"] | undefined;
+  readonly targetType?: PatchOptions["targetType"] | undefined;
   readonly target?: string | undefined;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: "markdown" | "json" | undefined;
+  readonly contentType?: PatchOptions["contentType"];
 }
 
 /** Handles the vault "patch" action. */

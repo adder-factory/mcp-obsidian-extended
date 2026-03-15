@@ -151,7 +151,10 @@ export class ObsidianClient {
   // Cache reference (set after construction)
   private cacheRef: VaultCacheInterface | undefined;
 
-  /** Creates an HTTP client configured with the given server settings, TLS options, and timeouts. */
+  /**
+   * Creates an HTTP client configured with the given server settings, TLS options, and timeouts.
+   * @throws {Error} If the TLS certificate path is set but the file cannot be read.
+   */
   constructor(config: Config) {
     const needsBrackets = config.host.includes(":") && !config.host.startsWith("[");
     const host = needsBrackets ? `[${config.host}]` : config.host;
@@ -721,10 +724,10 @@ export class ObsidianClient {
   }
 
   /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. Serialized via active-file lock. */
-  async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
+  async patchActiveFile(content: string, options: Omit<PatchOptions, "createIfMissing">): Promise<void> {
     await this.withSyntheticLock("active", async () => {
-      const headers = this.buildPatchHeaders(options);
-      // Active file PATCH does not support Create-Target-If-Missing (vault PATCH only)
+      const headers = this.buildPatchHeaders(options as PatchOptions);
+      // Active file PATCH does not support Create-Target-If-Missing — enforced at type level
       delete headers["Create-Target-If-Missing"];
       const res = await this.request("PATCH", "/active/", {
         body: content,

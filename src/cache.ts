@@ -208,7 +208,12 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Initialization ---
 
-  /** Performs a full cache build by fetching all markdown files from the vault. Builds into a fresh snapshot then swaps atomically. Discards results if invalidateAll() was called during the build (generation mismatch). */
+  /**
+   * Performs a full cache build by fetching all markdown files from the vault.
+   * Builds into a fresh snapshot then swaps atomically. Discards results if
+   * invalidateAll() was called during the build (generation mismatch).
+   * @throws {Error} On network failure or when the vault listing cannot be retrieved.
+   */
   async initialize(): Promise<void> {
     const startTime = Date.now();
     const buildGeneration = this.generation;

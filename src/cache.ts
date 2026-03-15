@@ -107,8 +107,12 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
   return links;
 }
 
-/** Extracts the .md path from a markdown link URL, stripping #fragment and ?query. Returns undefined if not a .md link. */
+/** Extracts the .md path from a markdown link URL, stripping #fragment and ?query. Returns undefined for non-.md or external links. */
 function extractMdLinkPath(url: string): string | undefined {
+  // Reject absolute URLs (http://, https://, obsidian://, etc.)
+  if (/^[a-z][a-z0-9+\-.]*:/i.test(url)) {
+    return undefined;
+  }
   const hashPos = url.indexOf("#");
   const queryPos = url.indexOf("?");
   let pathEnd = url.length;

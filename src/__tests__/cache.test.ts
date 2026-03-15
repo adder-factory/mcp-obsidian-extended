@@ -143,6 +143,16 @@ describe("parseLinks — markdown links", () => {
     expect(links).toHaveLength(0);
   });
 
+  it("does not match external URLs ending in .md", () => {
+    const links = parseLinks("[spec](https://github.com/user/repo/spec.md)", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("does not match obsidian:// protocol links", () => {
+    const links = parseLinks("[link](obsidian://open?vault=test&file=note.md)", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
   it("extracts both wikilinks and markdown links from same content", () => {
     const content = "[[WikiTarget]] and [text](markdown-target.md)";
     const links = parseLinks(content, "test.md");

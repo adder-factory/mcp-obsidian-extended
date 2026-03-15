@@ -153,7 +153,8 @@ export class ObsidianClient {
 
   /** Creates an HTTP client configured with the given server settings, TLS options, and timeouts. */
   constructor(config: Config) {
-    const host = config.host.includes(":") ? `[${config.host}]` : config.host;
+    const needsBrackets = config.host.includes(":") && !config.host.startsWith("[");
+    const host = needsBrackets ? `[${config.host}]` : config.host;
     this.baseUrl = `${config.scheme}://${host}:${String(config.port)}`;
     this.apiKey = config.apiKey;
     this.isHttps = config.scheme === "https";

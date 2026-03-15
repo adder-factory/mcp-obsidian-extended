@@ -121,17 +121,19 @@ const configFileSchema = z.object({
   debug: z.boolean().optional(),
 });
 
-/** Reads and validates a JSON config file, returning its parsed contents or an empty object on error. */
+/** Reads and validates a JSON config file. Invalid fields are stripped with a warning; valid fields are preserved. */
 function loadConfigFile(filePath: string): ConfigFileShape {
   const raw = readFileSync(filePath, "utf-8");
   const parsed: unknown = JSON.parse(raw);
   const result = configFileSchema.safeParse(parsed);
-  if (!result.success) {
-    const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-    log("warn", `Config file ${filePath} validation errors: ${issues}. Ignoring config file.`);
-    return {};
+  if (result.success) {
+    return result.data as ConfigFileShape;
   }
-  return result.data as ConfigFileShape;
+  // Log warnings for invalid fields but keep valid ones via partial parse
+  const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
+  log("warn", `Config file ${filePath} has invalid fields: ${issues}. Invalid fields ignored.`);
+  const partial = configFileSchema.partial().safeParse(parsed);
+  return partial.success ? (partial.data as ConfigFileShape) : {};
 }
 
 /** Parses a string env var as a boolean, accepting true/false/1/0/yes/no/on/off. */

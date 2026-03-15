@@ -644,6 +644,7 @@ else
 fi
 
 if [ "$greptile_fixes" -gt 0 ]; then
+  # Extract issues from Fix-All URL-encoded prompt
   echo "$GREPTILE" | python3 -c "
 import sys,re,urllib.parse
 t=sys.stdin.read()
@@ -655,6 +656,27 @@ if idx>=0 and end>=0:
         if l.startswith('### Issue') or (l.startswith('**') and l.endswith('**')):
             print(f'  {l[:200]}')
 " 2>/dev/null || true
+fi
+
+# Extract summary-body findings (bullet points with **bold** markers not in threads)
+GREPTILE_BODY_FINDINGS=$(echo "$GREPTILE" | python3 -c "
+import sys
+t = sys.stdin.read()
+findings = []
+for line in t.split('\n'):
+    stripped = line.strip()
+    # Match '- **finding title**:' or '  - **finding**' patterns in body text
+    if stripped.startswith('- **') and '**' in stripped[4:]:
+        findings.append(stripped[:200])
+    elif stripped.startswith('**\`') and '**' in stripped[3:]:
+        findings.append(stripped[:200])
+if findings:
+    print('  Summary-body findings:')
+    for f in findings:
+        print(f'    {f}')
+" 2>/dev/null || true)
+if [ -n "$GREPTILE_BODY_FINDINGS" ]; then
+  log "$GREPTILE_BODY_FINDINGS"
 fi
 log "$(echo "$GREPTILE" | grep -o 'Last reviewed commit: [a-f0-9]*' | sed 's/^/  /' || true)"
 

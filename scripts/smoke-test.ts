@@ -183,11 +183,11 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
 const CACHE_SEED_FILE = "_smoke_cache_seed.md";
 
 async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promise<void> {
-  // Seed a note to guarantee the cache has at least one entry, even on an empty vault
-  await client.putContent(CACHE_SEED_FILE, "# Cache Seed\n\nEnsures cache is non-empty for testing.\n");
   const cache = new VaultCache(client, cacheTtl);
   client.setCache(cache);
   try {
+    // Seed a note to guarantee the cache has at least one entry, even on an empty vault
+    await client.putContent(CACHE_SEED_FILE, "# Cache Seed\n\nEnsures cache is non-empty for testing.\n");
     await cache.initialize();
     if (cache.noteCount <= 0) {
       throw new Error(`Expected noteCount > 0, got ${String(cache.noteCount)}`);

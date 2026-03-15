@@ -305,10 +305,11 @@ export function getRedactedConfig(config: Config): Record<string, unknown> {
   };
 }
 
-/** Deep-merges two plain objects recursively (second wins on leaf conflicts). */
+/** Deep-merges two plain objects recursively (second wins on leaf conflicts). Guards against prototype pollution. */
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...target };
   for (const key of Object.keys(source)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     const srcVal = source[key];
     const tgtVal = result[key];
     if (

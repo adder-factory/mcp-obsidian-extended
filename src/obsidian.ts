@@ -464,9 +464,11 @@ export class ObsidianClient {
       "Operation": options.operation,
       "Target-Type": options.targetType,
       // Encode non-printable-ASCII characters (control chars, non-ASCII/unicode, emoji).
-      // Printable ASCII (0x20-0x7E) including +, &, ::, spaces must NOT be encoded —
+      // Printable ASCII (0x20-0x7E) including +, &, ::, spaces, % must NOT be encoded —
       // Obsidian does plain-text matching for these. Non-ASCII MUST be percent-encoded:
       // validated against live API — Obsidian decodes %C3%9C → Ü but rejects raw UTF-8.
+      // Note: literal %HH sequences in headings (e.g. "50%C3%BC") are passed as-is and
+      // may be decoded by Obsidian — this is an inherent ambiguity of percent-encoding.
       "Target": options.target.replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {

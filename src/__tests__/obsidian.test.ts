@@ -348,6 +348,13 @@ describe("ObsidianClient — encodePath", () => {
 // ObsidianClient — buildPatchHeaders
 // ---------------------------------------------------------------------------
 describe("ObsidianClient — buildPatchHeaders", () => {
+  /** Helper: builds patch headers for a given target and returns the Target header value. */
+  function targetHeader(target: string): string {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    return build.call(client, { operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
+  }
+
   it("sets required headers", () => {
     const client = new ObsidianClient(makeConfig());
     const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
@@ -362,13 +369,6 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(headers["Target"]).toBe("My Heading");
     expect(headers["Content-Type"]).toBe("text/markdown");
   });
-
-  /** Helper: builds patch headers for a given target and returns the Target header value. */
-  function targetHeader(target: string): string {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    return build.call(client, { operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
-  }
 
   it("preserves + and & in Target header", () => {
     expect(targetHeader("Q&A + Notes")).toBe("Q&A + Notes");

@@ -463,9 +463,10 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Target is sent as plain text — validated against live API in Phase 3 stress tests.
-      // encodeURIComponent was removed because it breaks headings containing +, &, or unicode.
-      "Target": options.target,
+      // Encode only non-ASCII characters (emoji, accented chars) to satisfy Node.js HTTP
+      // header validation, while preserving ASCII special chars (+, &, ::, spaces) that
+      // encodeURIComponent would break. Obsidian decodes percent-encoded non-ASCII on its end.
+      "Target": options.target.replace(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

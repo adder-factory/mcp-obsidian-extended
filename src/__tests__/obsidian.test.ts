@@ -381,13 +381,24 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(headers["Target"]).toBe("Parent::Child");
   });
 
-  it("preserves unicode in Target header without encoding", () => {
+  it("encodes non-ASCII unicode in Target header for HTTP safety", () => {
     const client = new ObsidianClient(makeConfig());
     const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
     const headers = build.call(client, {
       operation: "append", targetType: "heading", target: "Notizen über Bücher", contentType: "markdown",
     });
-    expect(headers["Target"]).toBe("Notizen über Bücher");
+    // Non-ASCII chars are percent-encoded; ASCII parts preserved
+    expect(headers["Target"]).toBe("Notizen %C3%BCber B%C3%BCcher");
+  });
+
+  it("encodes emoji in Target header for HTTP safety", () => {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    const headers = build.call(client, {
+      operation: "append", targetType: "heading", target: "📝 Notes", contentType: "markdown",
+    });
+    // Emoji is percent-encoded; ASCII space and text preserved
+    expect(headers["Target"]).toBe("%F0%9F%93%9D Notes");
   });
 
   it("preserves spaces in Target header without encoding", () => {

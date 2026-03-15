@@ -39,7 +39,7 @@ export function parseLinks(content: string, currentPath: string): ParsedLink[] {
   ];
 }
 
-/** Scans content for [[wikilink]] patterns using string scanning (no regex). */
+/** Scans content for [[wikilink]] patterns using string scanning (no regex). Handles unclosed [[ by skipping to the next [[ instead of consuming a later ]] greedily. */
 function parseWikilinks(content: string): ParsedLink[] {
   const links: ParsedLink[] = [];
   let pos = 0;
@@ -48,6 +48,13 @@ function parseWikilinks(content: string): ParsedLink[] {
     if (start === -1) break;
     const end = content.indexOf("]]", start + 2);
     if (end === -1) break;
+    // Check for a nested [[ between start and end — if found, the outer [[ is unclosed
+    const nestedOpen = content.indexOf("[[", start + 2);
+    if (nestedOpen !== -1 && nestedOpen < end) {
+      // Skip this unclosed [[ and restart from the nested one
+      pos = nestedOpen;
+      continue;
+    }
     const inner = content.slice(start + 2, end);
     const rawTarget = extractWikilinkTarget(inner);
     if (rawTarget.length > 0) {

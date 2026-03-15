@@ -75,6 +75,11 @@ async function main(): Promise<void> {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       log("warn", `Startup check failed: ${message}. Tools may fail until Obsidian is running.`);
+      // Start auto-refresh even on failure — refresh() will call initialize()
+      // on the next tick, providing automatic recovery when Obsidian comes back
+      if (config.enableCache) {
+        cache.startAutoRefresh();
+      }
     }
   })();
 

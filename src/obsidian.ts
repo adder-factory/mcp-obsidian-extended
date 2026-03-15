@@ -193,7 +193,12 @@ export class ObsidianClient {
 
   // --- Connection Health ---
 
-  /** Verifies connectivity to Obsidian, re-checking at most once per health check interval. */
+  /**
+   * Verifies TCP/HTTP reachability of the Obsidian REST API only.
+   * Does NOT verify API key validity — use an authenticated endpoint
+   * (e.g. listFilesInVault) for a full auth check.
+   * Re-checks at most once per healthCheckInterval.
+   */
   async ensureConnection(): Promise<void> {
     const now = Date.now();
     if (this.isConnected && now - this.lastHealthCheck < this.healthCheckInterval) {

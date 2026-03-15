@@ -1,0 +1,48 @@
+{
+  "name": "mcp-obsidian-extended",
+  "version": "1.0.0",
+  "description": "MCP server for Obsidian — 38 tools, 100% REST API coverage",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "mcp-obsidian-extended": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:smoke": "tsx scripts/smoke-test.ts",
+    "pack:mcpb": "npm run build && npx mcpb pack",
+    "sonar": "sonar-scanner -Dsonar.host.url=http://localhost:9000",
+    "pr:audit": "bash scripts/pr-audit.sh",
+    "verify:all": "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/",
+    "security:all": "npx snyk test && npx snyk code test && npx semgrep --config auto src/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-security": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.0"
+  }
+}

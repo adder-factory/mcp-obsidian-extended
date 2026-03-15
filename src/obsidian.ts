@@ -463,8 +463,8 @@ export class ObsidianClient {
       "Operation": options.operation,
       "Target-Type": options.targetType,
       // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment).
-      // TODO(Phase 3): validate against live API — if Obsidian does plain-text matching,
-      // encoding may cause silent failures for headings with spaces/special chars.
+      // Phase 3 will validate against the live API — if Obsidian does plain-text matching,
+      // encoding may need to be removed for headings with spaces/special chars.
       "Target": encodeURIComponent(options.target),
     };
     if (options.targetDelimiter !== undefined) {

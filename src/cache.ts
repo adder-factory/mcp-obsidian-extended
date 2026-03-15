@@ -145,7 +145,8 @@ function extractMdLinkPath(url: string): string | undefined {
   if (queryPos !== -1 && queryPos < pathEnd) pathEnd = queryPos;
   let path = url.slice(0, pathEnd).trim();
   // Strip optional title: [text](path.md "title") or [text](path.MD 'title')
-  const titleMatch = /^(.+\.md)\s+["']/i.exec(path);
+  // Use non-greedy match to avoid consuming multiple .md segments
+  const titleMatch = /^(.+?\.md)\s+["']/i.exec(path);
   if (titleMatch?.[1]) {
     path = titleMatch[1];
   }
@@ -641,7 +642,7 @@ export class VaultCache implements VaultCacheInterface {
       // (e.g. "bar/note.md" should not match "foobar/note.md")
       for (const candidate of candidates) {
         const candidateNorm = this.normalizeLinkTarget(candidate);
-        if (candidateNorm.endsWith(`/${normalized}`) || candidateNorm === normalized) {
+        if (candidateNorm.endsWith(`/${normalized}`)) {
           return candidate;
         }
       }

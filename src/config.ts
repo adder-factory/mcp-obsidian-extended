@@ -119,9 +119,9 @@ const configFileSchema = z.object({
     enabled: z.boolean().optional(),
   }).optional(),
   debug: z.boolean().optional(),
-});
+}).passthrough();
 
-/** Reads and validates a JSON config file. Invalid fields are stripped with a warning; valid fields are preserved. */
+/** Reads and validates a JSON config file. Invalid fields are stripped individually; valid fields preserved. */
 function loadConfigFile(filePath: string): ConfigFileShape {
   const raw = readFileSync(filePath, "utf-8");
   const parsed: unknown = JSON.parse(raw);
@@ -129,11 +129,25 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   if (result.success) {
     return result.data as ConfigFileShape;
   }
-  // Log warnings for invalid fields but keep valid ones via partial parse
+  // Strip invalid fields individually — keep valid ones
   const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
   log("warn", `Config file ${filePath} has invalid fields: ${issues}. Invalid fields ignored.`);
-  const partial = configFileSchema.partial().safeParse(parsed);
-  return partial.success ? (partial.data as ConfigFileShape) : {};
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  // Attempt per-section recovery: validate each top-level key independently
+  const obj = parsed as Record<string, unknown>;
+  const recovered: Record<string, unknown> = {};
+  for (const key of Object.keys(obj)) {
+    const fieldSchema = configFileSchema.shape[key as keyof typeof configFileSchema.shape];
+    if (fieldSchema) {
+      const fieldResult = fieldSchema.safeParse(obj[key]);
+      if (fieldResult.success) {
+        recovered[key] = fieldResult.data;
+      }
+    }
+  }
+  return recovered as ConfigFileShape;
 }
 
 /** Parses a string env var as a boolean, accepting true/false/1/0/yes/no/on/off. */

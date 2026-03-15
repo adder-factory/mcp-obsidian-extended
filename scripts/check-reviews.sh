@@ -62,7 +62,8 @@ echo "$GREPTILE" | grep "Last reviewed"
 # Sonar
 echo ""
 echo "=== 8. SONAR STATUS ==="
-source /Users/adderclaudedev/projects/mcp-obsidian-extended/.env
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../.env" 2>/dev/null || { echo "Warning: .env not found — Sonar checks will be skipped"; }
 curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots" 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)

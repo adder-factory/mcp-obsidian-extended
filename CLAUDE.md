@@ -96,6 +96,7 @@ API reference: @docs/cc-reference.md
 - Early returns over deep nesting
 - Max function length: ~50 lines — extract helpers if longer
 - Exception: `withFileLock` uses `.then(fn, fn)` for its mutex-queue pattern — this is intentional and documented in obsidian.ts
+- Exception: `.then(onSuccess, onError)` two-argument form is allowed for fire-and-forget background tasks where you need to catch only the promise rejection, not errors in the success handler
 
 ## Git Workflow
 

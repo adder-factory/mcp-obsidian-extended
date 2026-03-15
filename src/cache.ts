@@ -244,6 +244,7 @@ export class VaultCache implements VaultCacheInterface {
    * to check mtime. For large vaults this means N HTTP requests per refresh cycle.
    * The comparison itself is incremental (only changed notes are re-parsed),
    * but the network cost is proportional to vault size.
+   * @throws {Error} When uninitialized, delegates to initialize() which may throw.
    */
   async refresh(): Promise<void> {
     if (this.isRefreshing) {

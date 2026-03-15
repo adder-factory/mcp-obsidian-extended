@@ -304,7 +304,10 @@ export class ObsidianClient {
     });
   }
 
-  /** Performs a raw HTTP request against the Obsidian REST API with auth, timeout, and debug logging. */
+  /**
+   * Performs a raw HTTP request against the Obsidian REST API with auth, timeout, and debug logging.
+   * @throws {ObsidianConnectionError} On network failure, timeout, or response stream error.
+   */
   private async request(
     method: string,
     path: string,

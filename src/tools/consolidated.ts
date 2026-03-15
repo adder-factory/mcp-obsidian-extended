@@ -46,18 +46,18 @@ function formatFileContents(result: string | NoteJson | DocumentMap): ToolResult
 
 /** Escapes a string for use as a literal in a RegExp. */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /** Checks if an action is allowed under the active preset for a given tool. */
 function isActionAllowed(toolName: string, action: string, preset: string): boolean {
   if (preset === "read-only") {
     const allowed = READ_ONLY_ACTIONS[toolName];
-    return allowed !== undefined ? allowed.has(action) : true;
+    return allowed === undefined || allowed.has(action);
   }
   if (preset === "safe") {
     const blocked = SAFE_BLOCKED_ACTIONS[toolName];
-    return blocked !== undefined ? !blocked.has(action) : true;
+    return blocked === undefined || !blocked.has(action);
   }
   return true;
 }
@@ -68,13 +68,16 @@ function isActionAllowed(toolName: string, action: string, preset: string): bool
 async function handleVaultPatch(
   client: ObsidianClient,
   path: string,
-  args: Record<string, unknown>,
+  content: string | undefined,
+  operation: "append" | "prepend" | "replace" | undefined,
+  targetType: "heading" | "block" | "frontmatter" | undefined,
+  target: string | undefined,
+  targetDelimiter: string | undefined,
+  trimTargetWhitespace: boolean | undefined,
+  createIfMissing: boolean | undefined,
+  contentType: "markdown" | "json" | undefined,
 ): Promise<ToolResult> {
-  const content = args["content"] as string | undefined;
   if (content === undefined) return errorResult("[vault] content is required for patch");
-  const operation = args["operation"] as "append" | "prepend" | "replace" | undefined;
-  const targetType = args["targetType"] as "heading" | "block" | "frontmatter" | undefined;
-  const target = args["target"] as string | undefined;
   if (!operation) return errorResult("[vault] operation is required for patch");
   if (!targetType) return errorResult("[vault] targetType is required for patch");
   if (!target) return errorResult("[vault] target is required for patch");
@@ -82,10 +85,10 @@ async function handleVaultPatch(
     operation,
     targetType,
     target,
-    targetDelimiter: args["targetDelimiter"] as string | undefined,
-    trimTargetWhitespace: args["trimTargetWhitespace"] as boolean | undefined,
-    createIfMissing: args["createIfMissing"] as boolean | undefined,
-    contentType: args["contentType"] as "markdown" | "json" | undefined,
+    targetDelimiter,
+    trimTargetWhitespace,
+    createIfMissing,
+    contentType,
   });
   return textResult(`Patched: ${path}`);
 }
@@ -94,19 +97,18 @@ async function handleVaultPatch(
 async function handleVaultSearchReplace(
   client: ObsidianClient,
   path: string,
-  args: Record<string, unknown>,
+  search: string | undefined,
+  replaceText: string | undefined,
+  caseSensitive: boolean,
+  replaceAll: boolean,
+  useRegex: boolean,
 ): Promise<ToolResult> {
-  const search = args["search"] as string | undefined;
-  const replaceText = args["replace"] as string | undefined;
   if (!search) return errorResult("[vault] search is required for search_replace");
   if (replaceText === undefined) return errorResult("[vault] replace is required for search_replace");
   const result = await client.getFileContents(path, "markdown");
   if (typeof result !== "string") {
     return errorResult("[vault] Expected markdown content");
   }
-  const caseSensitive = args["caseSensitive"] as boolean;
-  const replaceAll = args["replaceAll"] as boolean;
-  const useRegex = args["useRegex"] as boolean;
   const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
   const pattern = useRegex ? new RegExp(search, flags) : new RegExp(escapeRegex(search), flags);
   const updated = result.replace(pattern, replaceText);
@@ -127,25 +129,20 @@ async function handlePeriodicPatch(
   year: number,
   month: number,
   day: number,
-  args: Record<string, unknown>,
+  content: string | undefined,
+  operation: "append" | "prepend" | "replace" | undefined,
+  targetType: "heading" | "block" | "frontmatter" | undefined,
+  target: string | undefined,
+  targetDelimiter: string | undefined,
+  trimTargetWhitespace: boolean | undefined,
+  createIfMissing: boolean | undefined,
+  contentType: "markdown" | "json" | undefined,
 ): Promise<ToolResult> {
-  const content = args["content"] as string | undefined;
   if (content === undefined) return errorResult("[periodic_note] content is required for patch");
-  const operation = args["operation"] as "append" | "prepend" | "replace" | undefined;
-  const targetType = args["targetType"] as "heading" | "block" | "frontmatter" | undefined;
-  const target = args["target"] as string | undefined;
   if (!operation) return errorResult("[periodic_note] operation is required for patch");
   if (!targetType) return errorResult("[periodic_note] targetType is required for patch");
   if (!target) return errorResult("[periodic_note] target is required for patch");
-  const patchOpts = {
-    operation,
-    targetType,
-    target,
-    targetDelimiter: args["targetDelimiter"] as string | undefined,
-    trimTargetWhitespace: args["trimTargetWhitespace"] as boolean | undefined,
-    createIfMissing: args["createIfMissing"] as boolean | undefined,
-    contentType: args["contentType"] as "markdown" | "json" | undefined,
-  };
+  const patchOpts = { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType };
   if (isByDate) {
     await client.patchPeriodicNoteForDate(period, year, month, day, content, patchOpts);
   } else {
@@ -240,6 +237,18 @@ function handleConfigureSet(
   return textResult(`Setting "${setting}" saved. Restart the server for this change to take effect.`);
 }
 
+/** Handles the "reset" action for the configure tool. */
+function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
+  if (!setting) return errorResult("[configure] setting is required for 'reset'");
+  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
+  const resetUpdates = buildConfigReset(setting);
+  if (resetUpdates === undefined) {
+    return errorResult(`[configure] Unknown setting: ${setting}`);
+  }
+  saveConfigToFile(configPath, resetUpdates);
+  return textResult(`Setting "${setting}" reset to default. Restart for this change to take effect.`);
+}
+
 // --- Extracted vault_analysis handler ---
 
 /** Builds vault structure statistics from cache. */
@@ -329,14 +338,14 @@ export function registerConsolidatedTools(
               return textResult(`Appended to: ${path}`);
             case "patch":
               if (!path) return errorResult("[vault] path is required for patch");
-              return handleVaultPatch(client, path, args as unknown as Record<string, unknown>);
+              return handleVaultPatch(client, path, args.content, args.operation, args.targetType, args.target, args.targetDelimiter, args.trimTargetWhitespace, args.createIfMissing, args.contentType);
             case "delete":
               if (!path) return errorResult("[vault] path is required for delete");
               await client.deleteFile(path);
               return textResult(`Deleted: ${path}`);
             case "search_replace":
               if (!path) return errorResult("[vault] path is required for search_replace");
-              return handleVaultSearchReplace(client, path, args as unknown as Record<string, unknown>);
+              return handleVaultSearchReplace(client, path, args.search, args.replace, args.caseSensitive, args.replaceAll, args.useRegex);
             default: {
               const _exhaustive: never = action;
               return errorResult(`[vault] Unknown action: ${String(_exhaustive)}`);
@@ -542,25 +551,27 @@ export function registerConsolidatedTools(
         try {
           switch (action) {
             case "get":
-              if (isByDate) {
-                return formatFileContents(await client.getPeriodicNoteForDate(period, year, month!, day!, args.format));
-              }
-              return formatFileContents(await client.getPeriodicNote(period, args.format));
+              return isByDate
+                ? formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, args.format))
+                : formatFileContents(await client.getPeriodicNote(period, args.format));
             case "put":
               if (args.content === undefined) return errorResult("[periodic_note] content is required for put");
-              if (isByDate) { await client.putPeriodicNoteForDate(period, year, month!, day!, args.content); }
-              else { await client.putPeriodicNote(period, args.content); }
+              await (isByDate
+                ? client.putPeriodicNoteForDate(period, year, month, day, args.content)
+                : client.putPeriodicNote(period, args.content));
               return textResult(`Updated ${period} note`);
             case "append":
               if (args.content === undefined) return errorResult("[periodic_note] content is required for append");
-              if (isByDate) { await client.appendPeriodicNoteForDate(period, year, month!, day!, args.content); }
-              else { await client.appendPeriodicNote(period, args.content); }
+              await (isByDate
+                ? client.appendPeriodicNoteForDate(period, year, month, day, args.content)
+                : client.appendPeriodicNote(period, args.content));
               return textResult(`Appended to ${period} note`);
             case "patch":
-              return handlePeriodicPatch(client, period, isByDate, year ?? 0, month ?? 0, day ?? 0, args as unknown as Record<string, unknown>);
+              return handlePeriodicPatch(client, period, isByDate, year ?? 0, month ?? 0, day ?? 0, args.content, args.operation, args.targetType, args.target, args.targetDelimiter, args.trimTargetWhitespace, args.createIfMissing, args.contentType);
             case "delete":
-              if (isByDate) { await client.deletePeriodicNoteForDate(period, year, month!, day!); }
-              else { await client.deletePeriodicNote(period); }
+              await (isByDate
+                ? client.deletePeriodicNoteForDate(period, year, month, day)
+                : client.deletePeriodicNote(period));
               return textResult(`Deleted ${period} note`);
             default: {
               const _exhaustive: never = action;
@@ -682,16 +693,8 @@ export function registerConsolidatedTools(
               return jsonResult(getRedactedConfig(config));
             case "set":
               return handleConfigureSet(setting, value, config);
-            case "reset": {
-              if (!setting) return errorResult("[configure] setting is required for 'reset'");
-              const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
-              const resetUpdates = buildConfigReset(setting);
-              if (resetUpdates === undefined) {
-                return errorResult(`[configure] Unknown setting: ${setting}`);
-              }
-              saveConfigToFile(configPath, resetUpdates);
-              return textResult(`Setting "${setting}" reset to default. Restart for this change to take effect.`);
-            }
+            case "reset":
+              return handleConfigureReset(setting, config);
             default: {
               const _exhaustive: never = action;
               return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);
@@ -758,24 +761,38 @@ export function registerConsolidatedTools(
 
 // --- Configure Helpers (shared with granular — duplicated to avoid circular deps) ---
 
+/** Parses a boolean string value; returns undefined if invalid. */
+function parseBoolValue(value: string): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+/** Parses a positive integer string value; returns undefined if invalid. */
+function parsePosIntValue(value: string, min: number): number | undefined {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min) return undefined;
+  return n;
+}
+
 /** Builds a config file update for a setting. */
 function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
   switch (setting) {
-    case "debug":
-      if (value !== "true" && value !== "false") return undefined;
-      return { debug: value === "true" };
-    case "timeout": {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 1) return undefined;
-      return { reliability: { timeout: n } };
+    case "debug": {
+      const b = parseBoolValue(value);
+      return b !== undefined ? { debug: b } : undefined;
     }
-    case "verifyWrites":
-      if (value !== "true" && value !== "false") return undefined;
-      return { reliability: { verifyWrites: value === "true" } };
+    case "timeout": {
+      const n = parsePosIntValue(value, 1);
+      return n !== undefined ? { reliability: { timeout: n } } : undefined;
+    }
+    case "verifyWrites": {
+      const b = parseBoolValue(value);
+      return b !== undefined ? { reliability: { verifyWrites: b } } : undefined;
+    }
     case "maxResponseChars": {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 0) return undefined;
-      return { reliability: { maxResponseChars: n } };
+      const n = parsePosIntValue(value, 0);
+      return n !== undefined ? { reliability: { maxResponseChars: n } } : undefined;
     }
     case "toolMode":
       if (value !== "granular" && value !== "consolidated") return undefined;

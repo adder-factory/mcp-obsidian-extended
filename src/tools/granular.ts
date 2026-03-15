@@ -117,15 +117,13 @@ function buildVaultStructure(cache: VaultCache, limit: number): ToolResult {
   });
 }
 
-// --- Registration ---
+// --- Registration sub-functions (split to keep complexity below 15) ---
 
-/** Registers all 38 individual granular tools, filtered by the shouldRegister predicate. */
-export function registerGranularTools(
+/** Registers vault file tools (#1-8). */
+function registerVaultTools(
   server: McpServer,
   client: ObsidianClient,
-  cache: VaultCache,
   shouldRegister: (name: string) => boolean,
-  config: Config,
 ): number {
   let count = 0;
 
@@ -133,9 +131,7 @@ export function registerGranularTools(
   if (shouldRegister("list_files_in_vault")) {
     server.registerTool(
       "list_files_in_vault",
-      {
-        description: "List all files and directories in vault root",
-      },
+      { description: "List all files and directories in vault root" },
       async () => {
         try {
           return jsonResult(await client.listFilesInVault());
@@ -179,8 +175,7 @@ export function registerGranularTools(
       },
       async ({ filePath, format }) => {
         try {
-          const result = await client.getFileContents(filePath, format);
-          return formatFileContents(result);
+          return formatFileContents(await client.getFileContents(filePath, format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_file_contents", path: filePath }));
         }
@@ -255,15 +250,7 @@ export function registerGranularTools(
       },
       async ({ filePath, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
-          await client.patchContent(filePath, content, {
-            operation,
-            targetType,
-            target,
-            targetDelimiter,
-            trimTargetWhitespace,
-            createIfMissing,
-            contentType,
-          });
+          await client.patchContent(filePath, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
           return textResult(`Patched: ${filePath}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "patch_content", path: filePath }));
@@ -311,15 +298,11 @@ export function registerGranularTools(
       async ({ filePath, search, replace, useRegex, caseSensitive, replaceAll }) => {
         try {
           const result = await client.getFileContents(filePath, "markdown");
-          if (typeof result !== "string") {
-            return errorResult("[search_replace] Expected markdown content");
-          }
+          if (typeof result !== "string") return errorResult("[search_replace] Expected markdown content");
           const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
           const pattern = useRegex ? new RegExp(search, flags) : new RegExp(escapeRegex(search), flags);
           const updated = result.replace(pattern, replace);
-          if (updated === result) {
-            return textResult(`No matches found for "${search}" in ${filePath}`);
-          }
+          if (updated === result) return textResult(`No matches found for "${search}" in ${filePath}`);
           await client.putContent(filePath, updated);
           return textResult(`Replaced in: ${filePath}`);
         } catch (err: unknown) {
@@ -329,6 +312,17 @@ export function registerGranularTools(
     );
     count++;
   }
+
+  return count;
+}
+
+/** Registers active file tools (#9-13). */
+function registerActiveFileTools(
+  server: McpServer,
+  client: ObsidianClient,
+  shouldRegister: (name: string) => boolean,
+): number {
+  let count = 0;
 
   // --- 9. get_active_file ---
   if (shouldRegister("get_active_file")) {
@@ -340,8 +334,7 @@ export function registerGranularTools(
       },
       async ({ format }) => {
         try {
-          const result = await client.getActiveFile(format);
-          return formatFileContents(result);
+          return formatFileContents(await client.getActiveFile(format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_active_file" }));
         }
@@ -408,14 +401,7 @@ export function registerGranularTools(
       },
       async ({ content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType }) => {
         try {
-          await client.patchActiveFile(content, {
-            operation,
-            targetType,
-            target,
-            targetDelimiter,
-            trimTargetWhitespace,
-            contentType,
-          });
+          await client.patchActiveFile(content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType });
           return textResult("Active file patched");
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "patch_active_file" }));
@@ -429,9 +415,7 @@ export function registerGranularTools(
   if (shouldRegister("delete_active_file")) {
     server.registerTool(
       "delete_active_file",
-      {
-        description: "Delete the currently open file (idempotent)",
-      },
+      { description: "Delete the currently open file (idempotent)" },
       async () => {
         try {
           await client.deleteActiveFile();
@@ -444,13 +428,22 @@ export function registerGranularTools(
     count++;
   }
 
+  return count;
+}
+
+/** Registers command, open, and search tools (#14-19). */
+function registerCommandAndSearchTools(
+  server: McpServer,
+  client: ObsidianClient,
+  shouldRegister: (name: string) => boolean,
+): number {
+  let count = 0;
+
   // --- 14. list_commands ---
   if (shouldRegister("list_commands")) {
     server.registerTool(
       "list_commands",
-      {
-        description: "List all Obsidian command palette commands",
-      },
+      { description: "List all Obsidian command palette commands" },
       async () => {
         try {
           return jsonResult(await client.listCommands());
@@ -567,21 +560,28 @@ export function registerGranularTools(
     count++;
   }
 
+  return count;
+}
+
+/** Registers current-period periodic note tools (#20-24). */
+function registerPeriodicNoteTools(
+  server: McpServer,
+  client: ObsidianClient,
+  shouldRegister: (name: string) => boolean,
+): number {
+  let count = 0;
+
   // --- 20. get_periodic_note ---
   if (shouldRegister("get_periodic_note")) {
     server.registerTool(
       "get_periodic_note",
       {
         description: "Get the current periodic note",
-        inputSchema: z.object({
-          period: periodSchema,
-          format: formatSchema.optional(),
-        }),
+        inputSchema: z.object({ period: periodSchema, format: formatSchema.optional() }),
       },
       async ({ period, format }) => {
         try {
-          const result = await client.getPeriodicNote(period, format);
-          return formatFileContents(result);
+          return formatFileContents(await client.getPeriodicNote(period, format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_periodic_note" }));
         }
@@ -596,10 +596,7 @@ export function registerGranularTools(
       "put_periodic_note",
       {
         description: "Replace current periodic note content (idempotent)",
-        inputSchema: z.object({
-          period: periodSchema,
-          content: z.string().describe("Note content"),
-        }),
+        inputSchema: z.object({ period: periodSchema, content: z.string().describe("Note content") }),
       },
       async ({ period, content }) => {
         try {
@@ -619,10 +616,7 @@ export function registerGranularTools(
       "append_periodic_note",
       {
         description: "Append to current periodic note (not idempotent)",
-        inputSchema: z.object({
-          period: periodSchema,
-          content: z.string().describe("Content to append"),
-        }),
+        inputSchema: z.object({ period: periodSchema, content: z.string().describe("Content to append") }),
       },
       async ({ period, content }) => {
         try {
@@ -656,15 +650,7 @@ export function registerGranularTools(
       },
       async ({ period, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
-          await client.patchPeriodicNote(period, content, {
-            operation,
-            targetType,
-            target,
-            targetDelimiter,
-            trimTargetWhitespace,
-            createIfMissing,
-            contentType,
-          });
+          await client.patchPeriodicNote(period, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
           return textResult(`Patched ${period} note`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "patch_periodic_note" }));
@@ -694,6 +680,17 @@ export function registerGranularTools(
     count++;
   }
 
+  return count;
+}
+
+/** Registers date-scoped periodic note tools (#25-29). */
+function registerPeriodicNoteDateTools(
+  server: McpServer,
+  client: ObsidianClient,
+  shouldRegister: (name: string) => boolean,
+): number {
+  let count = 0;
+
   // --- 25. get_periodic_note_for_date ---
   if (shouldRegister("get_periodic_note_for_date")) {
     server.registerTool(
@@ -710,8 +707,7 @@ export function registerGranularTools(
       },
       async ({ period, year, month, day, format }) => {
         try {
-          const result = await client.getPeriodicNoteForDate(period, year, month, day, format);
-          return formatFileContents(result);
+          return formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_periodic_note_for_date" }));
         }
@@ -795,15 +791,7 @@ export function registerGranularTools(
       },
       async ({ period, year, month, day, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
-          await client.patchPeriodicNoteForDate(period, year, month, day, content, {
-            operation,
-            targetType,
-            target,
-            targetDelimiter,
-            trimTargetWhitespace,
-            createIfMissing,
-            contentType,
-          });
+          await client.patchPeriodicNoteForDate(period, year, month, day, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
           return textResult(`Patched ${period} note for ${String(year)}-${String(month)}-${String(day)}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "patch_periodic_note_for_date" }));
@@ -838,13 +826,24 @@ export function registerGranularTools(
     count++;
   }
 
+  return count;
+}
+
+/** Registers system, batch, recent, configure, and vault analysis tools (#30-38). */
+function registerSystemAndAnalysisTools(
+  server: McpServer,
+  client: ObsidianClient,
+  cache: VaultCache,
+  shouldRegister: (name: string) => boolean,
+  config: Config,
+): number {
+  let count = 0;
+
   // --- 30. get_server_status (PROTECTED) ---
   if (shouldRegister("get_server_status")) {
     server.registerTool(
       "get_server_status",
-      {
-        description: "Check Obsidian API connection and version",
-      },
+      { description: "Check Obsidian API connection and version" },
       async () => {
         try {
           return jsonResult(await client.getServerStatus());
@@ -870,10 +869,7 @@ export function registerGranularTools(
       async ({ filePaths, format }) => {
         try {
           const results = await Promise.allSettled(
-            filePaths.map(async (fp) => {
-              const content = await client.getFileContents(fp, format);
-              return { path: fp, content };
-            }),
+            filePaths.map(async (fp) => ({ path: fp, content: await client.getFileContents(fp, format) })),
           );
           const output: Array<{ path: string; content?: unknown; error?: string }> = [];
           for (const r of results) {
@@ -925,7 +921,6 @@ export function registerGranularTools(
       },
       async ({ period, limit }) => {
         try {
-          // List vault files and find periodic note directory
           const { files } = await client.listFilesInVault();
           const periodDirs: Record<string, string> = {
             daily: "Daily Notes",
@@ -965,23 +960,10 @@ export function registerGranularTools(
           switch (action) {
             case "show":
               return jsonResult(getRedactedConfig(config));
-
             case "set":
               return handleConfigureSet(setting, value, config);
-
-            case "reset": {
-              if (!setting) {
-                return errorResult("[configure] Setting name is required for 'reset' action");
-              }
-              const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
-              const resetUpdates = buildConfigReset(setting);
-              if (resetUpdates === undefined) {
-                return errorResult(`[configure] Unknown setting: ${setting}`);
-              }
-              saveConfigToFile(configPath, resetUpdates);
-              return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);
-            }
-
+            case "reset":
+              return handleConfigureReset(setting, config);
             default: {
               const _exhaustive: never = action;
               return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);
@@ -1005,12 +987,8 @@ export function registerGranularTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) {
-            return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          }
-          if (!cache.getIsInitialized()) {
-            return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
-          }
+          if (!config.enableCache) return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
+          if (!cache.getIsInitialized()) return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
           return jsonResult(cache.getBacklinks(filePath));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path: filePath }));
@@ -1030,12 +1008,8 @@ export function registerGranularTools(
       },
       async ({ limit }) => {
         try {
-          if (!config.enableCache) {
-            return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          }
-          if (!cache.getIsInitialized()) {
-            return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
-          }
+          if (!config.enableCache) return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
+          if (!cache.getIsInitialized()) return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
@@ -1055,15 +1029,9 @@ export function registerGranularTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) {
-            return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          }
-          if (!cache.getIsInitialized()) {
-            return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
-          }
-          const backlinks = cache.getBacklinks(filePath);
-          const forwardLinks = cache.getForwardLinks(filePath);
-          return jsonResult({ backlinks, forwardLinks });
+          if (!config.enableCache) return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
+          if (!cache.getIsInitialized()) return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
+          return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path: filePath }));
         }
@@ -1076,14 +1044,10 @@ export function registerGranularTools(
   if (shouldRegister("refresh_cache")) {
     server.registerTool(
       "refresh_cache",
-      {
-        description: "Force refresh vault cache and link graph",
-      },
+      { description: "Force refresh vault cache and link graph" },
       async () => {
         try {
-          if (!config.enableCache) {
-            return errorResult("[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          }
+          if (!config.enableCache) return errorResult("[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
           await cache.refresh();
           return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
         } catch (err: unknown) {
@@ -1097,31 +1061,65 @@ export function registerGranularTools(
   return count;
 }
 
+// --- Registration ---
+
+/** Registers all 38 individual granular tools, filtered by the shouldRegister predicate. */
+export function registerGranularTools(
+  server: McpServer,
+  client: ObsidianClient,
+  cache: VaultCache,
+  shouldRegister: (name: string) => boolean,
+  config: Config,
+): number {
+  return (
+    registerVaultTools(server, client, shouldRegister) +
+    registerActiveFileTools(server, client, shouldRegister) +
+    registerCommandAndSearchTools(server, client, shouldRegister) +
+    registerPeriodicNoteTools(server, client, shouldRegister) +
+    registerPeriodicNoteDateTools(server, client, shouldRegister) +
+    registerSystemAndAnalysisTools(server, client, cache, shouldRegister, config)
+  );
+}
+
 // --- Configure Helpers ---
 
 /** Escapes a string for use as a literal in a RegExp. */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/** Parses a boolean string value; returns undefined if invalid. */
+function parseBoolValue(value: string): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+/** Parses a positive integer string value; returns undefined if invalid. */
+function parsePosIntValue(value: string, min: number): number | undefined {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min) return undefined;
+  return n;
 }
 
 /** Builds a config file update object for a given setting and value. Returns undefined if value is invalid. */
 function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
   switch (setting) {
-    case "debug":
-      if (value !== "true" && value !== "false") return undefined;
-      return { debug: value === "true" };
-    case "timeout": {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 1) return undefined;
-      return { reliability: { timeout: n } };
+    case "debug": {
+      const b = parseBoolValue(value);
+      return b !== undefined ? { debug: b } : undefined;
     }
-    case "verifyWrites":
-      if (value !== "true" && value !== "false") return undefined;
-      return { reliability: { verifyWrites: value === "true" } };
+    case "timeout": {
+      const n = parsePosIntValue(value, 1);
+      return n !== undefined ? { reliability: { timeout: n } } : undefined;
+    }
+    case "verifyWrites": {
+      const b = parseBoolValue(value);
+      return b !== undefined ? { reliability: { verifyWrites: b } } : undefined;
+    }
     case "maxResponseChars": {
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < 0) return undefined;
-      return { reliability: { maxResponseChars: n } };
+      const n = parsePosIntValue(value, 0);
+      return n !== undefined ? { reliability: { maxResponseChars: n } } : undefined;
     }
     case "toolMode":
       if (value !== "granular" && value !== "consolidated") return undefined;
@@ -1132,6 +1130,18 @@ function buildConfigUpdate(setting: string, value: string): Record<string, unkno
     default:
       return undefined;
   }
+}
+
+/** Handles the "reset" action for the configure tool. */
+function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
+  if (!setting) return errorResult("[configure] Setting name is required for 'reset' action");
+  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
+  const resetUpdates = buildConfigReset(setting);
+  if (resetUpdates === undefined) {
+    return errorResult(`[configure] Unknown setting: ${setting}`);
+  }
+  saveConfigToFile(configPath, resetUpdates);
+  return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);
 }
 
 /** Builds a config file update that resets a setting to its default value. Returns undefined for unknown settings. */
@@ -1157,14 +1167,12 @@ function buildConfigReset(setting: string): Record<string, unknown> | undefined 
 /** Applies an immediate-effect setting change to the running config. */
 function applyImmediateSetting(setting: string, value: string, _config: Config): void {
   // Config is readonly — we mutate the underlying process behavior directly
-  switch (setting) {
-    case "debug":
-      setDebugEnabled(value === "true");
-      log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
-      break;
-    // timeout, verifyWrites, maxResponseChars take effect on next request via config file
-    // (the client reads from config on construction, so these require restart)
-    // We still save to file above — calling them "immediate" is a simplification
-    // that means "saved and acknowledged" vs "requires tool re-registration"
+  if (setting === "debug") {
+    setDebugEnabled(value === "true");
+    log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
   }
+  // timeout, verifyWrites, maxResponseChars take effect on next request via config file
+  // (the client reads from config on construction, so these require restart)
+  // We still save to file above — calling them "immediate" is a simplification
+  // that means "saved and acknowledged" vs "requires tool re-registration"
 }

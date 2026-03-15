@@ -85,7 +85,7 @@ async function setup(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   const ask = (prompt: string, defaultVal?: string): Promise<string> =>
     new Promise((res) => {
-      const suffix = defaultVal !== undefined ? ` [${defaultVal}]` : "";
+      const suffix = defaultVal === undefined ? "" : ` [${defaultVal}]`;
       rl.question(`${prompt}${suffix}: `, (answer) => {
         res(answer.trim() || defaultVal || "");
       });

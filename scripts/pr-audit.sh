@@ -4,11 +4,11 @@
 # Usage: bash scripts/pr-audit.sh [PR_NUMBER] [FLAGS]
 #
 # Flags:
-#   --quick        Skip local verification (build/lint/test/audit/circular)
-#   --fix-stale    Re-run Sonar scan when stale instead of just warning
-#   --resolve      Auto-resolve outdated review threads via GraphQL
-#   --json              Output structured JSON summary (implies --quick)
-#   --verify-resolved   Check resolved threads for premature auto-resolution
+#   --quick              Skip local verification (build/lint/test/audit/circular/knip)
+#   --fix-stale          Re-run Sonar scan when stale instead of just warning
+#   --resolve            Auto-resolve outdated review threads via GraphQL
+#   --json               Output structured JSON summary (implies --quick)
+#   --verify-resolved    Check resolved threads for premature auto-resolution
 #
 # Exit 0 = ready to merge, Exit 1 = open items remain
 set -euo pipefail
@@ -45,6 +45,11 @@ verify_failures=0
 stale_warnings=0
 resolved_count=0
 suspect_resolved=0
+missing_approvals=0
+check_run_failures=0
+checks_in_progress=0
+merge_blocked=0
+human_comments=0
 
 # Current HEAD
 HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -145,11 +150,12 @@ unresolved_threads=$unresolved
 log "Total threads: $total | Resolved: $resolved | Unresolved: $unresolved (current: $unresolved_current, outdated: $unresolved_outdated)"
 
 # Show unresolved thread details with commit info
-if [ "$unresolved" -gt 0 ] && [ "$JSON_OUTPUT" = false ]; then
-  log ""
-  echo "$ALL_THREADS" | python3 -c "
+UNRESOLVED_DETAILS=""
+if [ "$unresolved" -gt 0 ]; then
+  UNRESOLVED_DETAILS=$(echo "$ALL_THREADS" | python3 -c "
 import json, sys
 threads = json.load(sys.stdin)
+items = []
 for t in threads:
     if not t['isResolved']:
         c = t['comments']['nodes'][0] if t['comments']['nodes'] else {}
@@ -163,7 +169,11 @@ for t in threads:
         print(f'  {outdated}[{author}] {path}:{line}  (commit: {commit_sha})')
         print(f'    {body}')
         print()
-" 2>/dev/null || true
+" 2>/dev/null || true)
+  if [ "$JSON_OUTPUT" = false ]; then
+    log ""
+    echo "$UNRESOLVED_DETAILS"
+  fi
 fi
 
 # --- Auto-resolve outdated threads ---
@@ -249,7 +259,7 @@ for t in threads:
         # Look for backtick-quoted code snippets the thread says to change
         code_refs = re.findall(r'\x60([^\x60]{15,80})\x60', body)
         # Filter to ones that look like code (contain parens, dots, or keywords)
-        diff_patterns = [r for r in code_refs if any(c in r for c in '(){}[].$=')][:3]
+        diff_patterns = [r for r in code_refs if any(c in r for c in '(){}[].\$=')][:3]
 
     if not diff_patterns:
         continue
@@ -306,10 +316,90 @@ print(f'SUSPECT_COUNT={suspect_count}')
 fi
 
 # ================================================================
-# 2. CHANGES_REQUESTED reviews
+# 2. PR merge status — approvals, mergeability, conflicts
 # ================================================================
 log ""
-log "=== 2. CHANGES_REQUESTED REVIEWS ==="
+log "=== 2. PR MERGE STATUS ==="
+
+PR_DATA=$(gh api "repos/$REPO/pulls/$PR" --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base: .base.ref}' 2>/dev/null || echo '{}')
+mergeable_state=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('mergeable_state','unknown'))" 2>/dev/null || echo "unknown")
+mergeable=$(echo "$PR_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('mergeable') else 'false')" 2>/dev/null || echo "unknown")
+
+# Count approvals
+approval_count=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "0")
+if ! echo "$approval_count" | grep -qE '^[0-9]+$'; then approval_count=0; fi
+log "  Approvals: $approval_count"
+log "  Mergeable: $mergeable (state: $mergeable_state)"
+
+if [ "$approval_count" -eq 0 ]; then
+  missing_approvals=1
+  log "  WARNING: No approvals — PR requires at least 1 approving review"
+fi
+
+if [ "$mergeable" = "false" ]; then
+  merge_blocked=1
+  log "  WARNING: PR has merge conflicts"
+elif [ "$mergeable_state" = "blocked" ] && [ "$approval_count" -gt 0 ]; then
+  merge_blocked=1
+  log "  WARNING: PR is blocked (check branch protection rules)"
+fi
+
+# ================================================================
+# 3. Check runs and status checks
+# ================================================================
+log ""
+log "=== 3. CHECK RUNS & STATUS CHECKS ==="
+
+check_runs_json=$(gh api "repos/$REPO/commits/$HEAD_FULL/check-runs" 2>/dev/null || echo '{"check_runs":[],"total_count":0}')
+check_run_analysis=$(echo "$check_runs_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+runs = d.get('check_runs', [])
+total = d.get('total_count', 0)
+in_progress = sum(1 for r in runs if r.get('status') == 'in_progress')
+failed = sum(1 for r in runs if r.get('conclusion') in ('failure', 'cancelled', 'timed_out'))
+succeeded = sum(1 for r in runs if r.get('conclusion') == 'success')
+print(f'check_total={total} check_in_progress={in_progress} check_failed={failed} check_succeeded={succeeded}')
+" 2>/dev/null || echo "check_total=0 check_in_progress=0 check_failed=0 check_succeeded=0")
+
+eval "$check_run_analysis"
+check_run_failures=$check_failed
+checks_in_progress=$check_in_progress
+
+log "  Total: $check_total | Passed: $check_succeeded | Failed: $check_failed | In progress: $check_in_progress"
+
+if [ "$check_failed" -gt 0 ] && [ "$JSON_OUTPUT" = false ]; then
+  echo "$check_runs_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for r in d.get('check_runs', []):
+    if r.get('conclusion') in ('failure', 'cancelled', 'timed_out'):
+        print(f'    FAILED: {r[\"name\"]} ({r[\"conclusion\"]})')
+" 2>/dev/null || true
+fi
+
+if [ "$check_in_progress" -gt 0 ] && [ "$JSON_OUTPUT" = false ]; then
+  echo "$check_runs_json" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for r in d.get('check_runs', []):
+    if r.get('status') == 'in_progress':
+        print(f'    RUNNING: {r[\"name\"]}')
+" 2>/dev/null || true
+fi
+
+# Commit status (legacy status API)
+commit_status=$(gh api "repos/$REPO/commits/$HEAD_FULL/status" --jq '.state' 2>/dev/null || echo "unknown")
+if [ "$commit_status" != "success" ] && [ "$commit_status" != "pending" ] && [ "$commit_status" != "unknown" ]; then
+  log "  Commit status: $commit_status"
+  check_run_failures=$((check_run_failures + 1))
+fi
+
+# ================================================================
+# 4. CHANGES_REQUESTED reviews
+# ================================================================
+log ""
+log "=== 4. CHANGES_REQUESTED REVIEWS ==="
 cr_raw=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "")
 changes_requested=0
 if echo "$cr_raw" | grep -qE '^[0-9]+$'; then
@@ -325,10 +415,28 @@ else
 fi
 
 # ================================================================
-# 3. CodeRabbitAI latest review summary
+# 5. Human issue comments (non-bot)
 # ================================================================
 log ""
-log "=== 3. CODERABBITAI LATEST REVIEW ==="
+log "=== 5. HUMAN COMMENTS ==="
+human_comment_data=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login | test("bot$|\\[bot\\]$") | not) | select(.body | test("^@coderabbitai|^@greptile") | not)] | length' 2>/dev/null || echo "0")
+if echo "$human_comment_data" | grep -qE '^[0-9]+$'; then
+  human_comments=$human_comment_data
+fi
+if [ "$human_comments" -gt 0 ]; then
+  log "Substantive human comments: $human_comments"
+  if [ "$JSON_OUTPUT" = false ]; then
+    gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[] | select(.user.login | test("bot$|\\[bot\\]$") | not) | select(.body | test("^@coderabbitai|^@greptile") | not) | "  \(.user.login) (\(.created_at[:10])): \(.body[0:120])"' 2>/dev/null | head -10 || true
+  fi
+else
+  log "None"
+fi
+
+# ================================================================
+# 6. CodeRabbitAI latest review summary
+# ================================================================
+log ""
+log "=== 6. CODERABBITAI LATEST REVIEW ==="
 LATEST_CR=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | last | .body // ""' 2>/dev/null || echo "")
 
 # Check staleness
@@ -354,11 +462,11 @@ fi
 log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks"
 
 # ================================================================
-# 4. Greptile summary
+# 7. Greptile summary
 #    Tracks both Fix-All count AND inline thread overlap
 # ================================================================
 log ""
-log "=== 4. GREPTILE SUMMARY ==="
+log "=== 7. GREPTILE SUMMARY ==="
 GREPTILE=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login == "greptile-apps[bot]")] | last | .body // ""' 2>/dev/null || echo "")
 
 # Check staleness
@@ -423,10 +531,10 @@ log "$(echo "$GREPTILE" | grep -o 'Last reviewed commit: [a-f0-9]*' | sed 's/^/ 
 log "$(echo "$GREPTILE" | sed -n 's/.*Confidence Score: \([0-5]\/5\).*/  Confidence: \1/p' || true)"
 
 # ================================================================
-# 5. Sonar status
+# 8. Sonar status
 # ================================================================
 log ""
-log "=== 5. SONAR STATUS ==="
+log "=== 8. SONAR STATUS ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Safe .env parsing — only extract specific keys, never execute the file
 ENV_FILE="$SCRIPT_DIR/../.env"
@@ -511,7 +619,7 @@ for m in d['component']['measures']:
 
   # Coverage
   log ""
-  log "=== 6. CODE COVERAGE (Sonar) ==="
+  log "=== 9. CODE COVERAGE (Sonar) ==="
   sonar_coverage=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=coverage,line_coverage,branch_coverage,lines_to_cover,uncovered_lines" 2>/dev/null || echo "")
   if [ "$JSON_OUTPUT" = false ] && [ -n "$sonar_coverage" ]; then
     echo "$sonar_coverage" | python3 -c "
@@ -524,13 +632,13 @@ for m in d['component']['measures']:
 fi
 
 # ================================================================
-# 7. Local verification
+# 10. Local verification
 # ================================================================
 log ""
 if [ "$QUICK" = true ]; then
-  log "=== 7. LOCAL VERIFICATION (skipped — --quick) ==="
+  log "=== 10. LOCAL VERIFICATION (skipped — --quick) ==="
 else
-  log "=== 7. LOCAL VERIFICATION ==="
+  log "=== 10. LOCAL VERIFICATION ==="
 
   # Build
   logn "  build:     "
@@ -552,6 +660,18 @@ else
   logn "  circular:  "
   madge_out=$(npx madge --circular --extensions ts src/ 2>&1 || true)
   if echo "$madge_out" | grep -q "No circular"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+
+  # Knip (unused exports/files) — allow Phase 2 expected unused
+  logn "  knip:      "
+  knip_out=$(npx knip 2>&1 || true)
+  knip_issues=$(echo "$knip_out" | grep -c "Unused" || echo "0")
+  # Phase 1: tools/granular.ts and tools/consolidated.ts are expected unused
+  knip_unexpected=$(echo "$knip_out" | grep "Unused" | grep -cv "tools/granular\|tools/consolidated\|Unlisted binaries" || echo "0")
+  if [ "$knip_unexpected" -eq 0 ]; then log "PASS"; else log "FAIL ($knip_unexpected unexpected)"; verify_failures=$((verify_failures + 1)); fi
+
+  # Semgrep
+  logn "  semgrep:   "
+  if npx semgrep --config auto src/ --quiet 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
 fi
 
 # ================================================================
@@ -559,13 +679,16 @@ fi
 # ================================================================
 ELAPSED=$(( $(date +%s) - START_TIME ))
 
-TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved))
+TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked))
 
 if [ "$TOTAL_ISSUES" -gt 0 ]; then
   RESULT="NOT ready to merge"
   EXIT_CODE=1
 elif [ "$stale_warnings" -gt 0 ]; then
   RESULT="No open items, but $stale_warnings stale review(s) — wait for bots to re-review"
+  EXIT_CODE=1
+elif [ "$checks_in_progress" -gt 0 ]; then
+  RESULT="No open items, but $checks_in_progress check(s) still running — wait for completion"
   EXIT_CODE=1
 else
   RESULT="All clear — ready to merge"
@@ -574,9 +697,30 @@ fi
 
 # --- JSON output ---
 if [ "$JSON_OUTPUT" = true ]; then
-  # Build JSON with python for robustness
+  # Collect unresolved thread details for JSON — write to temp file to avoid quoting issues
+  DETAILS_FILE=$(mktemp)
+  echo "$ALL_THREADS" | python3 -c "
+import json, sys
+threads = json.load(sys.stdin)
+details = []
+for t in threads:
+    if not t['isResolved']:
+        c = t['comments']['nodes'][0] if t['comments']['nodes'] else {}
+        body = c.get('body', '')[:200].replace('\n', ' ').replace('\r', '')
+        details.append({
+            'author': c.get('author', {}).get('login', 'unknown'),
+            'path': c.get('path', '?'),
+            'line': c.get('line'),
+            'body_preview': body,
+            'commit': (c.get('originalCommit', {}) or {}).get('oid', '?')[:7],
+            'outdated': t.get('isOutdated', False),
+        })
+json.dump(details, open('$DETAILS_FILE', 'w'))
+" 2>/dev/null || echo "[]" > "$DETAILS_FILE"
+
   python3 -c "
 import json
+details = json.load(open('$DETAILS_FILE'))
 data = {
     'pr': $PR,
     'head': '$HEAD_SHA',
@@ -592,6 +736,11 @@ data = {
         'verify_failures': $verify_failures,
         'stale_warnings': $stale_warnings,
         'suspect_resolved': $suspect_resolved,
+        'missing_approvals': $missing_approvals,
+        'check_run_failures': $check_run_failures,
+        'checks_in_progress': $checks_in_progress,
+        'merge_blocked': $merge_blocked,
+        'human_comments': $human_comments,
         'total_issues': $TOTAL_ISSUES,
     },
     'staleness': {
@@ -599,10 +748,17 @@ data = {
         'greptile': $( [ "$greptile_is_stale" = true ] && echo 'True' || echo 'False'),
         'sonar': $( [ "$sonar_stale" = true ] && echo 'True' || echo 'False'),
     },
+    'merge_status': {
+        'approvals': $approval_count,
+        'mergeable': $( [ "$mergeable" = "true" ] && echo 'True' || echo 'False'),
+        'mergeable_state': '$mergeable_state',
+    },
+    'unresolved_thread_details': details,
     'auto_resolved': $resolved_count,
 }
 print(json.dumps(data, indent=2))
 "
+  rm -f "$DETAILS_FILE"
   exit "$EXIT_CODE"
 fi
 
@@ -616,9 +772,16 @@ log "  Suspect auto-resolved threads:         $suspect_resolved"
 log "  Greptile Fix-All items (summary-only): $greptile_fixes"
 log "  Sonar open issues:                     $sonar_issues"
 log "  CHANGES_REQUESTED reviews:             $changes_requested"
+log "  Missing approvals:                     $missing_approvals"
+log "  Check run failures:                    $check_run_failures"
+log "  Merge blocked:                         $merge_blocked"
+log "  Human comments:                        $human_comments"
 log "  Local verification failures:           $verify_failures"
 if [ "$stale_warnings" -gt 0 ]; then
   log "  Stale review warnings:                 $stale_warnings (bots haven't re-reviewed HEAD)"
+fi
+if [ "$checks_in_progress" -gt 0 ]; then
+  log "  Checks in progress:                    $checks_in_progress (wait for completion)"
 fi
 if [ "$resolved_count" -gt 0 ]; then
   log "  Auto-resolved outdated threads:        $resolved_count"

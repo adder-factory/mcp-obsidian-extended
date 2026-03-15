@@ -196,6 +196,8 @@ export class VaultCache implements VaultCacheInterface {
   private readonly notes = new Map<string, CachedNote>();
   private readonly client: ObsidianClient;
   private readonly cacheTtl: number;
+  /** Cached link count to avoid O(N) iteration on every access. */
+  private cachedLinkCount = 0;
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
   private isRefreshing = false;
@@ -271,6 +273,7 @@ export class VaultCache implements VaultCacheInterface {
         this.notes.set(key, value);
       }
       this.rebuildIndex();
+      this.recalcLinkCount();
       const elapsed = Date.now() - startTime;
       if (this.notes.size > 0 || mdFiles.length === 0) {
         // Mark initialized if we got some notes, or if the vault is genuinely empty
@@ -320,6 +323,7 @@ export class VaultCache implements VaultCacheInterface {
 
       if (updated > 0 || deleted > 0) {
         this.rebuildIndex();
+      this.recalcLinkCount();
         log("debug", `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`);
       }
     } catch (err: unknown) {
@@ -426,11 +430,7 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   get linkCount(): number {
-    let count = 0;
-    for (const note of this.notes.values()) {
-      count += note.links.length;
-    }
-    return count;
+    return this.cachedLinkCount;
   }
 
   /** Returns whether the cache has completed its initial build. */
@@ -461,6 +461,7 @@ export class VaultCache implements VaultCacheInterface {
     this.generation++;
     this.notes.clear();
     this.shortNameIndex.clear();
+    this.cachedLinkCount = 0;
     this.isInitialized = false;
   }
 
@@ -595,6 +596,15 @@ export class VaultCache implements VaultCacheInterface {
       normalized = `${normalized}.md`;
     }
     return normalized;
+  }
+
+  /** Recalculates the cached link count from the current notes map. */
+  private recalcLinkCount(): void {
+    let count = 0;
+    for (const note of this.notes.values()) {
+      count += note.links.length;
+    }
+    this.cachedLinkCount = count;
   }
 
   /** Rebuilds the short-name index for O(1) wikilink resolution. */

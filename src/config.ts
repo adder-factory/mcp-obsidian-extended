@@ -301,7 +301,7 @@ export function loadConfig(): Config {
     excludeTools: env["EXCLUDE_TOOLS"] === undefined
       ? (fileConfig.tools?.exclude ?? DEFAULTS.excludeTools)
       : parseCommaSeparated(env["EXCLUDE_TOOLS"]),
-    cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl, { min: 0 }),
+    cacheTtl: parseNumber(env["OBSIDIAN_CACHE_TTL"], fileConfig.cache?.ttl ?? DEFAULTS.cacheTtl, { min: 10000 }),
     enableCache: parseBoolean(env["OBSIDIAN_ENABLE_CACHE"], fileConfig.cache?.enabled ?? DEFAULTS.enableCache),
     configFilePath,
   };

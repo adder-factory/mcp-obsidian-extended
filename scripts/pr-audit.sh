@@ -50,6 +50,7 @@ check_run_failures=0
 checks_in_progress=0
 merge_blocked=0
 human_comments=0
+cr_review_issues=0
 
 # Current HEAD
 HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -457,9 +458,19 @@ cr_nitpicks="${cr_nitpicks:-0}"
 
 if [ "$cr_is_stale" = true ]; then
   log "STALE — reviewed ${cr_reviewed_sha:0:7}, HEAD is ${HEAD_SHA}"
+  log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks (not counted — stale)"
   stale_warnings=$((stale_warnings + 1))
+else
+  # Count all review body issues as blockers when current:
+  # - Actionable = new inline comments (already tracked as threads, but may not be yet)
+  # - Duplicates = re-flagged issues from prior rounds (fix was incomplete)
+  # - Nitpicks = per CLAUDE.md, ALL comments must be resolved including nitpicks
+  cr_review_issues=$((cr_actionable + cr_duplicates + cr_nitpicks))
+  log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks"
+  if [ "$cr_review_issues" -gt 0 ]; then
+    log "  Total review body issues: $cr_review_issues (counted as blockers)"
+  fi
 fi
-log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks"
 
 # ================================================================
 # 7. Greptile summary
@@ -679,7 +690,7 @@ fi
 # ================================================================
 ELAPSED=$(( $(date +%s) - START_TIME ))
 
-TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked))
+TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked + cr_review_issues))
 
 if [ "$TOTAL_ISSUES" -gt 0 ]; then
   RESULT="NOT ready to merge"
@@ -736,6 +747,7 @@ data = {
         'verify_failures': $verify_failures,
         'stale_warnings': $stale_warnings,
         'suspect_resolved': $suspect_resolved,
+        'cr_review_issues': $cr_review_issues,
         'missing_approvals': $missing_approvals,
         'check_run_failures': $check_run_failures,
         'checks_in_progress': $checks_in_progress,
@@ -768,6 +780,7 @@ log "============================================================"
 log "SUMMARY  (${ELAPSED}s elapsed)"
 log "============================================================"
 log "  Unresolved review threads:             $unresolved_threads"
+log "  CR review body issues (act+dup+nit):   $cr_review_issues"
 log "  Suspect auto-resolved threads:         $suspect_resolved"
 log "  Greptile Fix-All items (summary-only): $greptile_fixes"
 log "  Sonar open issues:                     $sonar_issues"
@@ -775,7 +788,7 @@ log "  CHANGES_REQUESTED reviews:             $changes_requested"
 log "  Missing approvals:                     $missing_approvals"
 log "  Check run failures:                    $check_run_failures"
 log "  Merge blocked:                         $merge_blocked"
-log "  Human comments:                        $human_comments"
+log "  Human comments (review):               $human_comments"
 log "  Local verification failures:           $verify_failures"
 if [ "$stale_warnings" -gt 0 ]; then
   log "  Stale review warnings:                 $stale_warnings (bots haven't re-reviewed HEAD)"

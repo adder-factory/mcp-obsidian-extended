@@ -50,9 +50,6 @@ suspect_resolved=0
 HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 HEAD_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
-# Dynamic 24h window
-SINCE=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d "24 hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "2026-03-14T00:00:00Z")
-
 # --- Logging helpers (suppressed in JSON mode) ---
 log() { if [ "$JSON_OUTPUT" = false ]; then echo "$@"; fi; }
 logn() { if [ "$JSON_OUTPUT" = false ]; then echo -n "$@"; fi; }

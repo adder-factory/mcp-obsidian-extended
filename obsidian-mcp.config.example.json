@@ -4,9 +4,7 @@
   "scheme": "https",
   "tools": {
     "mode": "granular",
-    "preset": "full",
-    "include": [],
-    "exclude": []
+    "preset": "full"
   },
   "reliability": {
     "timeout": 30000,

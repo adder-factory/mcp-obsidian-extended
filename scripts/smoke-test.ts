@@ -334,8 +334,10 @@ async function main(): Promise<void> {
     await cleanup(client);
   }
 
+  const skipped = totalSteps - passed - failed;
   write("");
-  write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(totalSteps)} steps`);
+  const skipNote = skipped > 0 ? `, ${String(skipped)} skipped` : "";
+  write(`Results: ${String(passed)} passed, ${String(failed)} failed${skipNote} out of ${String(totalSteps)} steps`);
   write("");
   // Informational note — not counted as a test step
   write("  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).");

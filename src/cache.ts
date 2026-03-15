@@ -523,10 +523,15 @@ export class VaultCache implements VaultCacheInterface {
     const results: Array<{ path: string; inbound: number; outbound: number }> = [];
 
     for (const note of this.notes.values()) {
+      // Count only outbound links that resolve to existing notes (consistent with inbound)
+      const resolvedOutbound = note.links.filter((link) => {
+        const resolved = this.resolveLinkToFullPath(link.target);
+        return this.notes.has(resolved);
+      }).length;
       results.push({
         path: note.path,
         inbound: inboundCounts.get(note.path) ?? 0,
-        outbound: note.links.length,
+        outbound: resolvedOutbound,
       });
     }
 

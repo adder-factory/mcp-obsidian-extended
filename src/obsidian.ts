@@ -462,6 +462,7 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
+      // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment)
       "Target": encodeURIComponent(options.target),
     };
     if (options.targetDelimiter !== undefined) {

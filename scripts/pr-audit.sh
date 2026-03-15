@@ -365,7 +365,14 @@ if [ -z "$PR_DATA" ]; then
   PR_DATA='{}'
 fi
 mergeable_state=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('mergeable_state','unknown'))" 2>/dev/null || echo "unknown")
-mergeable=$(echo "$PR_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('mergeable') else 'false')" 2>/dev/null || echo "unknown")
+mergeable=$(echo "$PR_DATA" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+v=d.get('mergeable')
+if v is None: print('computing')  # GitHub still computing — treat as unknown
+elif v: print('true')
+else: print('false')
+" 2>/dev/null || echo "unknown")
 base_branch=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base','main'))" 2>/dev/null || echo "main")
 
 # Count approvals
@@ -385,6 +392,9 @@ fi
 if [ "$mergeable" = "false" ]; then
   merge_blocked=1
   log "  WARNING: PR has merge conflicts"
+elif [ "$mergeable" = "computing" ]; then
+  log "  WARNING: GitHub is still computing mergeability — re-run audit shortly"
+  stale_warnings=$((stale_warnings + 1))
 elif [ "$mergeable_state" = "blocked" ] && [ "$approval_count" -gt 0 ]; then
   merge_blocked=1
   log "  WARNING: PR is blocked (check branch protection rules)"
@@ -429,7 +439,7 @@ fi
 log ""
 log "=== 3. CHECK RUNS & STATUS CHECKS ==="
 
-check_runs_json=$(gh api "repos/$REPO/commits/$HEAD_FULL/check-runs" 2>/dev/null || echo '')
+check_runs_json=$(gh api --paginate "repos/$REPO/commits/$HEAD_FULL/check-runs" 2>/dev/null || echo '')
 if [ -z "$check_runs_json" ]; then
   api_failed "check runs"
   check_runs_json='{"check_runs":[],"total_count":0}'

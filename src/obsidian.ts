@@ -799,6 +799,7 @@ export class ObsidianClient {
     const params = new URLSearchParams({ query, contextLength: String(contextLength) });
     const res = await this.request("POST", `/search/simple/?${params.toString()}`, {
       body: "",
+      headers: { "Content-Type": "text/plain" },
       timeoutMultiplier: 2,
     });
 

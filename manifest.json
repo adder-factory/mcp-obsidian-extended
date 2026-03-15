@@ -6,7 +6,7 @@
   "author": { "name": "adder-factory" },
   "server": {
     "type": "node",
-    "entry_point": "dist/index.js",
+    "entry_point": "${__dirname}/dist/index.js",
     "mcp_config": {
       "command": "node",
       "args": ["${__dirname}/dist/index.js"],

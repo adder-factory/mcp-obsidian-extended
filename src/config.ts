@@ -131,9 +131,11 @@ function recoverNestedKeys(fieldSchema: z.ZodType, value: unknown): Record<strin
   for (const nestedKey of Object.keys(nestedObj)) {
     const partial: Record<string, unknown> = { [nestedKey]: nestedObj[nestedKey] };
     const partialResult = fieldSchema.safeParse(partial);
-    if (partialResult.success) {
+    if (partialResult.success && partialResult.data !== null && typeof partialResult.data === "object") {
       const data = partialResult.data as Record<string, unknown>;
-      recovered[nestedKey] = data[nestedKey];
+      if (nestedKey in data) {
+        recovered[nestedKey] = data[nestedKey];
+      }
     }
   }
   return Object.keys(recovered).length > 0 ? recovered : undefined;

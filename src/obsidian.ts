@@ -549,7 +549,8 @@ export class ObsidianClient {
       if (!Array.isArray(filesVal)) {
         return undefined;
       }
-      const files = filesVal as string[];
+      // Filter to string elements only (API should return strings, but verify)
+      const files = filesVal.filter((f): f is string => typeof f === "string");
 
       // Find files whose full path matches case-insensitively
       const matches = files.filter((f) => !f.endsWith("/") && f.toLowerCase() === targetLower);

@@ -303,6 +303,7 @@ export class VaultCache implements VaultCacheInterface {
       return;
     }
     this.isRefreshing = true;
+    this.invalidatedDuringRefresh.clear();
     const refreshGeneration = this.generation;
     try {
       if (!this.isInitialized) {
@@ -331,6 +332,7 @@ export class VaultCache implements VaultCacheInterface {
       log("warn", `Cache refresh failed: ${message}`);
     } finally {
       this.isRefreshing = false;
+      this.invalidatedDuringRefresh.clear();
     }
   }
 
@@ -362,6 +364,8 @@ export class VaultCache implements VaultCacheInterface {
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {
             if (this.generation !== expectedGeneration) return;
+            // Skip if this path was individually invalidated during the refresh
+            if (this.invalidatedDuringRefresh.has(filePath)) return;
             const links = parseLinks(result.content, filePath);
             this.notes.set(filePath, {
               path: filePath,
@@ -440,6 +444,9 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Invalidation ---
 
+  /** Tracks paths invalidated during an in-flight refresh to prevent stale re-insertion. */
+  private readonly invalidatedDuringRefresh = new Set<string>();
+
   /** Removes a single note from the cache and updates the short-name index and link count. */
   invalidate(path: string): void {
     const existing = this.notes.get(path);
@@ -447,6 +454,10 @@ export class VaultCache implements VaultCacheInterface {
       this.cachedLinkCount -= existing.links.length;
     }
     this.notes.delete(path);
+    // Track invalidation so in-flight refresh doesn't re-insert stale data
+    if (this.isRefreshing) {
+      this.invalidatedDuringRefresh.add(path);
+    }
     const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
     const bucket = this.shortNameIndex.get(shortName);
     if (bucket) {

@@ -356,15 +356,21 @@ export class ObsidianClient {
   private parseJsonResponse<T>(body: string, path: string, headers?: Record<string, string>): T {
     const ct = (headers?.["content-type"] ?? "").toLowerCase();
     if (!ct) {
-      log("debug", `Missing Content-Type header from ${path}, attempting JSON parse`);
+      log("warn", `Missing Content-Type header from ${path} — expected JSON. Attempting parse.`);
     } else if (!ct.includes("json")) {
       throw new ObsidianApiError(`Unexpected Content-Type "${ct}" from ${path} (expected JSON)`, 200);
     }
+    let parsed: unknown;
     try {
-      return JSON.parse(body) as T;
+      parsed = JSON.parse(body);
     } catch {
       throw new ObsidianApiError(`Invalid JSON response from ${path}`, 200);
     }
+    // Runtime type is validated by callers via type guards where needed.
+    // The generic T is a compile-time contract — the Obsidian REST API is the
+    // source of truth for response shapes, so this cast is provably safe for
+    // well-formed API responses.
+    return parsed as T;
   }
 
   /** Parses an error response body and throws the appropriate custom error type. */

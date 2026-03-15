@@ -158,11 +158,12 @@ function loadConfigFile(filePath: string): ConfigFileShape {
 /** Attempts per-section recovery: validates each top-level key, falls back to nested key recovery. */
 function recoverConfigFields(obj: Record<string, unknown>): ConfigFileShape {
   const recovered: Record<string, unknown> = {};
+  const schemaShape = configFileSchema.shape;
   for (const key of Object.keys(obj)) {
-    const fieldSchema = configFileSchema.shape[key as keyof typeof configFileSchema.shape];
-    if (!fieldSchema) {
+    if (!(key in schemaShape)) {
       continue;
     }
+    const fieldSchema = schemaShape[key as keyof typeof schemaShape];
     const fieldResult = fieldSchema.safeParse(obj[key]);
     if (fieldResult.success) {
       recovered[key] = fieldResult.data;

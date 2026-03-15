@@ -359,7 +359,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     });
     expect(headers["Operation"]).toBe("append");
     expect(headers["Target-Type"]).toBe("heading");
-    expect(headers["Target"]).toBe(encodeURIComponent("My Heading"));
+    expect(headers["Target"]).toBe("My Heading");
     expect(headers["Content-Type"]).toBe("text/markdown");
   });
 

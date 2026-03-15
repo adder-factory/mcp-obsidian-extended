@@ -463,10 +463,9 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment).
-      // Phase 3 will validate against the live API — if Obsidian does plain-text matching,
-      // encoding may need to be removed for headings with spaces/special chars.
-      "Target": encodeURIComponent(options.target),
+      // Target is sent as plain text — validated against live API in Phase 3 stress tests.
+      // encodeURIComponent was removed because it breaks headings containing +, &, or unicode.
+      "Target": options.target,
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

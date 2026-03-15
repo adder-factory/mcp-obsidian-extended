@@ -324,7 +324,7 @@ export class VaultCache implements VaultCacheInterface {
 
       if (updated > 0 || deleted > 0) {
         this.rebuildIndex();
-      this.recalcLinkCount();
+        this.recalcLinkCount();
         log("debug", `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`);
       }
     } catch (err: unknown) {

@@ -34,10 +34,10 @@
       "default": "127.0.0.1"
     },
     "port": {
-      "type": "string",
+      "type": "number",
       "title": "Obsidian Port",
       "description": "Port number for the Local REST API plugin",
-      "default": "27124"
+      "default": 27124
     },
     "tool_mode": {
       "type": "string",

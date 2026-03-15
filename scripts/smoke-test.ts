@@ -205,22 +205,21 @@ async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Pro
   // Build a fresh cache that includes the new files
   const cache = new VaultCache(client, cacheTtl);
   client.setCache(cache);
-  await cache.initialize();
+  try {
+    await cache.initialize();
 
-  // Check backlinks from B — A should link to B
-  const backlinks = cache.getBacklinks(LINK_FILE_B);
-  const hasBacklink = backlinks.some((bl) => bl.source === LINK_FILE_A);
-  if (!hasBacklink) {
-    const sources = backlinks.map((bl) => bl.source).join(", ");
-    // Clean up before throwing
+    // Check backlinks from B — A should link to B
+    const backlinks = cache.getBacklinks(LINK_FILE_B);
+    const hasBacklink = backlinks.some((bl) => bl.source === LINK_FILE_A);
+    if (!hasBacklink) {
+      const sources = backlinks.map((bl) => bl.source).join(", ");
+      throw new Error(`Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`);
+    }
+  } finally {
+    // Always stop timer and clean up, even if initialize() or assertions throw
     cache.stopAutoRefresh();
     await cleanupLinkFiles(client);
-    throw new Error(`Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`);
   }
-
-  cache.stopAutoRefresh();
-  // Clean up
-  await cleanupLinkFiles(client);
 }
 
 async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
@@ -281,7 +280,8 @@ async function main(): Promise<void> {
   let passed = 0;
   let failed = 0;
 
-  const steps: readonly Step[] = [
+  // CRUD steps are sequential — each depends on the previous one
+  const crudSteps: readonly Step[] = [
     { num: 1, name: "Status check", fn: () => step1StatusCheck(client) },
     { num: 2, name: "List vault files", fn: () => step2ListVaultFiles(client) },
     { num: 3, name: "Put test file", fn: () => step3PutTestFile(client) },
@@ -289,12 +289,19 @@ async function main(): Promise<void> {
     { num: 5, name: "Append and verify", fn: () => step5AppendAndVerify(client) },
     { num: 6, name: "Search", fn: () => step6Search(client) },
     { num: 7, name: "Delete and verify 404", fn: () => step7Delete(client) },
+  ];
+
+  // Independent steps — use their own files, run even if CRUD steps fail
+  const independentSteps: readonly Step[] = [
     { num: 8, name: "Cache check", fn: () => step8CacheCheck(client, config.cacheTtl) },
     { num: 9, name: "Backlinks test", fn: () => step9BacklinksTest(client, config.cacheTtl) },
   ];
 
+  const totalSteps = crudSteps.length + independentSteps.length;
+
   try {
-    for (const step of steps) {
+    // Run CRUD steps sequentially — stop on first failure
+    for (const step of crudSteps) {
       try {
         await step.fn();
         pass(step.num, step.name);
@@ -302,8 +309,19 @@ async function main(): Promise<void> {
       } catch (err: unknown) {
         fail(step.num, step.name, err);
         failed++;
-        // Stop on first failure — later steps depend on earlier ones
         break;
+      }
+    }
+
+    // Always run independent steps regardless of CRUD outcome
+    for (const step of independentSteps) {
+      try {
+        await step.fn();
+        pass(step.num, step.name);
+        passed++;
+      } catch (err: unknown) {
+        fail(step.num, step.name, err);
+        failed++;
       }
     }
   } finally {
@@ -314,7 +332,7 @@ async function main(): Promise<void> {
   }
 
   write("");
-  write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(steps.length)} steps`);
+  write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(totalSteps)} steps`);
   write("");
   // Informational note — not counted as a test step
   write("  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).");

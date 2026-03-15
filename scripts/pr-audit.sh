@@ -9,6 +9,7 @@
 #   --resolve            Auto-resolve outdated review threads via GraphQL
 #   --json               Output structured JSON summary (implies --quick)
 #   --verify-resolved    Check resolved threads for premature auto-resolution
+#   --retrigger          Post @coderabbitai review / @greptile review when stale
 #
 # Exit 0 = ready to merge, Exit 1 = open items remain
 set -euo pipefail
@@ -22,6 +23,7 @@ FIX_STALE=false
 AUTO_RESOLVE=false
 JSON_OUTPUT=false
 VERIFY_RESOLVED=false
+RETRIGGER=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -30,11 +32,15 @@ for arg in "$@"; do
     --resolve) AUTO_RESOLVE=true ;;
     --json) JSON_OUTPUT=true; QUICK=true ;;
     --verify-resolved) VERIFY_RESOLVED=true ;;
+    --retrigger) RETRIGGER=true ;;
     [0-9]*) PR="$arg" ;;
   esac
 done
 
 START_TIME=$(date +%s)
+AUDIT_STATE_DIR="$HOME/.cache/pr-audit"
+AUDIT_STATE_FILE="$AUDIT_STATE_DIR/${OWNER}_${NAME}_pr${PR}.json"
+mkdir -p "$AUDIT_STATE_DIR" 2>/dev/null || true
 
 # Counters
 unresolved_threads=0
@@ -51,6 +57,10 @@ checks_in_progress=0
 merge_blocked=0
 human_comments=0
 cr_review_issues=0
+unchecked_tasks=0
+branch_behind=0
+greptile_low_confidence=0
+acknowledged_threads=0
 
 # Current HEAD
 HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -67,11 +77,11 @@ log "============================================================"
 # ================================================================
 # 1. Unresolved review threads (GraphQL — ground truth)
 #    Paginated: fetches all threads even if >100
+#    Also fetches reply count to detect acknowledged threads
 # ================================================================
 log ""
 log "=== 1. UNRESOLVED REVIEW THREADS ==="
 
-# Paginated GraphQL fetch via a Python helper that handles cursor-based pagination
 THREADS_FILE=$(mktemp)
 trap 'rm -f "$THREADS_FILE"' EXIT
 
@@ -94,7 +104,8 @@ while True:
               id
               isResolved
               isOutdated
-              comments(first:1) {
+              comments(first:10) {
+                totalCount
                 nodes {
                   author { login }
                   body
@@ -133,7 +144,7 @@ json.dump(all_threads, open('$THREADS_FILE', 'w'))
 
 ALL_THREADS=$(cat "$THREADS_FILE" 2>/dev/null || echo "[]")
 
-# Parse thread counts and details
+# Parse thread counts — also count CR-authored unresolved threads for deduplication
 thread_analysis=$(echo "$ALL_THREADS" | python3 -c "
 import json, sys
 threads = json.load(sys.stdin)
@@ -142,21 +153,46 @@ resolved = sum(1 for t in threads if t['isResolved'])
 unresolved = sum(1 for t in threads if not t['isResolved'])
 unresolved_current = sum(1 for t in threads if not t['isResolved'] and not t['isOutdated'])
 unresolved_outdated = sum(1 for t in threads if not t['isResolved'] and t['isOutdated'])
-print(f'total={total} resolved={resolved} unresolved={unresolved} unresolved_current={unresolved_current} unresolved_outdated={unresolved_outdated}')
-" 2>/dev/null || echo "total=0 resolved=0 unresolved=0 unresolved_current=0 unresolved_outdated=0")
+
+# Count CR-authored unresolved threads (for dedup with review body counts)
+cr_unresolved = sum(1 for t in threads if not t['isResolved']
+    and t['comments']['nodes']
+    and t['comments']['nodes'][0].get('author',{}).get('login','') == 'coderabbitai')
+
+# Detect acknowledged threads: unresolved but has a reply containing
+# 'won\'t fix', 'intentional', 'by design', 'acknowledged', 'wontfix'
+ack_keywords = ['won\\'t fix', 'wontfix', 'intentional', 'by design', 'acknowledged', 'nit: accepted', 'not applicable']
+acknowledged = 0
+for t in threads:
+    if t['isResolved']:
+        continue
+    comments = t.get('comments', {}).get('nodes', [])
+    if len(comments) > 1:
+        for reply in comments[1:]:
+            body_lower = reply.get('body', '').lower()
+            if any(kw in body_lower for kw in ack_keywords):
+                acknowledged += 1
+                break
+
+print(f'total={total} resolved={resolved} unresolved={unresolved} unresolved_current={unresolved_current} unresolved_outdated={unresolved_outdated} cr_unresolved={cr_unresolved} acknowledged={acknowledged}')
+" 2>/dev/null || echo "total=0 resolved=0 unresolved=0 unresolved_current=0 unresolved_outdated=0 cr_unresolved=0 acknowledged=0")
 
 eval "$thread_analysis"
 unresolved_threads=$unresolved
+acknowledged_threads=$acknowledged
 
 log "Total threads: $total | Resolved: $resolved | Unresolved: $unresolved (current: $unresolved_current, outdated: $unresolved_outdated)"
+if [ "$acknowledged" -gt 0 ]; then
+  log "  Acknowledged (replied won't fix/intentional): $acknowledged (still counted — resolve to clear)"
+fi
 
-# Show unresolved thread details with commit info
+# Show unresolved thread details
 UNRESOLVED_DETAILS=""
 if [ "$unresolved" -gt 0 ]; then
   UNRESOLVED_DETAILS=$(echo "$ALL_THREADS" | python3 -c "
 import json, sys
 threads = json.load(sys.stdin)
-items = []
+ack_keywords = ['won\\'t fix', 'wontfix', 'intentional', 'by design', 'acknowledged', 'nit: accepted', 'not applicable']
 for t in threads:
     if not t['isResolved']:
         c = t['comments']['nodes'][0] if t['comments']['nodes'] else {}
@@ -167,7 +203,16 @@ for t in threads:
         commit = c.get('originalCommit', {})
         commit_sha = (commit.get('oid', '?')[:7]) if commit else '?'
         outdated = '(outdated) ' if t['isOutdated'] else ''
-        print(f'  {outdated}[{author}] {path}:{line}  (commit: {commit_sha})')
+        # Check for acknowledgement replies
+        ack = ''
+        comments = t.get('comments', {}).get('nodes', [])
+        if len(comments) > 1:
+            for reply in comments[1:]:
+                body_lower = reply.get('body', '').lower()
+                if any(kw in body_lower for kw in ack_keywords):
+                    ack = ' [ACKNOWLEDGED]'
+                    break
+        print(f'  {outdated}[{author}] {path}:{line}  (commit: {commit_sha}){ack}')
         print(f'    {body}')
         print()
 " 2>/dev/null || true)
@@ -204,11 +249,8 @@ if [ "$VERIFY_RESOLVED" = true ]; then
   log ""
   log "=== 1b. VERIFY RESOLVED THREADS ==="
 
-  # For each resolved bot thread, extract the problematic code pattern from the
-  # suggested diff ("-" lines) and check if it still exists in the current file.
-  # If it does, the thread was resolved prematurely.
   VERIFY_OUTPUT=$(echo "$ALL_THREADS" | python3 -c "
-import json, sys, subprocess, re, os
+import json, sys, re, os
 
 threads = json.load(sys.stdin)
 suspect_count = 0
@@ -216,29 +258,20 @@ suspect_count = 0
 for t in threads:
     if not t['isResolved']:
         continue
-
     comments = t.get('comments', {}).get('nodes', [])
     if not comments:
         continue
-
     c = comments[0]
     author = c.get('author', {}).get('login', '')
-    # Only check bot comments — human resolutions are intentional
     if 'bot' not in author and 'apps' not in author:
         continue
-
     path = c.get('path', '')
     if not path:
         continue
-
     body = c.get('body', '')
-
-    # Must have 'Addressed' marker — indicates bot auto-resolved
     if 'Addressed' not in body and 'addressed' not in body:
         continue
 
-    # Extract the removed lines from suggested diffs (lines starting with -)
-    # These are the patterns that should have been changed
     diff_patterns = []
     in_diff = False
     for line in body.split('\n'):
@@ -250,25 +283,18 @@ for t in threads:
             in_diff = False
             continue
         if in_diff and stripped.startswith('-') and not stripped.startswith('---'):
-            # Extract the code that should have been removed
             code = stripped[1:].strip()
-            if len(code) > 10:  # skip trivial lines
+            if len(code) > 10:
                 diff_patterns.append(code)
 
     if not diff_patterns:
-        # No diff to verify — also check for quoted code blocks that describe the issue
-        # Look for backtick-quoted code snippets the thread says to change
         code_refs = re.findall(r'\x60([^\x60]{15,80})\x60', body)
-        # Filter to ones that look like code (contain parens, dots, or keywords)
         diff_patterns = [r for r in code_refs if any(c in r for c in '(){}[].\$=')][:3]
 
     if not diff_patterns:
         continue
-
-    # Check if the pattern still exists in the current file
     if not os.path.isfile(path):
         continue
-
     try:
         with open(path) as f:
             current = f.read()
@@ -277,7 +303,6 @@ for t in threads:
 
     still_present = []
     for pattern in diff_patterns:
-        # Normalize whitespace for comparison
         normalized = ' '.join(pattern.split())
         current_normalized = ' '.join(current.split())
         if normalized in current_normalized:
@@ -287,7 +312,6 @@ for t in threads:
         suspect_count += 1
         orig_commit = c.get('originalCommit', {})
         orig_sha = (orig_commit.get('oid', '?')[:7]) if orig_commit else '?'
-        # Extract the issue title from body
         title_match = re.search(r'\*\*(.+?)\*\*', body)
         title = title_match.group(1) if title_match else body[:80].replace('\n', ' ')
         print(f'  SUSPECT [{author}] {path}:{c.get(\"line\", \"?\")}  (commit: {orig_sha})')
@@ -298,33 +322,31 @@ for t in threads:
 print(f'SUSPECT_COUNT={suspect_count}')
 " 2>/dev/null || echo "SUSPECT_COUNT=0")
 
-  # Extract count from output (last line)
   suspect_count_line=$(echo "$VERIFY_OUTPUT" | tail -1)
   suspect_resolved=$(echo "$suspect_count_line" | sed -n 's/SUSPECT_COUNT=//p')
   suspect_resolved="${suspect_resolved:-0}"
 
-  # Print details (everything except the last SUSPECT_COUNT line)
   if [ "$JSON_OUTPUT" = false ]; then
     echo "$VERIFY_OUTPUT" | sed '$d'
   fi
 
   if [ "$suspect_resolved" -gt 0 ]; then
     log "  Found $suspect_resolved suspect auto-resolved thread(s)"
-    log "  These were marked resolved but the flagged code still exists"
   else
     log "  No suspect auto-resolutions found"
   fi
 fi
 
 # ================================================================
-# 2. PR merge status — approvals, mergeability, conflicts
+# 2. PR merge status — approvals, mergeability, conflicts, branch freshness
 # ================================================================
 log ""
 log "=== 2. PR MERGE STATUS ==="
 
-PR_DATA=$(gh api "repos/$REPO/pulls/$PR" --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base: .base.ref}' 2>/dev/null || echo '{}')
+PR_DATA=$(gh api "repos/$REPO/pulls/$PR" --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base: .base.ref, body: .body}' 2>/dev/null || echo '{}')
 mergeable_state=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('mergeable_state','unknown'))" 2>/dev/null || echo "unknown")
 mergeable=$(echo "$PR_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('mergeable') else 'false')" 2>/dev/null || echo "unknown")
+base_branch=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base','main'))" 2>/dev/null || echo "main")
 
 # Count approvals
 approval_count=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "0")
@@ -343,6 +365,39 @@ if [ "$mergeable" = "false" ]; then
 elif [ "$mergeable_state" = "blocked" ] && [ "$approval_count" -gt 0 ]; then
   merge_blocked=1
   log "  WARNING: PR is blocked (check branch protection rules)"
+fi
+
+# Branch freshness — check if main has commits ahead of us
+git fetch origin "$base_branch" --quiet 2>/dev/null || true
+commits_behind=$(git rev-list --count "HEAD..origin/$base_branch" 2>/dev/null || echo "0")
+if [ "$commits_behind" -gt 0 ]; then
+  branch_behind=1
+  log "  WARNING: Branch is $commits_behind commit(s) behind origin/$base_branch — consider rebasing"
+else
+  log "  Branch is up to date with origin/$base_branch"
+fi
+
+# PR body checklist — count unchecked items
+unchecked_tasks=$(echo "$PR_DATA" | python3 -c "
+import json, sys, re
+d = json.load(sys.stdin)
+body = d.get('body', '') or ''
+unchecked = len(re.findall(r'- \[ \]', body))
+checked = len(re.findall(r'- \[x\]', body, re.IGNORECASE))
+total = unchecked + checked
+if total > 0:
+    print(f'UNCHECKED={unchecked} TOTAL={total}')
+else:
+    print('UNCHECKED=0 TOTAL=0')
+" 2>/dev/null || echo "UNCHECKED=0 TOTAL=0")
+
+eval "$unchecked_tasks"
+unchecked_tasks=$UNCHECKED
+if [ "$TOTAL" -gt 0 ]; then
+  log "  PR checklist: $((TOTAL - UNCHECKED))/$TOTAL complete"
+  if [ "$UNCHECKED" -gt 0 ]; then
+    log "  WARNING: $UNCHECKED unchecked task(s) in PR description"
+  fi
 fi
 
 # ================================================================
@@ -435,6 +490,7 @@ fi
 
 # ================================================================
 # 6. CodeRabbitAI latest review summary
+#    Deduplicates review body counts against thread counts
 # ================================================================
 log ""
 log "=== 6. CODERABBITAI LATEST REVIEW ==="
@@ -461,20 +517,22 @@ if [ "$cr_is_stale" = true ]; then
   log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks (not counted — stale)"
   stale_warnings=$((stale_warnings + 1))
 else
-  # Count all review body issues as blockers when current:
-  # - Actionable = new inline comments (already tracked as threads, but may not be yet)
-  # - Duplicates = re-flagged issues from prior rounds (fix was incomplete)
-  # - Nitpicks = per CLAUDE.md, ALL comments must be resolved including nitpicks
-  cr_review_issues=$((cr_actionable + cr_duplicates + cr_nitpicks))
+  # Deduplicate: CR review body counts overlap with unresolved threads.
+  # Actionable comments become threads; duplicates/nitpicks may or may not.
+  # Subtract CR-authored unresolved threads to avoid double-counting.
+  cr_body_total=$((cr_actionable + cr_duplicates + cr_nitpicks))
+  cr_review_issues=$((cr_body_total - cr_unresolved))
+  if [ "$cr_review_issues" -lt 0 ]; then cr_review_issues=0; fi
   log "  Actionable: $cr_actionable | Duplicates: $cr_duplicates | Nitpicks: $cr_nitpicks"
+  log "  CR unresolved threads (already in thread count): $cr_unresolved"
   if [ "$cr_review_issues" -gt 0 ]; then
-    log "  Total review body issues: $cr_review_issues (counted as blockers)"
+    log "  Review-body-only issues (not yet threads): $cr_review_issues"
   fi
 fi
 
 # ================================================================
 # 7. Greptile summary
-#    Tracks both Fix-All count AND inline thread overlap
+#    Tracks Fix-All count, inline thread overlap, confidence
 # ================================================================
 log ""
 log "=== 7. GREPTILE SUMMARY ==="
@@ -505,6 +563,10 @@ count = sum(1 for t in threads if not t['isResolved']
 print(count)
 " 2>/dev/null || echo "0")
 
+# Confidence score
+greptile_confidence=$(echo "$GREPTILE" | sed -n 's/.*Confidence Score: \([0-5]\)\/5.*/\1/p' | head -1)
+greptile_confidence="${greptile_confidence:-0}"
+
 if [ "$greptile_is_stale" = true ]; then
   log "STALE — reviewed ${greptile_reviewed_sha}, HEAD is ${HEAD_SHA}"
   log "  Fix-All count: $greptile_fixes (not counted — stale)"
@@ -514,9 +576,6 @@ if [ "$greptile_is_stale" = true ]; then
 else
   log "Fix-All count: $greptile_fixes"
   log "  Inline threads (in thread count above): $greptile_inline_threads"
-  # Deduplicate: if Fix-All items have corresponding unresolved inline threads,
-  # don't double-count. The thread count is ground truth; only add Fix-All items
-  # that exceed the inline thread count (summary-only issues).
   greptile_summary_only=$((greptile_fixes - greptile_inline_threads))
   if [ "$greptile_summary_only" -lt 0 ]; then greptile_summary_only=0; fi
   greptile_fixes=$greptile_summary_only
@@ -539,7 +598,33 @@ if idx>=0 and end>=0:
 " 2>/dev/null || true
 fi
 log "$(echo "$GREPTILE" | grep -o 'Last reviewed commit: [a-f0-9]*' | sed 's/^/  /' || true)"
-log "$(echo "$GREPTILE" | sed -n 's/.*Confidence Score: \([0-5]\/5\).*/  Confidence: \1/p' || true)"
+
+# Confidence warning
+if [ "$greptile_confidence" -gt 0 ] && [ "$greptile_confidence" -le 2 ]; then
+  greptile_low_confidence=1
+  log "  Confidence: $greptile_confidence/5 — LOW (review may be unreliable, consider re-triggering)"
+elif [ "$greptile_confidence" -gt 0 ]; then
+  log "  Confidence: $greptile_confidence/5"
+fi
+
+# ================================================================
+# 7b. Auto-retrigger stale reviews
+# ================================================================
+if [ "$RETRIGGER" = true ]; then
+  retriggered=0
+  if [ "$cr_is_stale" = true ]; then
+    log ""
+    log "  Retriggering CodeRabbitAI review..."
+    gh api "repos/$REPO/issues/$PR/comments" -f body="@coderabbitai review" >/dev/null 2>&1 && retriggered=$((retriggered + 1)) || log "    Failed to post retrigger comment"
+  fi
+  if [ "$greptile_is_stale" = true ]; then
+    log "  Retriggering Greptile review..."
+    gh api "repos/$REPO/issues/$PR/comments" -f body="@greptile review" >/dev/null 2>&1 && retriggered=$((retriggered + 1)) || log "    Failed to post retrigger comment"
+  fi
+  if [ "$retriggered" -gt 0 ]; then
+    log "  Retriggered $retriggered review(s) — re-run audit after bots respond"
+  fi
+fi
 
 # ================================================================
 # 8. Sonar status
@@ -547,16 +632,10 @@ log "$(echo "$GREPTILE" | sed -n 's/.*Confidence Score: \([0-5]\/5\).*/  Confide
 log ""
 log "=== 8. SONAR STATUS ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Safe .env parsing — only extract specific keys, never execute the file
 ENV_FILE="$SCRIPT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then
   while IFS='=' read -r key value; do
-    # Strip quotes and carriage returns
-    value="${value%$'\r'}"
-    value="${value#\"}"
-    value="${value%\"}"
-    value="${value#\'}"
-    value="${value%\'}"
+    value="${value%$'\r'}"; value="${value#\"}"; value="${value%\"}"; value="${value#\'}"; value="${value%\'}"
     case "$key" in
       SONAR_LOGIN) SONAR_LOGIN="$value" ;;
       SONAR_PASSWORD) SONAR_PASSWORD="$value" ;;
@@ -566,11 +645,9 @@ fi
 SONAR_LOGIN="${SONAR_LOGIN:-}"
 SONAR_PASSWORD="${SONAR_PASSWORD:-}"
 sonar_stale=false
-sonar_coverage=""
 if [ -z "$SONAR_LOGIN" ] || [ -z "$SONAR_PASSWORD" ]; then
   log "Sonar credentials not set — skipping"
 else
-  # Check scan freshness
   sonar_version=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/project_analyses/search?project=mcp-obsidian-extended&ps=1" 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
@@ -584,29 +661,20 @@ else: print('unknown')
     if [ "$FIX_STALE" = true ]; then
       log "STALE — triggering fresh scan..."
       npm run sonar --silent 2>/dev/null || log "  Sonar scan failed"
-      # Re-check version after scan
       sonar_version=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/project_analyses/search?project=mcp-obsidian-extended&ps=1" 2>/dev/null | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-a=d.get('analyses',[])
-if a: print(a[0].get('revision','unknown')[:7])
-else: print('unknown')
+import json,sys; d=json.load(sys.stdin); a=d.get('analyses',[]); print(a[0].get('revision','unknown')[:7] if a else 'unknown')
 " 2>/dev/null || echo "unknown")
       if echo "$HEAD_SHA" | grep -q "^${sonar_version}"; then
-        sonar_stale=false
-        log "  Scan complete — now current"
+        sonar_stale=false; log "  Scan complete — now current"
       else
         log "  Scan still stale after re-run"
       fi
     else
       log "STALE — last scan on ${sonar_version}, HEAD is ${HEAD_SHA} (use --fix-stale to re-scan)"
     fi
-    if [ "$sonar_stale" = true ]; then
-      stale_warnings=$((stale_warnings + 1))
-    fi
+    if [ "$sonar_stale" = true ]; then stale_warnings=$((stale_warnings + 1)); fi
   fi
 
-  # Issues
   sonar_issues=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=1" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['total'])" 2>/dev/null || echo "0")
   log "Open issues: $sonar_issues"
   if [ "$sonar_issues" -gt 0 ] && [ "$JSON_OUTPUT" = false ]; then
@@ -618,7 +686,6 @@ for i in d['issues']:
 " 2>/dev/null || true
   fi
 
-  # Metrics
   if [ "$JSON_OUTPUT" = false ]; then
     curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots" 2>/dev/null | python3 -c "
 import json,sys
@@ -628,12 +695,10 @@ for m in d['component']['measures']:
 " 2>/dev/null || log "  Could not fetch metrics"
   fi
 
-  # Coverage
   log ""
   log "=== 9. CODE COVERAGE (Sonar) ==="
-  sonar_coverage=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=coverage,line_coverage,branch_coverage,lines_to_cover,uncovered_lines" 2>/dev/null || echo "")
-  if [ "$JSON_OUTPUT" = false ] && [ -n "$sonar_coverage" ]; then
-    echo "$sonar_coverage" | python3 -c "
+  if [ "$JSON_OUTPUT" = false ]; then
+    curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=coverage,line_coverage,branch_coverage,lines_to_cover,uncovered_lines" 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 for m in d['component']['measures']:
@@ -651,38 +716,22 @@ if [ "$QUICK" = true ]; then
 else
   log "=== 10. LOCAL VERIFICATION ==="
 
-  # Build
-  logn "  build:     "
-  if npm run build --silent 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  build:     "; if npm run build --silent 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  lint:      "; if npm run lint --silent 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  coverage:  "; if npm run test:coverage --silent >/dev/null 2>&1; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  audit:     "; if npm audit --omit=dev 2>/dev/null | grep -q "found 0 vulnerabilities"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
 
-  # Lint
-  logn "  lint:      "
-  if npm run lint --silent 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
-
-  # Tests + coverage thresholds
-  logn "  coverage:  "
-  if npm run test:coverage --silent >/dev/null 2>&1; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
-
-  # Audit
-  logn "  audit:     "
-  if npm audit --omit=dev 2>/dev/null | grep -q "found 0 vulnerabilities"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
-
-  # Circular deps
   logn "  circular:  "
   madge_out=$(npx madge --circular --extensions ts src/ 2>&1 || true)
   if echo "$madge_out" | grep -q "No circular"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
 
-  # Knip (unused exports/files) — allow Phase 2 expected unused
   logn "  knip:      "
   knip_out=$(npx knip 2>&1 || true)
-  knip_issues=$(echo "$knip_out" | grep -c "Unused" || echo "0")
-  # Phase 1: tools/granular.ts and tools/consolidated.ts are expected unused
   knip_unexpected=$(echo "$knip_out" | grep "Unused" | grep -cv "tools/granular\|tools/consolidated\|Unlisted binaries" || echo "0")
   if [ "$knip_unexpected" -eq 0 ]; then log "PASS"; else log "FAIL ($knip_unexpected unexpected)"; verify_failures=$((verify_failures + 1)); fi
 
-  # Semgrep
-  logn "  semgrep:   "
-  if npx semgrep --config auto src/ --quiet 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  semgrep:   "; if npx semgrep --config auto src/ --quiet 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  snyk:      "; if npx snyk test --severity-threshold=high 2>/dev/null | grep -q "found 0"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
 fi
 
 # ================================================================
@@ -690,7 +739,7 @@ fi
 # ================================================================
 ELAPSED=$(( $(date +%s) - START_TIME ))
 
-TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked + cr_review_issues))
+TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked + cr_review_issues + unchecked_tasks + branch_behind))
 
 if [ "$TOTAL_ISSUES" -gt 0 ]; then
   RESULT="NOT ready to merge"
@@ -701,14 +750,59 @@ elif [ "$stale_warnings" -gt 0 ]; then
 elif [ "$checks_in_progress" -gt 0 ]; then
   RESULT="No open items, but $checks_in_progress check(s) still running — wait for completion"
   EXIT_CODE=1
+elif [ "$greptile_low_confidence" -gt 0 ]; then
+  RESULT="No open items, but Greptile confidence is low ($greptile_confidence/5) — consider re-triggering"
+  EXIT_CODE=1
 else
   RESULT="All clear — ready to merge"
   EXIT_CODE=0
 fi
 
+# --- Save state for diff on next run ---
+CURRENT_STATE_JSON=$(python3 -c "
+import json
+print(json.dumps({
+    'head': '$HEAD_SHA',
+    'unresolved_threads': $unresolved_threads,
+    'cr_review_issues': $cr_review_issues,
+    'greptile_fixes': $greptile_fixes,
+    'sonar_issues': $sonar_issues,
+    'verify_failures': $verify_failures,
+    'total_issues': $TOTAL_ISSUES,
+}))
+" 2>/dev/null || echo '{}')
+
+# Load previous state and compute diff
+DIFF_SUMMARY=""
+if [ -f "$AUDIT_STATE_FILE" ]; then
+  DIFF_SUMMARY=$(python3 -c "
+import json, sys
+try:
+    prev = json.load(open('$AUDIT_STATE_FILE'))
+    curr = json.loads('$CURRENT_STATE_JSON')
+    changes = []
+    for key in ['unresolved_threads', 'cr_review_issues', 'greptile_fixes', 'sonar_issues', 'verify_failures', 'total_issues']:
+        p = prev.get(key, 0)
+        c = curr.get(key, 0)
+        if p != c:
+            delta = c - p
+            arrow = '+' if delta > 0 else ''
+            changes.append(f'  {key}: {p} -> {c} ({arrow}{delta})')
+    if changes:
+        print('Changes since last audit (HEAD: ' + prev.get('head','?') + '):')
+        for ch in changes:
+            print(ch)
+    else:
+        print('No changes since last audit')
+except:
+    print('(no previous audit to compare)')
+" 2>/dev/null || echo "(no previous audit to compare)")
+fi
+
+echo "$CURRENT_STATE_JSON" > "$AUDIT_STATE_FILE" 2>/dev/null || true
+
 # --- JSON output ---
 if [ "$JSON_OUTPUT" = true ]; then
-  # Collect unresolved thread details for JSON — write to temp file to avoid quoting issues
   DETAILS_FILE=$(mktemp)
   echo "$ALL_THREADS" | python3 -c "
 import json, sys
@@ -725,6 +819,7 @@ for t in threads:
             'body_preview': body,
             'commit': (c.get('originalCommit', {}) or {}).get('oid', '?')[:7],
             'outdated': t.get('isOutdated', False),
+            'reply_count': t.get('comments',{}).get('totalCount',1) - 1,
         })
 json.dump(details, open('$DETAILS_FILE', 'w'))
 " 2>/dev/null || echo "[]" > "$DETAILS_FILE"
@@ -741,18 +836,22 @@ data = {
     'exit_code': $EXIT_CODE,
     'counts': {
         'unresolved_threads': $unresolved_threads,
+        'cr_review_issues': $cr_review_issues,
         'greptile_fixes': $greptile_fixes,
         'sonar_issues': $sonar_issues,
         'changes_requested': $changes_requested,
         'verify_failures': $verify_failures,
         'stale_warnings': $stale_warnings,
         'suspect_resolved': $suspect_resolved,
-        'cr_review_issues': $cr_review_issues,
         'missing_approvals': $missing_approvals,
         'check_run_failures': $check_run_failures,
         'checks_in_progress': $checks_in_progress,
         'merge_blocked': $merge_blocked,
         'human_comments': $human_comments,
+        'unchecked_tasks': $unchecked_tasks,
+        'branch_behind': $branch_behind,
+        'acknowledged_threads': $acknowledged_threads,
+        'greptile_low_confidence': $greptile_low_confidence,
         'total_issues': $TOTAL_ISSUES,
     },
     'staleness': {
@@ -764,7 +863,9 @@ data = {
         'approvals': $approval_count,
         'mergeable': $( [ "$mergeable" = "true" ] && echo 'True' || echo 'False'),
         'mergeable_state': '$mergeable_state',
+        'branch_behind': $commits_behind,
     },
+    'greptile_confidence': $greptile_confidence,
     'unresolved_thread_details': details,
     'auto_resolved': $resolved_count,
 }
@@ -780,7 +881,7 @@ log "============================================================"
 log "SUMMARY  (${ELAPSED}s elapsed)"
 log "============================================================"
 log "  Unresolved review threads:             $unresolved_threads"
-log "  CR review body issues (act+dup+nit):   $cr_review_issues"
+log "  CR review body issues (deduped):       $cr_review_issues"
 log "  Suspect auto-resolved threads:         $suspect_resolved"
 log "  Greptile Fix-All items (summary-only): $greptile_fixes"
 log "  Sonar open issues:                     $sonar_issues"
@@ -788,17 +889,29 @@ log "  CHANGES_REQUESTED reviews:             $changes_requested"
 log "  Missing approvals:                     $missing_approvals"
 log "  Check run failures:                    $check_run_failures"
 log "  Merge blocked:                         $merge_blocked"
+log "  PR checklist unchecked:                $unchecked_tasks"
+log "  Branch behind base:                    $branch_behind"
 log "  Human comments (review):               $human_comments"
 log "  Local verification failures:           $verify_failures"
+if [ "$acknowledged_threads" -gt 0 ]; then
+  log "  Acknowledged threads (info):           $acknowledged_threads"
+fi
 if [ "$stale_warnings" -gt 0 ]; then
   log "  Stale review warnings:                 $stale_warnings (bots haven't re-reviewed HEAD)"
 fi
 if [ "$checks_in_progress" -gt 0 ]; then
   log "  Checks in progress:                    $checks_in_progress (wait for completion)"
 fi
+if [ "$greptile_low_confidence" -gt 0 ]; then
+  log "  Greptile low confidence:               ${greptile_confidence}/5 (review may be unreliable)"
+fi
 if [ "$resolved_count" -gt 0 ]; then
   log "  Auto-resolved outdated threads:        $resolved_count"
 fi
+
+log ""
+log "--- DIFF FROM LAST AUDIT ---"
+log "$DIFF_SUMMARY"
 
 log ""
 log "RESULT: $RESULT"

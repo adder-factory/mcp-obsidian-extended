@@ -17,7 +17,7 @@ set -euo pipefail
 REPO="adder-factory/mcp-obsidian-extended"
 OWNER="adder-factory"
 NAME="mcp-obsidian-extended"
-PR=1
+PR=""
 QUICK=false
 FIX_STALE=false
 AUTO_RESOLVE=false
@@ -36,6 +36,26 @@ for arg in "$@"; do
     [0-9]*) PR="$arg" ;;
   esac
 done
+
+# Auto-detect PR from current branch if not specified
+if [[ -z "$PR" ]]; then
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [[ -n "$CURRENT_BRANCH" && "$CURRENT_BRANCH" != "main" ]]; then
+    GH_OUTPUT=$(gh pr list --repo "$REPO" --head "$CURRENT_BRANCH" --state open --json number --jq '.[0].number' 2>&1)
+    GH_EXIT=$?
+    if [[ $GH_EXIT -ne 0 ]]; then
+      echo "ERROR: GitHub API call failed (exit $GH_EXIT): $GH_OUTPUT" >&2
+      echo "Check authentication: gh auth status" >&2
+      exit 1
+    fi
+    PR="$GH_OUTPUT"
+  fi
+  if [[ -z "$PR" || "$PR" == "null" ]]; then
+    echo "ERROR: No open PR found for branch '${CURRENT_BRANCH:-<detached>}'." >&2
+    echo "Usage: bash scripts/pr-audit.sh [PR_NUMBER] [FLAGS]" >&2
+    exit 1
+  fi
+fi
 
 START_TIME=$(date +%s)
 AUDIT_STATE_DIR="$HOME/.cache/pr-audit"
@@ -624,6 +644,7 @@ else
 fi
 
 if [ "$greptile_fixes" -gt 0 ]; then
+  # Extract issues from Fix-All URL-encoded prompt
   echo "$GREPTILE" | python3 -c "
 import sys,re,urllib.parse
 t=sys.stdin.read()
@@ -635,6 +656,27 @@ if idx>=0 and end>=0:
         if l.startswith('### Issue') or (l.startswith('**') and l.endswith('**')):
             print(f'  {l[:200]}')
 " 2>/dev/null || true
+fi
+
+# Extract summary-body findings (bullet points with **bold** markers not in threads)
+GREPTILE_BODY_FINDINGS=$(echo "$GREPTILE" | python3 -c "
+import sys
+t = sys.stdin.read()
+findings = []
+for line in t.split('\n'):
+    stripped = line.strip()
+    # Match '- **finding title**:' or '  - **finding**' patterns in body text
+    if stripped.startswith('- **') and '**' in stripped[4:]:
+        findings.append(stripped[:200])
+    elif stripped.startswith('**\`') and '**' in stripped[3:]:
+        findings.append(stripped[:200])
+if findings:
+    print('  Summary-body findings:')
+    for f in findings:
+        print(f'    {f}')
+" 2>/dev/null || true)
+if [ -n "$GREPTILE_BODY_FINDINGS" ]; then
+  log "$GREPTILE_BODY_FINDINGS"
 fi
 log "$(echo "$GREPTILE" | grep -o 'Last reviewed commit: [a-f0-9]*' | sed 's/^/  /' || true)"
 

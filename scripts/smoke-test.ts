@@ -50,11 +50,41 @@ function loadDotenv(): void {
     // Strip surrounding quotes if present
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
+    } else {
+      // Strip inline comments (only for unquoted values)
+      const commentIndex = value.indexOf(" #");
+      if (commentIndex !== -1) {
+        value = value.slice(0, commentIndex).trim();
+      }
     }
     // Only set if not already in env (env vars take precedence)
     if (process.env[key] === undefined) {
       process.env[key] = value;
     }
+  }
+}
+
+// --- Safety Guard ---
+
+/**
+ * Checks that the vault has fewer than a threshold of files, acting as a
+ * guard against accidentally running destructive smoke tests on a real vault.
+ * The dedicated mcp-test-vault should have very few files.
+ * Can be bypassed with SMOKE_TEST_CONFIRM=true for larger test vaults.
+ */
+const VAULT_FILE_LIMIT = 50;
+
+async function guardTestVault(client: ObsidianClient): Promise<void> {
+  if (process.env["SMOKE_TEST_CONFIRM"] === "true") {
+    return;
+  }
+  const { files } = await client.listFilesInVault();
+  if (files.length > VAULT_FILE_LIMIT) {
+    throw new Error(
+      `Vault has ${String(files.length)} files (limit: ${String(VAULT_FILE_LIMIT)}). ` +
+      "This looks like a real vault, not a test vault. " +
+      "Set SMOKE_TEST_CONFIRM=true to override this safety check.",
+    );
   }
 }
 
@@ -140,7 +170,11 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
   }
 }
 
+const CACHE_SEED_FILE = "_smoke_cache_seed.md";
+
 async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promise<void> {
+  // Seed a note to guarantee the cache has at least one entry, even on an empty vault
+  await client.putContent(CACHE_SEED_FILE, "# Cache Seed\n\nEnsures cache is non-empty for testing.\n");
   const cache = new VaultCache(client, cacheTtl);
   client.setCache(cache);
   await cache.initialize();
@@ -149,6 +183,8 @@ async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promis
   }
   write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
   cache.stopAutoRefresh();
+  // Clean up seed file
+  try { await client.deleteFile(CACHE_SEED_FILE); } catch { /* ignore */ }
 }
 
 async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Promise<void> {
@@ -182,15 +218,11 @@ async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
   try { await client.deleteFile(LINK_FILE_B); } catch { /* ignore */ }
 }
 
-function step10ModeVerification(): void {
-  write("    (Manual check: run with TOOL_MODE=granular to verify 38 tools, TOOL_MODE=consolidated for 11)");
-}
-
 // --- Cleanup ---
 
 async function cleanup(client: ObsidianClient): Promise<void> {
   // Best-effort removal of all test artifacts
-  const testFiles = [TEST_FILE, LINK_FILE_A, LINK_FILE_B];
+  const testFiles = [TEST_FILE, LINK_FILE_A, LINK_FILE_B, CACHE_SEED_FILE];
   for (const file of testFiles) {
     try {
       await client.deleteFile(file);
@@ -218,6 +250,15 @@ async function main(): Promise<void> {
   }
 
   const client = new ObsidianClient(config);
+
+  // Safety guard: refuse to run on vaults that look like real user vaults
+  try {
+    await guardTestVault(client);
+  } catch (err: unknown) {
+    write(`[error] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
   let passed = 0;
   let failed = 0;
 
@@ -237,7 +278,6 @@ async function main(): Promise<void> {
     { num: 7, name: "Delete and verify 404", fn: () => step7Delete(client) },
     { num: 8, name: "Cache check", fn: () => step8CacheCheck(client, config.cacheTtl) },
     { num: 9, name: "Backlinks test", fn: () => step9BacklinksTest(client, config.cacheTtl) },
-    { num: 10, name: "Mode verification", fn: () => step10ModeVerification() },
   ];
 
   try {
@@ -262,6 +302,9 @@ async function main(): Promise<void> {
 
   write("");
   write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(steps.length)} steps`);
+  write("");
+  // Informational note — not counted as a test step
+  write("  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).");
   write("");
 
   process.exit(failed > 0 ? 1 : 0);

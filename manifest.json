@@ -12,6 +12,8 @@
       "args": ["${__dirname}/server/index.js"],
       "env": {
         "OBSIDIAN_API_KEY": "${user_config.api_key}",
+        "OBSIDIAN_HOST": "${user_config.host}",
+        "OBSIDIAN_PORT": "${user_config.port}",
         "TOOL_MODE": "${user_config.tool_mode}",
         "TOOL_PRESET": "${user_config.tool_preset}"
       }
@@ -24,6 +26,18 @@
       "description": "Found in Obsidian Settings → Local REST API → API Key",
       "sensitive": true,
       "required": true
+    },
+    "host": {
+      "type": "string",
+      "title": "Obsidian Host",
+      "description": "Hostname or IP where Obsidian is running",
+      "default": "127.0.0.1"
+    },
+    "port": {
+      "type": "string",
+      "title": "Obsidian Port",
+      "description": "Port number for the Local REST API plugin",
+      "default": "27124"
     },
     "tool_mode": {
       "type": "string",

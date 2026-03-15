@@ -26,9 +26,9 @@ Initial release — TypeScript rewrite of mcp-obsidian with full API coverage.
 - Batch file retrieval
 
 ### Fixed (from upstream)
-- Empty directory returns 404 instead of empty list (#98)
-- PATCH hangs on invalid target (#3) — mitigated with timeouts
-- Search timeout on large vaults (#88)
-- Broken recent periodic notes (#92)
-- Environment variable defaults ignored (#86)
-- Python/pydantic build failures (#100, #9, #45)
+- Empty directory returns 404 instead of empty list (MarkusPfundstein/mcp-obsidian#98)
+- PATCH hangs on invalid target (coddingtonbear/obsidian-local-rest-api#3) — mitigated with timeouts
+- Search timeout on large vaults (MarkusPfundstein/mcp-obsidian#88)
+- Broken recent periodic notes (MarkusPfundstein/mcp-obsidian#92)
+- Environment variable defaults ignored (MarkusPfundstein/mcp-obsidian#86)
+- Python/pydantic build failures (MarkusPfundstein/mcp-obsidian#100, MarkusPfundstein/mcp-obsidian#9, MarkusPfundstein/mcp-obsidian#45)

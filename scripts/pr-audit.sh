@@ -41,10 +41,17 @@ done
 if [[ -z "$PR" ]]; then
   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
   if [[ -n "$CURRENT_BRANCH" && "$CURRENT_BRANCH" != "main" ]]; then
-    PR=$(gh pr list --repo "$REPO" --head "$CURRENT_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+    GH_OUTPUT=$(gh pr list --repo "$REPO" --head "$CURRENT_BRANCH" --state open --json number --jq '.[0].number' 2>&1)
+    GH_EXIT=$?
+    if [[ $GH_EXIT -ne 0 ]]; then
+      echo "ERROR: GitHub API call failed (exit $GH_EXIT): $GH_OUTPUT"
+      echo "Check authentication: gh auth status"
+      exit 1
+    fi
+    PR="$GH_OUTPUT"
   fi
-  if [[ -z "$PR" ]]; then
-    echo "ERROR: No PR number specified and no open PR found for branch '$CURRENT_BRANCH'."
+  if [[ -z "$PR" || "$PR" == "null" ]]; then
+    echo "ERROR: No open PR found for branch '${CURRENT_BRANCH:-<detached>}'."
     echo "Usage: bash scripts/pr-audit.sh [PR_NUMBER] [FLAGS]"
     exit 1
   fi

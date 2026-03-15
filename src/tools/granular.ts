@@ -120,7 +120,7 @@ function registerVaultTools(
     server.registerTool(
       "append_content",
       {
-        description: "Append to a vault file (not idempotent, do not retry)",
+        description: "Append to a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           filePath: z.string().describe("File path"),
           content: z.string().describe("Content to append"),
@@ -143,7 +143,7 @@ function registerVaultTools(
     server.registerTool(
       "patch_content",
       {
-        description: "Insert at heading/block/frontmatter (not idempotent, do not retry)",
+        description: "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           filePath: z.string().describe("File path"),
           content: z.string().describe("Content to insert"),
@@ -193,7 +193,7 @@ function registerVaultTools(
     server.registerTool(
       "search_replace",
       {
-        description: "Find and replace in a vault file (not idempotent, do not retry)",
+        description: "Find and replace in a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           filePath: z.string().describe("File path"),
           search: z.string().describe("Text to find"),
@@ -208,7 +208,12 @@ function registerVaultTools(
           const result = await client.getFileContents(filePath, "markdown", true);
           if (typeof result !== "string") return errorResult("[search_replace] Expected markdown content");
           const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
-          const pattern = useRegex ? new RegExp(search, flags) : new RegExp(escapeRegex(search), flags);
+          let pattern: RegExp;
+          if (useRegex) {
+            try { pattern = new RegExp(search, flags); } catch { return errorResult(`[search_replace] Invalid regex: "${search}"`); }
+          } else {
+            pattern = new RegExp(escapeRegex(search), flags);
+          }
           const updated = result.replace(pattern, replace);
           if (updated === result) return textResult(`No matches found for "${search}" in ${filePath}`);
           await client.putContent(filePath, updated);
@@ -276,7 +281,7 @@ function registerActiveFileTools(
     server.registerTool(
       "append_active_file",
       {
-        description: "Append to the open file (not idempotent, do not retry)",
+        description: "Append to the open file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({ content: z.string().describe("Content to append") }),
       },
       async ({ content }) => {
@@ -296,7 +301,7 @@ function registerActiveFileTools(
     server.registerTool(
       "patch_active_file",
       {
-        description: "Patch the active file at a target (not idempotent, do not retry)",
+        description: "Patch the active file at a target (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           content: z.string().describe("Content to insert"),
           operation: patchOperationSchema,
@@ -523,7 +528,7 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "append_periodic_note",
       {
-        description: "Append to current periodic note (not idempotent, do not retry)",
+        description: "Append to current periodic note (not idempotent, do not retry on timeout)",
         inputSchema: z.object({ period: periodSchema, content: z.string().describe("Content to append") }),
       },
       async ({ period, content }) => {
@@ -543,7 +548,7 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "patch_periodic_note",
       {
-        description: "Patch current periodic note at target (not idempotent, do not retry)",
+        description: "Patch current periodic note at target (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           period: periodSchema,
           content: z.string().describe("Content to insert"),
@@ -655,7 +660,7 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "append_periodic_note_for_date",
       {
-        description: "Append to periodic note for a date (not idempotent, do not retry)",
+        description: "Append to periodic note for a date (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           period: periodSchema,
           year: z.number().int().describe("Year"),
@@ -681,7 +686,7 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "patch_periodic_note_for_date",
       {
-        description: "Patch periodic note for a date (not idempotent, do not retry)",
+        description: "Patch periodic note for a date (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           period: periodSchema,
           year: z.number().int().describe("Year"),

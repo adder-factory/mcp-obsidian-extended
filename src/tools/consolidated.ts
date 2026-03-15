@@ -175,7 +175,12 @@ async function handleVaultSearchReplace(
     return errorResult("[vault] Expected markdown content");
   }
   const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
-  const pattern = useRegex ? new RegExp(search, flags) : new RegExp(escapeRegex(search), flags);
+  let pattern: RegExp;
+  if (useRegex) {
+    try { pattern = new RegExp(search, flags); } catch { return errorResult(`[vault] Invalid regex: "${search}"`); }
+  } else {
+    pattern = new RegExp(escapeRegex(search), flags);
+  }
   const updated = result.replace(pattern, replaceText);
   if (updated === result) {
     return textResult(`No matches found for "${search}" in ${path}`);

@@ -398,9 +398,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("uses application/json when contentType is json", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "replace",
       targetType: "frontmatter",
       target: "tags",
@@ -410,9 +408,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("includes optional headers when provided", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "Test",

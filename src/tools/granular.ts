@@ -1,11 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { ObsidianClient, NoteJson, DocumentMap, ToolResult } from "../obsidian.js";
+import type { ObsidianClient } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
-import { getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
 import { buildErrorMessage } from "../errors.js";
 import {
   formatSchema,
@@ -14,108 +13,17 @@ import {
   patchTargetTypeSchema,
   patchContentTypeSchema,
 } from "../schemas.js";
-
-// --- Consolidated preset action restrictions ---
-// (Not used in granular mode — included here only for type-sharing with consolidated.ts)
-
-// --- Helpers ---
-
-/** Formats file contents for display, handling markdown, JSON, and map formats. */
-function formatFileContents(result: string | NoteJson | DocumentMap): ReturnType<typeof textResult> {
-  if (typeof result === "string") {
-    return textResult(result);
-  }
-  return jsonResult(result);
-}
-
-// --- Extracted Handlers ---
-
-/** Handles the configure "set" action. */
-function handleConfigureSet(
-  setting: string | undefined,
-  value: string | undefined,
-  config: Config,
-): ToolResult {
-  if (!setting) {
-    return errorResult("[configure] Setting name is required for 'set' action");
-  }
-  if (value === undefined) {
-    return errorResult("[configure] Value is required for 'set' action");
-  }
-  const immediateSettings = new Set(["debug", "timeout", "verifyWrites", "maxResponseChars"]);
-  const restartSettings = new Set(["toolMode", "toolPreset"]);
-  if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
-    return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
-  }
-  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
-  const updates = buildConfigUpdate(setting, value);
-  if (updates === undefined) {
-    return errorResult(`[configure] Invalid value "${value}" for setting "${setting}"`);
-  }
-  saveConfigToFile(configPath, updates);
-  if (immediateSettings.has(setting)) {
-    applyImmediateSetting(setting, value, config);
-    return textResult(`Setting "${setting}" updated to "${value}" (effective immediately)`);
-  }
-  return textResult(`Setting "${setting}" saved to config file. Restart the server for this change to take effect.`);
-}
-
-/** Fetches recent changes using cache or fallback API calls. */
-async function handleRecentChanges(
-  client: ObsidianClient,
-  cache: VaultCache,
-  config: Config,
-  limit: number,
-): Promise<ToolResult> {
-  if (config.enableCache && cache.getIsInitialized()) {
-    const allNotes = cache.getAllNotes();
-    const sorted = [...allNotes]
-      .sort((a, b) => b.stat.mtime - a.stat.mtime)
-      .slice(0, limit)
-      .map((n) => ({ path: n.path, mtime: n.stat.mtime }));
-    return jsonResult(sorted);
-  }
-  const { files } = await client.listFilesInVault();
-  const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
-  const withStats = await Promise.allSettled(
-    mdFiles.map(async (fp) => {
-      const result = await client.getFileContents(fp, "json");
-      if (typeof result !== "string" && "stat" in result) {
-        return { path: fp, mtime: result.stat.mtime };
-      }
-      return { path: fp, mtime: 0 };
-    }),
-  );
-  const sorted = withStats
-    .filter((r): r is PromiseFulfilledResult<{ path: string; mtime: number }> => r.status === "fulfilled")
-    .map((r) => r.value)
-    .sort((a, b) => b.mtime - a.mtime)
-    .slice(0, limit);
-  return jsonResult(sorted);
-}
-
-/** Builds vault structure statistics from cache. */
-function buildVaultStructure(cache: VaultCache, limit: number): ToolResult {
-  const orphans = cache.getOrphanNotes();
-  const mostConnected = cache.getMostConnectedNotes(limit);
-  const graph = cache.getVaultGraph();
-  const dirs = new Set<string>();
-  for (const path of cache.getFileList()) {
-    const lastSlash = path.lastIndexOf("/");
-    if (lastSlash !== -1) {
-      dirs.add(path.slice(0, lastSlash));
-    }
-  }
-  return jsonResult({
-    noteCount: cache.noteCount,
-    linkCount: cache.linkCount,
-    directoryCount: dirs.size,
-    orphanCount: orphans.length,
-    orphans: orphans.slice(0, 20),
-    mostConnected,
-    edgeCount: graph.edges.length,
-  });
-}
+import {
+  formatFileContents,
+  escapeRegex,
+  handleConfigureSet,
+  handleConfigureReset,
+  handleConfigureShow,
+  buildVaultStructure,
+  handleRecentChanges,
+  handleRecentPeriodicNotes,
+  batchGetFiles,
+} from "./shared.js";
 
 // --- Registration sub-functions (split to keep complexity below 15) ---
 
@@ -868,19 +776,7 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePaths, format }) => {
         try {
-          const results = await Promise.allSettled(
-            filePaths.map(async (fp) => ({ path: fp, content: await client.getFileContents(fp, format) })),
-          );
-          const output: Array<{ path: string; content?: unknown; error?: string }> = [];
-          for (const r of results) {
-            if (r.status === "fulfilled") {
-              output.push(r.value);
-            } else {
-              const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
-              output.push({ path: "(unknown)", error: reason });
-            }
-          }
-          return jsonResult(output);
+          return jsonResult(await batchGetFiles(client, filePaths, format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "batch_get_file_contents" }));
         }
@@ -921,20 +817,7 @@ function registerSystemAndAnalysisTools(
       },
       async ({ period, limit }) => {
         try {
-          const { files } = await client.listFilesInVault();
-          const periodDirs: Record<string, string> = {
-            daily: "Daily Notes",
-            weekly: "Weekly Notes",
-            monthly: "Monthly Notes",
-            quarterly: "Quarterly Notes",
-            yearly: "Yearly Notes",
-          };
-          const dirName = periodDirs[period] ?? period;
-          const periodFiles = files
-            .filter((f) => f.startsWith(`${dirName}/`) && f.toLowerCase().endsWith(".md"))
-            .sort((a, b) => b.localeCompare(a))
-            .slice(0, limit);
-          return jsonResult(periodFiles);
+          return await handleRecentPeriodicNotes(client, period, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_recent_periodic_notes" }));
         }
@@ -959,7 +842,7 @@ function registerSystemAndAnalysisTools(
         try {
           switch (action) {
             case "show":
-              return jsonResult(getRedactedConfig(config));
+              return handleConfigureShow(config);
             case "set":
               return handleConfigureSet(setting, value, config);
             case "reset":
@@ -1081,98 +964,3 @@ export function registerGranularTools(
   );
 }
 
-// --- Configure Helpers ---
-
-/** Escapes a string for use as a literal in a RegExp. */
-function escapeRegex(str: string): string {
-  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
-/** Parses a boolean string value; returns undefined if invalid. */
-function parseBoolValue(value: string): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
-
-/** Parses a positive integer string value; returns undefined if invalid. */
-function parsePosIntValue(value: string, min: number): number | undefined {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < min) return undefined;
-  return n;
-}
-
-/** Builds a config file update object for a given setting and value. Returns undefined if value is invalid. */
-function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
-  switch (setting) {
-    case "debug": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { debug: b };
-    }
-    case "timeout": {
-      const n = parsePosIntValue(value, 1);
-      return n === undefined ? undefined : { reliability: { timeout: n } };
-    }
-    case "verifyWrites": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { reliability: { verifyWrites: b } };
-    }
-    case "maxResponseChars": {
-      const n = parsePosIntValue(value, 0);
-      return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
-    }
-    case "toolMode":
-      if (value !== "granular" && value !== "consolidated") return undefined;
-      return { tools: { mode: value } };
-    case "toolPreset":
-      if (value !== "full" && value !== "read-only" && value !== "minimal" && value !== "safe") return undefined;
-      return { tools: { preset: value } };
-    default:
-      return undefined;
-  }
-}
-
-/** Handles the "reset" action for the configure tool. */
-function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
-  if (!setting) return errorResult("[configure] Setting name is required for 'reset' action");
-  const configPath = config.configFilePath ?? "./obsidian-mcp.config.json";
-  const resetUpdates = buildConfigReset(setting);
-  if (resetUpdates === undefined) {
-    return errorResult(`[configure] Unknown setting: ${setting}`);
-  }
-  saveConfigToFile(configPath, resetUpdates);
-  return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);
-}
-
-/** Builds a config file update that resets a setting to its default value. Returns undefined for unknown settings. */
-function buildConfigReset(setting: string): Record<string, unknown> | undefined {
-  switch (setting) {
-    case "debug":
-      return { debug: false };
-    case "timeout":
-      return { reliability: { timeout: 30000 } };
-    case "verifyWrites":
-      return { reliability: { verifyWrites: false } };
-    case "maxResponseChars":
-      return { reliability: { maxResponseChars: 500000 } };
-    case "toolMode":
-      return { tools: { mode: "granular" } };
-    case "toolPreset":
-      return { tools: { preset: "full" } };
-    default:
-      return undefined;
-  }
-}
-
-/** Applies an immediate-effect setting change to the running config. */
-function applyImmediateSetting(setting: string, value: string, _config: Config): void {
-  // Config is readonly — we mutate the underlying process behavior directly
-  if (setting === "debug") {
-    setDebugEnabled(value === "true");
-    log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
-  }
-  // timeout, verifyWrites, maxResponseChars take effect on next request via config file
-  // (the client reads from config on construction, so these require restart)
-  // We still save to file above — calling them "immediate" is a simplification
-  // that means "saved and acknowledged" vs "requires tool re-registration"
-}

@@ -55,7 +55,7 @@ const CONSOLIDATED_PRESETS: Record<string, readonly string[]> = {
     "periodic_note", "status", "batch_get", "recent", "configure", "vault_analysis",
   ],
   "read-only": [
-    "vault", "active_file", "commands", "open_file", "search",
+    "vault", "active_file", "commands", "search",
     "periodic_note", "status", "batch_get", "recent", "configure", "vault_analysis",
   ],
   minimal: [

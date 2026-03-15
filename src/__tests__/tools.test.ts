@@ -1095,14 +1095,14 @@ describe("granular tools — registration and basic behavior", () => {
       expect(getText(result)).toContain("Invalid value");
     });
 
-    it("sets timeout and saves to file", async () => {
+    it("sets timeout and saves to file (requires restart)", async () => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({ action: "set", setting: "timeout", value: "60000" });
       expect(saveConfigToFile).toHaveBeenCalledWith(
         expect.any(String),
         { reliability: { timeout: 60000 } },
       );
-      expect(getText(result)).toContain("effective immediately");
+      expect(getText(result)).toContain("Restart the server");
     });
 
     it("rejects invalid timeout (non-numeric)", async () => {

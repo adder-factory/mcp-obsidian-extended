@@ -106,7 +106,7 @@ const configFileSchema = z.object({
     exclude: z.array(z.string()).optional(),
   }).optional(),
   reliability: z.object({
-    timeout: z.number().positive().optional(),
+    timeout: z.number().int().min(1).optional(),
     verifyWrites: z.boolean().optional(),
     maxResponseChars: z.number().nonnegative().optional(),
   }).optional(),

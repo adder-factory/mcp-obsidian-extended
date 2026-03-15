@@ -214,13 +214,12 @@ export function buildVaultStructure(cache: VaultCache, limit: number): ToolResul
   const graph = cache.getVaultGraph();
   const dirs = new Set<string>();
   for (const p of cache.getFileList()) {
-    let dir = p;
-    while (true) {
-      const lastSlash = dir.lastIndexOf("/");
-      if (lastSlash === -1) break;
-      dir = dir.slice(0, lastSlash);
-      if (dirs.has(dir)) break; // already added this and all parents
+    let lastSlash = p.lastIndexOf("/");
+    while (lastSlash !== -1) {
+      const dir = p.slice(0, lastSlash);
+      if (dirs.has(dir)) break; // this dir and all its parents are already tracked
       dirs.add(dir);
+      lastSlash = dir.lastIndexOf("/");
     }
   }
   return jsonResult({

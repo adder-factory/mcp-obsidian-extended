@@ -95,13 +95,15 @@ function buildFilter(
       return true;
     }
 
-    // If INCLUDE is specified, only those tools (from the preset) are allowed
+    // If INCLUDE is specified, only those tools (from the preset) are allowed.
+    // EXCLUDE is intentionally ignored when INCLUDE is set — INCLUDE is a whitelist
+    // that takes full precedence (documented in cc-instructions-final.md).
     if (includeTools.length > 0) {
       const includeSet = new Set(includeTools);
       return includeSet.has(name) && presetSet.has(name);
     }
 
-    // If EXCLUDE is specified, remove those from the preset
+    // If EXCLUDE is specified (and INCLUDE is not), remove those from the preset
     if (excludeTools.length > 0) {
       const excludeSet = new Set(excludeTools);
       return presetSet.has(name) && !excludeSet.has(name);

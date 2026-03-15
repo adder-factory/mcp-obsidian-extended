@@ -188,12 +188,14 @@ async function setup(): Promise<void> {
 
   // Output Claude Desktop config snippet
   process.stderr.write("  Add this to your Claude Desktop config:\n\n");
-  const defaultPaths = [
-    join(homedir(), ".obsidian-mcp.config.json"),
-    join(homedir(), ".config", "obsidian-mcp", "config.json"),
-    resolve("./obsidian-mcp.config.json"),
-  ];
-  const isNonDefaultPath = !defaultPaths.includes(resolvedPath);
+  // Config auto-discovery paths (must match config.ts CONFIG_SEARCH_PATHS)
+  const defaultPaths = new Set([
+    resolve(join(homedir(), ".obsidian-mcp.config.json")),
+    resolve(join(homedir(), ".config", "obsidian-mcp", "config.json")),
+  ]);
+  // CWD-relative path excluded — it varies by runtime context, so always
+  // include OBSIDIAN_CONFIG in the snippet when the user picks a CWD-relative path.
+  const isNonDefaultPath = !defaultPaths.has(resolvedPath);
   const maskedKey = apiKey.length > 4 ? `${apiKey.slice(0, 4)}${"*".repeat(apiKey.length - 4)}` : "****";
   const envBlock: Record<string, string> = { OBSIDIAN_API_KEY: maskedKey };
   if (isNonDefaultPath) {

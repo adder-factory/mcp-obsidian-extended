@@ -34,7 +34,7 @@ const READ_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
   commands: new Set(["list"]),
   periodic_note: new Set(["get"]),
   recent: new Set(["changes", "periodic_notes"]),
-  vault_analysis: new Set(["backlinks", "connections", "structure"]),
+  vault_analysis: new Set(["backlinks", "connections", "structure", "refresh"]),
 };
 
 /** Actions removed in safe preset (consolidated mode). */
@@ -598,10 +598,10 @@ export function registerConsolidatedTools(
         try {
           switch (type) {
             case "changes":
-              return handleRecentChanges(client, cache, config, limit);
+              return await handleRecentChanges(client, cache, config, limit);
             case "periodic_notes":
               if (!period) return errorResult("[recent] period is required for periodic_notes");
-              return handleRecentPeriodicNotes(client, period, limit);
+              return await handleRecentPeriodicNotes(client, period, limit);
             default: {
               const _exhaustive: never = type;
               return errorResult(`[recent] Unknown type: ${String(_exhaustive)}`);

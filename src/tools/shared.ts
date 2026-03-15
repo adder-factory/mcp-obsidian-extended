@@ -46,11 +46,12 @@ function parseBoolValue(value: string): boolean | undefined {
  * Parses a positive integer string value.
  * @param value - The string to parse.
  * @param min - The minimum acceptable value.
- * @returns The parsed number, or undefined if invalid.
+ * @returns The parsed number, or undefined if invalid (empty, decimal, non-finite, or below min).
  */
 function parsePosIntValue(value: string, min: number): number | undefined {
+  if (value.trim() === "") return undefined;
   const n = Number(value);
-  if (!Number.isFinite(n) || n < min) return undefined;
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < min) return undefined;
   return n;
 }
 
@@ -291,6 +292,8 @@ export async function handleRecentPeriodicNotes(
   limit: number,
 ): Promise<ToolResult> {
   const { files } = await client.listFilesInVault();
+  // Folder names are Obsidian defaults — the REST API does not expose user-configured paths.
+  // Users with custom folder names should use get_periodic_note_for_date instead.
   const periodDirs: Record<string, string> = {
     daily: "Daily Notes",
     weekly: "Weekly Notes",
@@ -306,7 +309,7 @@ export async function handleRecentPeriodicNotes(
   return jsonResult(periodFiles);
 }
 
-// --- Batch file fetch (path-preserving) ---
+// --- Batch file fetch (path-preserving, concurrency-capped) ---
 
 /** Result entry for a single file in a batch fetch operation. */
 interface BatchFileResult {
@@ -315,9 +318,12 @@ interface BatchFileResult {
   readonly error?: string;
 }
 
+/** Batch size for concurrent API calls in batchGetFiles. */
+const BATCH_GET_BATCH_SIZE = 20;
+
 /**
- * Fetches multiple vault files in parallel, preserving the file path even on rejection.
- * Each promise wraps its own error so allSettled never loses the `fp` variable.
+ * Fetches multiple vault files in parallel with a concurrency cap.
+ * Each per-file error is caught individually so one failure does not abort the batch.
  * @param client - The Obsidian API client.
  * @param filePaths - The list of file paths to fetch.
  * @param format - The response format (markdown, json, or map).
@@ -328,18 +334,21 @@ export async function batchGetFiles(
   filePaths: readonly string[],
   format: "markdown" | "json" | "map" | undefined,
 ): Promise<BatchFileResult[]> {
-  const results = await Promise.allSettled(
-    filePaths.map(async (fp): Promise<BatchFileResult> => {
-      try {
-        const content = await client.getFileContents(fp, format);
-        return { path: fp, content };
-      } catch (err: unknown) {
-        const reason = err instanceof Error ? err.message : String(err);
-        return { path: fp, error: reason };
-      }
-    }),
-  );
-  return results
-    .filter((r): r is PromiseFulfilledResult<BatchFileResult> => r.status === "fulfilled")
-    .map((r) => r.value);
+  const output: BatchFileResult[] = [];
+  for (let i = 0; i < filePaths.length; i += BATCH_GET_BATCH_SIZE) {
+    const batch = filePaths.slice(i, i + BATCH_GET_BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (fp): Promise<BatchFileResult> => {
+        try {
+          const content = await client.getFileContents(fp, format);
+          return { path: fp, content };
+        } catch (err: unknown) {
+          const reason = err instanceof Error ? err.message : String(err);
+          return { path: fp, error: reason };
+        }
+      }),
+    );
+    output.push(...results);
+  }
+  return output;
 }

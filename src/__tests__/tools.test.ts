@@ -214,7 +214,8 @@ describe("registerAllTools — granular mode", () => {
     expect(getRegistered()).toHaveLength(38);
   });
 
-  it("registers 20 tools in read-only preset", () => {
+  it("registers 19 tools in read-only preset", () => {
+    // open_file removed from read-only (POST /open/{path} can create files)
     const { server } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
@@ -222,7 +223,7 @@ describe("registerAllTools — granular mode", () => {
       server as never, client, cache,
       makeConfig({ toolPreset: "read-only" }),
     );
-    expect(count).toBe(20);
+    expect(count).toBe(19);
   });
 
   it("registers 8 tools in minimal preset", () => {
@@ -2208,14 +2209,14 @@ describe("consolidated tools — registration and behavior", () => {
       expect(getText(result)).toContain("Cache refreshed");
     });
 
-    it("blocks refresh in read-only preset", async () => {
+    it("allows refresh in read-only preset (vault_analysis is protected)", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", toolPreset: "read-only", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "refresh", limit: 10 });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("not allowed");
+      expect(cache.refresh).toHaveBeenCalled();
+      expect(getText(result)).toContain("Cache refreshed");
     });
 
     it("returns errorResult when cache disabled", async () => {

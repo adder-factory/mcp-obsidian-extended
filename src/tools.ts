@@ -24,7 +24,7 @@ const GRANULAR_PRESETS: Record<string, readonly string[]> = {
   ],
   "read-only": [
     "list_files_in_vault", "list_files_in_dir", "get_file_contents",
-    "get_active_file", "list_commands", "open_file",
+    "get_active_file", "list_commands",
     "simple_search", "complex_search", "dataview_search",
     "get_periodic_note", "get_periodic_note_for_date",
     "get_server_status", "batch_get_file_contents", "get_recent_changes", "get_recent_periodic_notes",

@@ -174,7 +174,10 @@ async function setup(): Promise<void> {
     },
     reliability: {
       verifyWrites: verifyWrites === "true",
-      maxResponseChars: Number(maxResponseChars) || 500000,
+      maxResponseChars: (() => {
+        const parsed = Number(maxResponseChars);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 500000;
+      })(),
     },
     debug: debug === "true",
   };

@@ -131,12 +131,15 @@ function resolveWikilink(target: string): string {
 /** Resolves a relative markdown link path against the directory of the containing note. */
 function resolveRelativePath(target: string, currentDir: string): string {
   const normalized = target.replaceAll("\\", "/");
+  // For absolute paths, strip the leading slash; for relative, prepend currentDir
+  let raw: string;
   if (normalized.startsWith("/")) {
-    return normalized.slice(1);
+    raw = normalized.slice(1);
+  } else {
+    const base = currentDir ? `${currentDir}/` : "";
+    raw = `${base}${normalized}`;
   }
-  // Resolve relative paths (including ../) against the current directory
-  const base = currentDir ? `${currentDir}/` : "";
-  const parts = `${base}${normalized}`.split("/");
+  const parts = raw.split("/");
   const resolved: string[] = [];
   for (const part of parts) {
     if (part === "..") {
@@ -172,7 +175,7 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Initialization ---
 
-  /** Performs a full cache build by fetching all markdown files from the vault. */
+  /** Performs a full cache build by fetching all markdown files from the vault. Builds into a fresh snapshot then swaps atomically. */
   async initialize(): Promise<void> {
     const startTime = Date.now();
     try {
@@ -181,7 +184,8 @@ export class VaultCache implements VaultCacheInterface {
 
       log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
-      // Fetch in batches to avoid overwhelming the server
+      // Build into a temporary map so stale entries from previous runs don't persist
+      const freshNotes = new Map<string, CachedNote>();
       const batchSize = 20;
       for (let i = 0; i < mdFiles.length; i += batchSize) {
         const batch = mdFiles.slice(i, i + batchSize);
@@ -198,7 +202,7 @@ export class VaultCache implements VaultCacheInterface {
               links,
               cachedAt: Date.now(),
             };
-            this.notes.set(filePath, cached);
+            freshNotes.set(filePath, cached);
           }),
         );
 
@@ -209,6 +213,11 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
 
+      // Swap atomically: clear old entries and copy fresh ones in
+      this.notes.clear();
+      for (const [key, value] of freshNotes) {
+        this.notes.set(key, value);
+      }
       this.rebuildIndex();
       this.isInitialized = true;
       const elapsed = Date.now() - startTime;

@@ -95,6 +95,18 @@ describe("parseLinks — markdown links", () => {
     expect(links[0]?.target).toBe("root-note.md");
   });
 
+  it("canonicalizes absolute paths with double slashes", () => {
+    const links = parseLinks("[link](/a//b.md)", "any/path.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("a/b.md");
+  });
+
+  it("canonicalizes absolute paths with dot segments", () => {
+    const links = parseLinks("[link](/a/./b.md)", "any/path.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("a/b.md");
+  });
+
   it("handles paths with no directory component", () => {
     const links = parseLinks("[link](sibling.md)", "folder/current.md");
     expect(links).toHaveLength(1);

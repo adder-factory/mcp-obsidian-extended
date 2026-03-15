@@ -620,8 +620,15 @@ export class ObsidianClient {
     return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath, res.headers);
   }
 
-  /** Reads a vault file in the specified format (markdown, JSON, or document map). */
-  async getFileContents(filePath: string, format: FileFormat = "markdown"): Promise<FileContentsResult> {
+  /**
+   * Reads a vault file in the specified format (markdown, JSON, or document map).
+   * @param filePath - Vault-relative path to the file.
+   * @param format - Response format: markdown, json, or map.
+   * @param skipTruncation - When true, returns full markdown content without truncation.
+   *   Use for read-modify-write operations (e.g. search_replace) where partial reads
+   *   would corrupt the file.
+   */
+  async getFileContents(filePath: string, format: FileFormat = "markdown", skipTruncation = false): Promise<FileContentsResult> {
     const res = await this.requestWithFallback("GET", "/vault/", filePath, {
       headers: { "Accept": acceptHeaderForFormat(format) },
     });
@@ -631,7 +638,7 @@ export class ObsidianClient {
     }
 
     if (format === "markdown") {
-      return this.truncateResponse(res.body);
+      return skipTruncation ? res.body : this.truncateResponse(res.body);
     }
     return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, filePath, res.headers);
   }

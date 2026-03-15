@@ -205,7 +205,7 @@ function registerVaultTools(
       },
       async ({ filePath, search, replace, useRegex, caseSensitive, replaceAll }) => {
         try {
-          const result = await client.getFileContents(filePath, "markdown");
+          const result = await client.getFileContents(filePath, "markdown", true);
           if (typeof result !== "string") return errorResult("[search_replace] Expected markdown content");
           const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
           const pattern = useRegex ? new RegExp(search, flags) : new RegExp(escapeRegex(search), flags);

@@ -17,7 +17,7 @@ set -euo pipefail
 REPO="adder-factory/mcp-obsidian-extended"
 OWNER="adder-factory"
 NAME="mcp-obsidian-extended"
-PR=2
+PR=""
 QUICK=false
 FIX_STALE=false
 AUTO_RESOLVE=false
@@ -36,6 +36,19 @@ for arg in "$@"; do
     [0-9]*) PR="$arg" ;;
   esac
 done
+
+# Auto-detect PR from current branch if not specified
+if [[ -z "$PR" ]]; then
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [[ -n "$CURRENT_BRANCH" && "$CURRENT_BRANCH" != "main" ]]; then
+    PR=$(gh pr list --repo "$REPO" --head "$CURRENT_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+  fi
+  if [[ -z "$PR" ]]; then
+    echo "ERROR: No PR number specified and no open PR found for branch '$CURRENT_BRANCH'."
+    echo "Usage: bash scripts/pr-audit.sh [PR_NUMBER] [FLAGS]"
+    exit 1
+  fi
+fi
 
 START_TIME=$(date +%s)
 AUDIT_STATE_DIR="$HOME/.cache/pr-audit"

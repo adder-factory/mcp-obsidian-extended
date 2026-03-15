@@ -37,7 +37,7 @@ export function escapeRegex(str: string): string {
  * @param value - The string to parse ("true" or "false").
  * @returns The boolean value, or undefined if invalid.
  */
-export function parseBoolValue(value: string): boolean | undefined {
+function parseBoolValue(value: string): boolean | undefined {
   if (value === "true") return true;
   if (value === "false") return false;
   return undefined;
@@ -49,7 +49,7 @@ export function parseBoolValue(value: string): boolean | undefined {
  * @param min - The minimum acceptable value.
  * @returns The parsed number, or undefined if invalid.
  */
-export function parsePosIntValue(value: string, min: number): number | undefined {
+function parsePosIntValue(value: string, min: number): number | undefined {
   const n = Number(value);
   if (!Number.isFinite(n) || n < min) return undefined;
   return n;
@@ -63,7 +63,7 @@ export function parsePosIntValue(value: string, min: number): number | undefined
  * @param value - The new string value.
  * @returns A partial config update object, or undefined if the value is invalid.
  */
-export function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
+function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
   switch (setting) {
     case "debug": {
       const b = parseBoolValue(value);
@@ -97,7 +97,7 @@ export function buildConfigUpdate(setting: string, value: string): Record<string
  * @param setting - The setting name to reset.
  * @returns A partial config update object, or undefined for unknown settings.
  */
-export function buildConfigReset(setting: string): Record<string, unknown> | undefined {
+function buildConfigReset(setting: string): Record<string, unknown> | undefined {
   switch (setting) {
     case "debug":
       return { debug: false };
@@ -122,7 +122,7 @@ export function buildConfigReset(setting: string): Record<string, unknown> | und
  * @param setting - The setting name being changed.
  * @param value - The new string value.
  */
-export function applyImmediateSetting(setting: string, value: string): void {
+function applyImmediateSetting(setting: string, value: string): void {
   if (setting === "debug") {
     setDebugEnabled(value === "true");
     log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
@@ -305,7 +305,7 @@ export async function handleRecentPeriodicNotes(
 // --- Batch file fetch (path-preserving) ---
 
 /** Result entry for a single file in a batch fetch operation. */
-export interface BatchFileResult {
+interface BatchFileResult {
   readonly path: string;
   readonly content?: unknown;
   readonly error?: string;

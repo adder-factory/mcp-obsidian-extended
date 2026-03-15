@@ -170,7 +170,7 @@ async function handleVaultSearchReplace(
 ): Promise<ToolResult> {
   if (!search) return errorResult("[vault] search is required for search_replace");
   if (replaceText === undefined) return errorResult("[vault] replace is required for search_replace");
-  const result = await client.getFileContents(path, "markdown");
+  const result = await client.getFileContents(path, "markdown", true);
   if (typeof result !== "string") {
     return errorResult("[vault] Expected markdown content");
   }
@@ -245,29 +245,41 @@ interface PeriodicNoteArgs {
 /** Dispatches a periodic_note action to the appropriate client method. */
 async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNoteArgs): Promise<ToolResult> {
   const { action, period, year, month, day } = args;
-  const isByDate = year !== undefined && month !== undefined && day !== undefined;
+  const hasYear = year !== undefined;
+  const hasMonth = month !== undefined;
+  const hasDay = day !== undefined;
+  const dateFieldCount = [hasYear, hasMonth, hasDay].filter(Boolean).length;
+  if (dateFieldCount > 0 && dateFieldCount < 3) {
+    return errorResult("[periodic_note] All of year, month, and day are required for date-scoped operations (or omit all for current period)");
+  }
+  const isByDate = dateFieldCount === 3;
+  // When isByDate is true all three date fields are defined (validated above).
+  // Extract concrete numbers for passing to by-date client methods.
+  const y = year ?? 0;
+  const m = month ?? 0;
+  const d = day ?? 0;
   switch (action) {
     case "get":
       return isByDate
-        ? formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, args.format))
+        ? formatFileContents(await client.getPeriodicNoteForDate(period, y, m, d, args.format))
         : formatFileContents(await client.getPeriodicNote(period, args.format));
     case "put":
       if (args.content === undefined) return errorResult("[periodic_note] content is required for put");
-      await (isByDate ? client.putPeriodicNoteForDate(period, year, month, day, args.content) : client.putPeriodicNote(period, args.content));
+      await (isByDate ? client.putPeriodicNoteForDate(period, y, m, d, args.content) : client.putPeriodicNote(period, args.content));
       return textResult(`Updated ${period} note`);
     case "append":
       if (args.content === undefined) return errorResult("[periodic_note] content is required for append");
-      await (isByDate ? client.appendPeriodicNoteForDate(period, year, month, day, args.content) : client.appendPeriodicNote(period, args.content));
+      await (isByDate ? client.appendPeriodicNoteForDate(period, y, m, d, args.content) : client.appendPeriodicNote(period, args.content));
       return textResult(`Appended to ${period} note`);
     case "patch":
       return handlePeriodicPatch(client, {
-        period, isByDate, year: year ?? 0, month: month ?? 0, day: day ?? 0,
+        period, isByDate, year: y, month: m, day: d,
         content: args.content, operation: args.operation, targetType: args.targetType,
         target: args.target, targetDelimiter: args.targetDelimiter, trimTargetWhitespace: args.trimTargetWhitespace,
         createIfMissing: args.createIfMissing, contentType: args.contentType,
       });
     case "delete":
-      await (isByDate ? client.deletePeriodicNoteForDate(period, year, month, day) : client.deletePeriodicNote(period));
+      await (isByDate ? client.deletePeriodicNoteForDate(period, y, m, d) : client.deletePeriodicNote(period));
       return textResult(`Deleted ${period} note`);
     default: {
       const _exhaustive: never = action;
@@ -295,7 +307,7 @@ export function registerConsolidatedTools(
     server.registerTool(
       "vault",
       {
-        description: "Read, write, search, and manage vault files",
+        description: "Read, write, search vault files. Do not retry append/patch/search_replace on timeout",
         inputSchema: z.object({
           action: z.enum(["list", "list_dir", "get", "put", "append", "patch", "delete", "search_replace"]).describe("Operation"),
           path: z.string().optional().describe("File or directory path"),
@@ -335,7 +347,7 @@ export function registerConsolidatedTools(
     server.registerTool(
       "active_file",
       {
-        description: "Read, write, or delete the currently open file",
+        description: "Read, write, or delete the open file. Do not retry append/patch on timeout",
         inputSchema: z.object({
           action: z.enum(["get", "put", "append", "patch", "delete"]).describe("Operation"),
           content: z.string().optional().describe("Content for writes"),
@@ -408,6 +420,9 @@ export function registerConsolidatedTools(
         }),
       },
       async ({ action, commandId }) => {
+        if (!isActionAllowed("commands", action, config.toolPreset)) {
+          return errorResult(`[commands] Action "${action}" is not allowed in "${config.toolPreset}" preset`);
+        }
         try {
           switch (action) {
             case "list":
@@ -495,7 +510,7 @@ export function registerConsolidatedTools(
     server.registerTool(
       "periodic_note",
       {
-        description: "CRUD operations on periodic notes (current or by date)",
+        description: "CRUD on periodic notes. Do not retry append/patch on timeout",
         inputSchema: z.object({
           action: z.enum(["get", "put", "append", "patch", "delete"]).describe("Operation"),
           period: periodSchema,

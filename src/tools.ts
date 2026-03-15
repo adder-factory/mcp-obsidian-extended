@@ -69,7 +69,7 @@ const CONSOLIDATED_PRESETS: Record<string, readonly string[]> = {
 
 /** Protected tools that are always registered regardless of filtering. */
 const PROTECTED_GRANULAR = new Set(["configure", "get_server_status", "refresh_cache"]);
-const PROTECTED_CONSOLIDATED = new Set(["configure", "status"]);
+const PROTECTED_CONSOLIDATED = new Set(["configure", "status", "vault_analysis"]);
 
 // --- Filtering Logic ---
 

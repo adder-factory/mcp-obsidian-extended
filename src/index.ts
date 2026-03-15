@@ -104,8 +104,22 @@ async function setup(): Promise<void> {
   }
   const host = await ask("  Host", "127.0.0.1");
   const portStr = await ask("  Port", "27124");
-  const port = Number(portStr) || 27124;
-  const scheme = await ask("  Scheme (https/http)", "https");
+  const portNum = Number(portStr);
+  let port: number;
+  if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    process.stderr.write(`  Warning: invalid port "${portStr}" — using default 27124\n`);
+    port = 27124;
+  } else {
+    port = portNum;
+  }
+  const schemeRaw = await ask("  Scheme (https/http)", "https");
+  let scheme: string;
+  if (schemeRaw !== "http" && schemeRaw !== "https") {
+    process.stderr.write(`  Warning: invalid scheme "${schemeRaw}" — using default "https"\n`);
+    scheme = "https";
+  } else {
+    scheme = schemeRaw;
+  }
 
   // Test connection
   process.stderr.write("\n  Testing connection...\n");
@@ -130,8 +144,23 @@ async function setup(): Promise<void> {
 
   // Step 2: Tool Mode
   process.stderr.write("Step 2/4: Tool Mode\n\n");
-  const toolMode = await ask("  Mode (granular = 38 tools, consolidated = 11 tools)", "granular");
-  const toolPreset = await ask("  Preset (full, read-only, minimal, safe)", "full");
+  const toolModeRaw = await ask("  Mode (granular = 38 tools, consolidated = 11 tools)", "granular");
+  let toolMode: string;
+  if (toolModeRaw !== "granular" && toolModeRaw !== "consolidated") {
+    process.stderr.write(`  Warning: invalid mode "${toolModeRaw}" — using default "granular"\n`);
+    toolMode = "granular";
+  } else {
+    toolMode = toolModeRaw;
+  }
+  const toolPresetRaw = await ask("  Preset (full, read-only, minimal, safe)", "full");
+  const validPresets = new Set(["full", "read-only", "minimal", "safe"]);
+  let toolPreset: string;
+  if (!validPresets.has(toolPresetRaw)) {
+    process.stderr.write(`  Warning: invalid preset "${toolPresetRaw}" — using default "full"\n`);
+    toolPreset = "full";
+  } else {
+    toolPreset = toolPresetRaw;
+  }
 
   // Step 3: Reliability
   process.stderr.write("\nStep 3/4: Reliability\n\n");

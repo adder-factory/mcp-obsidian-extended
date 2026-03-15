@@ -326,7 +326,7 @@ describe("registerAllTools — consolidated mode", () => {
     expect(count).toBe(11);
   });
 
-  it("registers 4 tools in minimal preset", () => {
+  it("registers 5 tools in minimal preset (vault_analysis is protected)", () => {
     const { server } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
@@ -334,20 +334,22 @@ describe("registerAllTools — consolidated mode", () => {
       server as never, client, cache,
       makeConfig({ toolMode: "consolidated", toolPreset: "minimal" }),
     );
-    expect(count).toBe(4);
+    // vault, search, status, configure (preset) + vault_analysis (protected)
+    expect(count).toBe(5);
   });
 
-  it("protected tools (configure, status) always registered when excluded", () => {
+  it("protected tools (configure, status, vault_analysis) always registered when excluded", () => {
     const { server, getRegistered } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
       server as never, client, cache,
-      makeConfig({ toolMode: "consolidated", excludeTools: ["configure", "status"] }),
+      makeConfig({ toolMode: "consolidated", excludeTools: ["configure", "status", "vault_analysis"] }),
     );
     const registered = getRegistered();
     expect(registered).toContain("configure");
     expect(registered).toContain("status");
+    expect(registered).toContain("vault_analysis");
   });
 
   it("INCLUDE_TOOLS filters consolidated tools", () => {

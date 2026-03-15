@@ -372,11 +372,16 @@ export class ObsidianClient {
     let message = body;
     let errorCode: number | undefined;
     try {
-      const parsed = JSON.parse(body) as { message?: string; errorCode?: number };
-      if (parsed.message) {
-        message = parsed.message;
+      const parsed: unknown = JSON.parse(body);
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const obj = parsed as Record<string, unknown>;
+        if (typeof obj["message"] === "string") {
+          message = obj["message"];
+        }
+        if (typeof obj["errorCode"] === "number") {
+          errorCode = obj["errorCode"];
+        }
       }
-      errorCode = parsed.errorCode;
     } catch {
       // Use raw body as message
     }
@@ -395,14 +400,17 @@ export class ObsidianClient {
   // --- Write Lock ---
 
   /**
-   * Serialises concurrent writes to the same file path.
+   * Serialises concurrent writes to the same lock key.
+   * For vault file paths, callers pass the raw path (canonicalized via sanitizeFilePath).
+   * For synthetic resources (__active__, __periodic_daily__, etc.), the key is used as-is.
    * Uses `.then(fn, fn)` intentionally: if a previous lock-holder fails,
    * the next queued operation still runs (queue keeps moving). Each caller
    * gets its own rejection if its `fn` throws — errors do not propagate
    * across callers. This is the desired behaviour for independent write ops.
    */
   private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-    const lockKey = sanitizeFilePath(filePath);
+    // Synthetic lock keys (e.g. __active__) bypass path sanitization
+    const lockKey = filePath.startsWith("__") ? filePath : sanitizeFilePath(filePath);
     const existing = this.fileLocks.get(lockKey);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
     this.fileLocks.set(lockKey, next);
@@ -653,57 +661,65 @@ export class ObsidianClient {
     return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, "/active/", res.headers);
   }
 
-  /** Replaces the content of the currently open file (idempotent). */
+  /** Replaces the content of the currently open file (idempotent). Serialized via active-file lock. */
   async putActiveFile(content: string): Promise<void> {
-    const res = await this.request("PUT", "/active/", {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    await this.withFileLock("__active__", async () => {
+      const res = await this.request("PUT", "/active/", {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
-    }
-    // Active file path is unknown — invalidate all to ensure cache consistency
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      }
+      // Active file path is unknown — invalidate all to ensure cache consistency
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Appends content to the currently open file (not idempotent). */
+  /** Appends content to the currently open file (not idempotent). Serialized via active-file lock. */
   async appendActiveFile(content: string): Promise<void> {
-    const res = await this.request("POST", "/active/", {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    await this.withFileLock("__active__", async () => {
+      const res = await this.request("POST", "/active/", {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. */
+  /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. Serialized via active-file lock. */
   async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
-    const headers = this.buildPatchHeaders(options);
-    // Active file PATCH does not support Create-Target-If-Missing (vault PATCH only)
-    delete headers["Create-Target-If-Missing"];
-    const res = await this.request("PATCH", "/active/", {
-      body: content,
-      headers,
-    });
+    await this.withFileLock("__active__", async () => {
+      const headers = this.buildPatchHeaders(options);
+      // Active file PATCH does not support Create-Target-If-Missing (vault PATCH only)
+      delete headers["Create-Target-If-Missing"];
+      const res = await this.request("PATCH", "/active/", {
+        body: content,
+        headers,
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Deletes the currently open file (idempotent). */
+  /** Deletes the currently open file (idempotent). Serialized via active-file lock. */
   async deleteActiveFile(): Promise<void> {
-    const res = await this.request("DELETE", "/active/");
+    await this.withFileLock("__active__", async () => {
+      const res = await this.request("DELETE", "/active/");
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
   // --- Commands ---
@@ -719,7 +735,7 @@ export class ObsidianClient {
     return this.parseJsonResponse<{ commands: Array<{ id: string; name: string }> }>(res.body, "/commands/", res.headers);
   }
 
-  /** Executes an Obsidian command by its ID. */
+  /** Executes an Obsidian command by its ID. Invalidates the entire cache since commands may modify vault contents. */
   async executeCommand(commandId: string): Promise<void> {
     const encoded = encodeURIComponent(commandId);
     const res = await this.request("POST", `/commands/${encoded}/`);
@@ -727,6 +743,8 @@ export class ObsidianClient {
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body, commandId);
     }
+    // Commands can create/rename/delete/edit notes — invalidate all
+    this.cacheRef?.invalidateAll();
   }
 
   // --- Open ---
@@ -807,54 +825,62 @@ export class ObsidianClient {
     return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, `/periodic/${period}/`, res.headers);
   }
 
-  /** Replaces the current periodic note content (idempotent). */
+  /** Replaces the current periodic note content (idempotent). Serialized per period type. */
   async putPeriodicNote(period: string, content: string): Promise<void> {
-    const res = await this.request("PUT", `/periodic/${encodeURIComponent(period)}/`, {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    await this.withFileLock(`__periodic_${period}__`, async () => {
+      const res = await this.request("PUT", `/periodic/${encodeURIComponent(period)}/`, {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
-    }
-    // Periodic note path is resolved by Obsidian — invalidate all
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      }
+      // Periodic note path is resolved by Obsidian — invalidate all
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Appends content to the current periodic note (not idempotent). */
+  /** Appends content to the current periodic note (not idempotent). Serialized per period type. */
   async appendPeriodicNote(period: string, content: string): Promise<void> {
-    const res = await this.request("POST", `/periodic/${encodeURIComponent(period)}/`, {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    await this.withFileLock(`__periodic_${period}__`, async () => {
+      const res = await this.request("POST", `/periodic/${encodeURIComponent(period)}/`, {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Patches the current periodic note at a specific target (not idempotent). */
+  /** Patches the current periodic note at a specific target (not idempotent). Serialized per period type. */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
-    const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
-      body: content,
-      headers: this.buildPatchHeaders(options),
-    });
+    await this.withFileLock(`__periodic_${period}__`, async () => {
+      const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
+        body: content,
+        headers: this.buildPatchHeaders(options),
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Deletes the current periodic note (idempotent). */
+  /** Deletes the current periodic note (idempotent). Serialized per period type. */
   async deletePeriodicNote(period: string): Promise<void> {
-    const res = await this.request("DELETE", `/periodic/${encodeURIComponent(period)}/`);
+    await this.withFileLock(`__periodic_${period}__`, async () => {
+      const res = await this.request("DELETE", `/periodic/${encodeURIComponent(period)}/`);
 
-    if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
   // --- Periodic Notes (By Date) ---
@@ -882,57 +908,69 @@ export class ObsidianClient {
     return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, path, res.headers);
   }
 
-  /** Replaces the periodic note for a specific date (idempotent). */
+  /** Replaces the periodic note for a specific date (idempotent). Serialized per period+date. */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = this.periodicDatePath(period, year, month, day);
-    const res = await this.request("PUT", path, {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
+    await this.withFileLock(lockKey, async () => {
+      const path = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("PUT", path, {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Appends content to the periodic note for a specific date (not idempotent). */
+  /** Appends content to the periodic note for a specific date (not idempotent). Serialized per period+date. */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const path = this.periodicDatePath(period, year, month, day);
-    const res = await this.request("POST", path, {
-      body: content,
-      headers: { "Content-Type": "text/markdown" },
-    });
+    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
+    await this.withFileLock(lockKey, async () => {
+      const path = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("POST", path, {
+        body: content,
+        headers: { "Content-Type": "text/markdown" },
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Patches the periodic note for a specific date at a target (not idempotent). */
+  /** Patches the periodic note for a specific date at a target (not idempotent). Serialized per period+date. */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
-    const path = this.periodicDatePath(period, year, month, day);
-    const res = await this.request("PATCH", path, {
-      body: content,
-      headers: this.buildPatchHeaders(options),
-    });
+    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
+    await this.withFileLock(lockKey, async () => {
+      const path = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("PATCH", path, {
+        body: content,
+        headers: this.buildPatchHeaders(options),
+      });
 
-    if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 
-  /** Deletes the periodic note for a specific date (idempotent). */
+  /** Deletes the periodic note for a specific date (idempotent). Serialized per period+date. */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
-    const path = this.periodicDatePath(period, year, month, day);
-    const res = await this.request("DELETE", path);
+    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
+    await this.withFileLock(lockKey, async () => {
+      const path = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("DELETE", path);
 
-    if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
-    }
-    this.cacheRef?.invalidateAll();
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
+        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      }
+      this.cacheRef?.invalidateAll();
+    });
   }
 }
 

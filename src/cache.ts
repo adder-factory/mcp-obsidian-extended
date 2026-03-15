@@ -78,7 +78,22 @@ function extractWikilinkTarget(inner: string): string {
   return raw.trim();
 }
 
-/** Scans content for [text](path.md) patterns using string scanning (no regex). */
+/** Finds the closing `)` that matches the `(` at `openPos`, accounting for nested parentheses. Returns -1 if unmatched. */
+function findMatchingParen(content: string, openPos: number): number {
+  let depth = 1;
+  for (let i = openPos + 1; i < content.length; i++) {
+    if (content[i] === "(") depth++;
+    else if (content[i] === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+    // Stop at newline — markdown links don't span lines
+    if (content[i] === "\n") return -1;
+  }
+  return -1;
+}
+
+/** Scans content for [text](path.md) patterns using string scanning (no regex). Handles parentheses in paths by matching balanced parens. */
 function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
   const links: ParsedLink[] = [];
   let pos = 0;
@@ -88,7 +103,7 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
     const bracketClose = content.indexOf("]", bracketOpen + 1);
     if (bracketClose === -1) break;
     if (content[bracketClose + 1] !== "(") { pos = bracketClose + 1; continue; }
-    const parenClose = content.indexOf(")", bracketClose + 2);
+    const parenClose = findMatchingParen(content, bracketClose + 1);
     if (parenClose === -1) break;
     const url = content.slice(bracketClose + 2, parenClose);
     const urlPath = extractMdLinkPath(url);

@@ -135,7 +135,7 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {};
   }
-  // Attempt per-section recovery: validate each top-level key independently
+  // Attempt per-section recovery: validate each top-level key, then nested keys individually
   const obj = parsed as Record<string, unknown>;
   const recovered: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {
@@ -144,6 +144,23 @@ function loadConfigFile(filePath: string): ConfigFileShape {
       const fieldResult = fieldSchema.safeParse(obj[key]);
       if (fieldResult.success) {
         recovered[key] = fieldResult.data;
+      } else if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key]) && "shape" in fieldSchema) {
+        // Nested object with mixed valid/invalid fields — recover valid nested keys
+        const nestedObj = obj[key] as Record<string, unknown>;
+        const nestedSchema = fieldSchema as unknown as { shape: Record<string, z.ZodType> };
+        const nestedRecovered: Record<string, unknown> = {};
+        for (const nestedKey of Object.keys(nestedObj)) {
+          const nestedFieldSchema = nestedSchema.shape[nestedKey];
+          if (nestedFieldSchema) {
+            const nestedResult = nestedFieldSchema.safeParse(nestedObj[nestedKey]);
+            if (nestedResult.success) {
+              nestedRecovered[nestedKey] = nestedResult.data;
+            }
+          }
+        }
+        if (Object.keys(nestedRecovered).length > 0) {
+          recovered[key] = nestedRecovered;
+        }
       }
     }
   }

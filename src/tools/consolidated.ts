@@ -293,7 +293,41 @@ async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNo
   }
 }
 
-// --- Extracted vault_analysis handler (buildVaultStructure, handleRecentChanges, etc. imported from shared.ts) ---
+// --- Extracted vault_analysis handler ---
+
+/** Dispatches a vault_analysis action to the appropriate cache query. */
+async function handleVaultAnalysisAction(
+  cache: VaultCache,
+  config: Config,
+  action: "backlinks" | "connections" | "structure" | "refresh",
+  path: string | undefined,
+  limit: number,
+): Promise<ToolResult> {
+  if (!config.enableCache) {
+    return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
+  }
+  switch (action) {
+    case "backlinks":
+      if (!path) return errorResult("[vault_analysis] path is required for backlinks");
+      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      return jsonResult(cache.getBacklinks(path));
+    case "connections":
+      if (!path) return errorResult("[vault_analysis] path is required for connections");
+      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
+    case "structure":
+      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      return buildVaultStructure(cache, limit);
+    case "refresh":
+      await cache.refresh();
+      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");
+      return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
+    default: {
+      const _exhaustive: never = action;
+      return errorResult(`[vault_analysis] Unknown action: ${String(_exhaustive)}`);
+    }
+  }
+}
 
 // --- Registration ---
 
@@ -671,32 +705,7 @@ export function registerConsolidatedTools(
           return errorResult(`[vault_analysis] Action "${action}" is not allowed in "${config.toolPreset}" preset`);
         }
         try {
-          if (!config.enableCache) {
-            return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          }
-          switch (action) {
-            case "backlinks":
-              if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-              if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-              return jsonResult(cache.getBacklinks(path));
-            case "connections":
-              if (!path) return errorResult("[vault_analysis] path is required for connections");
-              if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-              return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
-            case "structure":
-              if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-              return buildVaultStructure(cache, limit);
-            case "refresh":
-              await cache.refresh();
-              if (!cache.getIsInitialized()) {
-                return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");
-              }
-              return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
-            default: {
-              const _exhaustive: never = action;
-              return errorResult(`[vault_analysis] Unknown action: ${String(_exhaustive)}`);
-            }
-          }
+          return await handleVaultAnalysisAction(cache, config, action, path, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "vault_analysis", path }));
         }

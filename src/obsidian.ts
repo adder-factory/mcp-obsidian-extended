@@ -103,6 +103,23 @@ function acceptHeaderForFormat(format: FileFormat): string {
   }
 }
 
+// --- Target Header Encoding ---
+
+/** Regex matching runs of non-printable-ASCII characters (control chars, unicode, emoji). */
+const NON_PRINTABLE_ASCII = /[^\x20-\x7E]+/g;
+
+/**
+ * Encodes a PATCH Target header value for the Obsidian REST API.
+ * 1. Escapes literal `%` → `%25` so Obsidian doesn't decode `%HH` sequences in headings.
+ * 2. Percent-encodes non-printable-ASCII (unicode, emoji) for Node.js HTTP header safety.
+ * Printable ASCII (+, &, ::, spaces) is preserved — Obsidian does plain-text matching for these.
+ * Validated against live Obsidian API in Phase 3.
+ */
+function encodeTargetHeader(target: string): string {
+  const escaped = target.replaceAll("%", "%25");
+  return escaped.replace(NON_PRINTABLE_ASCII, (match) => encodeURIComponent(match)); // NOSONAR: replace with /g regex is idiomatic; replaceAll with regex is unconventional
+}
+
 // --- Tool Result Helpers ---
 
 /** Standard MCP tool response shape (index signature required by MCP SDK). */
@@ -469,9 +486,7 @@ export class ObsidianClient {
       // This preserves ASCII special chars (+, &, ::, spaces) while ensuring both
       // non-ASCII headings and headings with literal %HH sequences round-trip correctly.
       // Validated against live Obsidian API in Phase 3.
-      "Target": options.target
-        .replaceAll("%", "%25")
-        .replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
+      "Target": encodeTargetHeader(options.target),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

@@ -639,11 +639,14 @@ if [ -f "$ENV_FILE" ]; then
     case "$key" in
       SONAR_LOGIN) SONAR_LOGIN="$value" ;;
       SONAR_PASSWORD) SONAR_PASSWORD="$value" ;;
+      SONAR_TOKEN) SONAR_TOKEN="$value" ;;
     esac
-  done < <(grep -E '^(SONAR_LOGIN|SONAR_PASSWORD)=' "$ENV_FILE" 2>/dev/null || true)
+  done < <(grep -E '^(SONAR_LOGIN|SONAR_PASSWORD|SONAR_TOKEN)=' "$ENV_FILE" 2>/dev/null || true)
 fi
 SONAR_LOGIN="${SONAR_LOGIN:-}"
 SONAR_PASSWORD="${SONAR_PASSWORD:-}"
+SONAR_TOKEN="${SONAR_TOKEN:-}"
+export SONAR_TOKEN
 sonar_stale=false
 if [ -z "$SONAR_LOGIN" ] || [ -z "$SONAR_PASSWORD" ]; then
   log "Sonar credentials not set — skipping"
@@ -658,19 +661,17 @@ else: print('unknown')
 
   if [ "$sonar_version" != "unknown" ] && ! echo "$HEAD_SHA" | grep -q "^${sonar_version}"; then
     sonar_stale=true
-    if [ "$FIX_STALE" = true ]; then
-      log "STALE — triggering fresh scan..."
-      npm run sonar --silent 2>/dev/null || log "  Sonar scan failed"
-      sonar_version=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/project_analyses/search?project=mcp-obsidian-extended&ps=1" 2>/dev/null | python3 -c "
+    # Always re-scan when stale (Sonar scan is fast and authoritative)
+    log "STALE — triggering fresh scan..."
+    SONAR_TOKEN="$SONAR_TOKEN" npm run sonar --silent 2>/dev/null || log "  Sonar scan failed"
+    sleep 5  # Wait for server to process
+    sonar_version=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/project_analyses/search?project=mcp-obsidian-extended&ps=1" 2>/dev/null | python3 -c "
 import json,sys; d=json.load(sys.stdin); a=d.get('analyses',[]); print(a[0].get('revision','unknown')[:7] if a else 'unknown')
 " 2>/dev/null || echo "unknown")
-      if echo "$HEAD_SHA" | grep -q "^${sonar_version}"; then
-        sonar_stale=false; log "  Scan complete — now current"
-      else
-        log "  Scan still stale after re-run"
-      fi
+    if echo "$HEAD_SHA" | grep -q "^${sonar_version}"; then
+      sonar_stale=false; log "  Scan complete — now current"
     else
-      log "STALE — last scan on ${sonar_version}, HEAD is ${HEAD_SHA} (use --fix-stale to re-scan)"
+      log "  Scan still stale after re-run"
     fi
     if [ "$sonar_stale" = true ]; then stale_warnings=$((stale_warnings + 1)); fi
   fi

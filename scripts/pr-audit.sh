@@ -17,7 +17,7 @@ set -euo pipefail
 REPO="adder-factory/mcp-obsidian-extended"
 OWNER="adder-factory"
 NAME="mcp-obsidian-extended"
-PR=1
+PR=2
 QUICK=false
 FIX_STALE=false
 AUTO_RESOLVE=false

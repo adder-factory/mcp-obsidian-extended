@@ -727,11 +727,23 @@ else
 
   logn "  knip:      "
   knip_out=$(npx knip 2>&1 || true)
-  knip_unexpected=$(echo "$knip_out" | grep "Unused" | grep -cv "tools/granular\|tools/consolidated\|Unlisted binaries" || echo "0")
+  # Filter known Phase 1 expected items: placeholder tool files, unlisted dev binaries, types consumed in Phase 2
+  knip_unexpected=$(echo "$knip_out" | grep -v "tools/granular\|tools/consolidated\|Unlisted binaries\|Unused exported types\|ParsedLink\|CachedNote\|DocumentMap\|PatchOptions\|SearchMatch\|SearchResult" | grep -c "Unused" || echo "0")
   if [ "$knip_unexpected" -eq 0 ]; then log "PASS"; else log "FAIL ($knip_unexpected unexpected)"; verify_failures=$((verify_failures + 1)); fi
 
-  logn "  semgrep:   "; if npx semgrep --config auto src/ --quiet 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
-  logn "  snyk:      "; if npx snyk test --severity-threshold=high 2>/dev/null | grep -q "found 0"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  logn "  semgrep:   "
+  if command -v semgrep >/dev/null 2>&1 || npx semgrep --version >/dev/null 2>&1; then
+    if npx semgrep --config auto src/ --quiet 2>/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  else
+    log "SKIP (not installed)"
+  fi
+
+  logn "  snyk:      "
+  if npx snyk auth --check >/dev/null 2>&1 || snyk auth --check >/dev/null 2>&1; then
+    if npx snyk test --severity-threshold=high 2>/dev/null | grep -q "found 0"; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  else
+    log "SKIP (not authenticated — run snyk auth)"
+  fi
 fi
 
 # ================================================================

@@ -142,7 +142,7 @@ function extractMdLinkPath(url: string): string | undefined {
   if (queryPos !== -1 && queryPos < pathEnd) pathEnd = queryPos;
   let path = url.slice(0, pathEnd).trim();
   // Strip optional title: [text](path.md "title") or [text](path.md 'title')
-  const titleMatch = path.match(/^(.+\.md)\s+["']/);
+  const titleMatch = /^(.+\.md)\s+["']/.exec(path);
   if (titleMatch?.[1]) {
     path = titleMatch[1];
   }
@@ -301,57 +301,9 @@ export class VaultCache implements VaultCacheInterface {
       const { files } = await this.client.listFilesInVault();
       const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
 
-      // Remove deleted notes from cache (uses invalidate to also update shortNameIndex)
-      let deleted = 0;
-      for (const cachedPath of this.notes.keys()) {
-        if (!mdFiles.has(cachedPath)) {
-          this.invalidate(cachedPath);
-          deleted++;
-        }
-      }
+      const deleted = this.pruneDeletedNotes(mdFiles);
+      const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);
 
-      // Re-fetch all notes; only update cache entries whose mtime changed
-      let updated = 0;
-      const batchSize = 20;
-      const filesToCheck = [...mdFiles];
-
-      for (let i = 0; i < filesToCheck.length; i += batchSize) {
-        const batch = filesToCheck.slice(i, i + batchSize);
-        const results = await Promise.allSettled(
-          batch.map(async (filePath) => {
-            const result = await this.client.getFileContents(filePath, "json");
-            if (typeof result === "string" || !("content" in result)) {
-              throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
-            }
-            const noteJson = result;
-            const existing = this.notes.get(filePath);
-
-            if (existing?.stat.mtime !== noteJson.stat.mtime) {
-              // Skip if cache was invalidated during this refresh cycle
-              if (this.generation !== refreshGeneration) return;
-              const links = parseLinks(noteJson.content, filePath);
-              this.notes.set(filePath, {
-                path: filePath,
-                content: noteJson.content,
-                frontmatter: noteJson.frontmatter,
-                tags: noteJson.tags,
-                stat: noteJson.stat,
-                links,
-                cachedAt: Date.now(),
-              });
-              updated++;
-            }
-          }),
-        );
-
-        for (const result of results) {
-          if (result.status === "rejected") {
-            log("debug", `Cache refresh: failed to fetch a file: ${String(result.reason)}`);
-          }
-        }
-      }
-
-      // Discard if invalidateAll() was called during refresh
       if (this.generation !== refreshGeneration) {
         log("debug", "Cache refresh discarded: vault was invalidated during refresh");
         return;
@@ -367,6 +319,58 @@ export class VaultCache implements VaultCacheInterface {
     } finally {
       this.isRefreshing = false;
     }
+  }
+
+  /** Removes cached notes that no longer exist in the vault file list. */
+  private pruneDeletedNotes(currentFiles: Set<string>): number {
+    let deleted = 0;
+    for (const cachedPath of this.notes.keys()) {
+      if (!currentFiles.has(cachedPath)) {
+        this.invalidate(cachedPath);
+        deleted++;
+      }
+    }
+    return deleted;
+  }
+
+  /** Fetches notes in batches and updates cache entries whose mtime has changed. */
+  private async fetchChangedNotes(filesToCheck: readonly string[], expectedGeneration: number): Promise<number> {
+    let updated = 0;
+    const batchSize = 20;
+
+    for (let i = 0; i < filesToCheck.length; i += batchSize) {
+      const batch = filesToCheck.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (filePath) => {
+          const result = await this.client.getFileContents(filePath, "json");
+          if (typeof result === "string" || !("content" in result)) {
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+          }
+          const existing = this.notes.get(filePath);
+          if (existing?.stat.mtime !== result.stat.mtime) {
+            if (this.generation !== expectedGeneration) return;
+            const links = parseLinks(result.content, filePath);
+            this.notes.set(filePath, {
+              path: filePath,
+              content: result.content,
+              frontmatter: result.frontmatter,
+              tags: result.tags,
+              stat: result.stat,
+              links,
+              cachedAt: Date.now(),
+            });
+            updated++;
+          }
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === "rejected") {
+          log("debug", `Cache refresh: failed to fetch a file: ${String(r.reason)}`);
+        }
+      }
+    }
+    return updated;
   }
 
   /** Starts a background timer that periodically refreshes the cache. */

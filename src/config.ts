@@ -121,6 +121,24 @@ const configFileSchema = z.object({
   debug: z.boolean().optional(),
 }).passthrough();
 
+/** Recovers valid nested keys from an object section whose top-level validation failed. */
+function recoverNestedKeys(fieldSchema: z.ZodType, value: unknown): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const nestedObj = value as Record<string, unknown>;
+  const recovered: Record<string, unknown> = {};
+  for (const nestedKey of Object.keys(nestedObj)) {
+    const partial: Record<string, unknown> = { [nestedKey]: nestedObj[nestedKey] };
+    const partialResult = fieldSchema.safeParse(partial);
+    if (partialResult.success) {
+      const data = partialResult.data as Record<string, unknown>;
+      recovered[nestedKey] = data[nestedKey];
+    }
+  }
+  return Object.keys(recovered).length > 0 ? recovered : undefined;
+}
+
 /** Reads and validates a JSON config file. Invalid fields are stripped individually; valid fields preserved. */
 function loadConfigFile(filePath: string): ConfigFileShape {
   const raw = readFileSync(filePath, "utf-8");
@@ -129,38 +147,29 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   if (result.success) {
     return result.data as ConfigFileShape;
   }
-  // Strip invalid fields individually — keep valid ones
   const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
   log("warn", `Config file ${filePath} has invalid fields: ${issues}. Invalid fields ignored.`);
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     return {};
   }
-  // Attempt per-section recovery: validate each top-level key, then nested keys individually
-  const obj = parsed as Record<string, unknown>;
+  return recoverConfigFields(parsed as Record<string, unknown>);
+}
+
+/** Attempts per-section recovery: validates each top-level key, falls back to nested key recovery. */
+function recoverConfigFields(obj: Record<string, unknown>): ConfigFileShape {
   const recovered: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {
     const fieldSchema = configFileSchema.shape[key as keyof typeof configFileSchema.shape];
-    if (fieldSchema) {
-      const fieldResult = fieldSchema.safeParse(obj[key]);
-      if (fieldResult.success) {
-        recovered[key] = fieldResult.data;
-      } else if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
-        // Nested object with mixed valid/invalid fields — recover valid nested keys
-        // Use the top-level schema to validate each nested key individually
-        const nestedObj = obj[key] as Record<string, unknown>;
-        const nestedRecovered: Record<string, unknown> = {};
-        for (const nestedKey of Object.keys(nestedObj)) {
-          // Validate a partial object with only this nested key
-          const partial: Record<string, unknown> = { [nestedKey]: nestedObj[nestedKey] };
-          const partialResult = fieldSchema.safeParse(partial);
-          if (partialResult.success) {
-            const parsed = partialResult.data as Record<string, unknown>;
-            nestedRecovered[nestedKey] = parsed[nestedKey];
-          }
-        }
-        if (Object.keys(nestedRecovered).length > 0) {
-          recovered[key] = nestedRecovered;
-        }
+    if (!fieldSchema) {
+      continue;
+    }
+    const fieldResult = fieldSchema.safeParse(obj[key]);
+    if (fieldResult.success) {
+      recovered[key] = fieldResult.data;
+    } else {
+      const nested = recoverNestedKeys(fieldSchema, obj[key]);
+      if (nested) {
+        recovered[key] = nested;
       }
     }
   }

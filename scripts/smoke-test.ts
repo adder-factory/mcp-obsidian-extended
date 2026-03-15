@@ -104,7 +104,7 @@ const APPEND_CONTENT = "\n\nAppended content.";
 
 const LINK_FILE_A = "_smoke_link_a.md";
 const LINK_FILE_B = "_smoke_link_b.md";
-const LINK_CONTENT_A = "# Link Source\n\nThis note links to [[_smoke_link_b]].\n";
+const LINK_CONTENT_A = "# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n";
 const LINK_CONTENT_B = "# Target Note\n\nTarget note content.\n";
 
 // --- Test Steps ---

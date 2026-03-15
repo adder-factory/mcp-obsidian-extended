@@ -35,6 +35,7 @@ jobs:
         with:
           name: coverage-node-${{ matrix.node-version }}
           path: coverage/
+          if-no-files-found: ignore
           retention-days: 7
       - run: npm audit --omit=dev --audit-level=moderate
         if: steps.install.outcome == 'success'

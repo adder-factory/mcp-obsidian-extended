@@ -64,8 +64,13 @@ async function main(): Promise<void> {
       await client.listFilesInVault();
       log("info", "API key verified");
       if (config.enableCache) {
-        await cache.initialize();
-        cache.startAutoRefresh();
+        try {
+          await cache.initialize();
+        } finally {
+          // Always start auto-refresh: if initialize() failed, the timer will
+          // call refresh() → initialize() on the next tick, providing automatic recovery.
+          cache.startAutoRefresh();
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

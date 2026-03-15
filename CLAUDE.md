@@ -95,6 +95,7 @@ API reference: @docs/cc-reference.md
 - Template literals over string concatenation
 - Early returns over deep nesting
 - Max function length: ~50 lines — extract helpers if longer
+- Exception: `withFileLock` uses `.then(fn, fn)` for its mutex-queue pattern — this is intentional and documented in obsidian.ts
 
 ## Git Workflow
 

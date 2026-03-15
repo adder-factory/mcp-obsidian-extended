@@ -222,44 +222,28 @@ export class ObsidianClient {
 
   // --- Core HTTP ---
 
-  /** Performs a raw HTTP request against the Obsidian REST API with auth, timeout, and debug logging. */
-  private async request(
+  /** Normalises raw Node.js response headers (which may be string or string[]) into a plain string record. */
+  private normalizeResponseHeaders(rawHeaders: Record<string, string | readonly string[] | undefined>): Record<string, string> {
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawHeaders)) {
+      if (typeof value === "string") {
+        normalized[key] = value;
+      }
+    }
+    return normalized;
+  }
+
+  /** Executes the low-level HTTP request and streams the response, enforcing a size cap and settled guard. */
+  private executeRequest(
+    reqOptions: RequestOptions,
     method: string,
     path: string,
-    options: {
-      readonly body?: string;
-      readonly headers?: Record<string, string>;
-      readonly auth?: boolean;
-      readonly timeoutMultiplier?: number;
-    } = {},
+    body: string | undefined,
+    startTime: number,
+    effectiveTimeout: number,
   ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
-    const { body, headers: extraHeaders, auth = true, timeoutMultiplier = 1 } = options;
-    const url = new URL(path, this.baseUrl);
-    const startTime = Date.now();
-
-    const reqHeaders: Record<string, string> = {
-      ...extraHeaders,
-    };
-    if (auth && this.apiKey) {
-      reqHeaders["Authorization"] = `Bearer ${this.apiKey}`;
-    }
-    if (body !== undefined) {
-      reqHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf-8"));
-    }
-
-    const requestFn = this.isHttps ? httpsRequest : httpRequest;
-
-    const reqOptions: RequestOptions = {
-      method,
-      hostname: url.hostname,
-      port: url.port,
-      path: url.pathname + url.search,
-      headers: reqHeaders,
-      agent: this.agent,
-      timeout: this.timeout * timeoutMultiplier,
-    };
-
     const MAX_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
+    const requestFn = this.isHttps ? httpsRequest : httpRequest;
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -289,19 +273,10 @@ export class ObsidianClient {
           const elapsed = Date.now() - startTime;
           const responseBody = Buffer.concat(chunks).toString("utf-8");
           const statusCode = res.statusCode ?? 0;
-
           if (this.debug) {
             log("debug", `${method} ${path} → ${String(statusCode)} (${String(elapsed)}ms)`);
           }
-
-          const responseHeaders: Record<string, string> = {};
-          for (const [key, value] of Object.entries(res.headers)) {
-            if (typeof value === "string") {
-              responseHeaders[key] = value;
-            }
-          }
-
-          resolve({ statusCode, headers: responseHeaders, body: responseBody });
+          resolve({ statusCode, headers: this.normalizeResponseHeaders(res.headers), body: responseBody });
         });
       });
 
@@ -309,7 +284,7 @@ export class ObsidianClient {
         req.destroy();
         if (settled) return;
         settled = true;
-        reject(new ObsidianConnectionError(`Request timed out after ${String(this.timeout * timeoutMultiplier)}ms: ${method} ${path}`));
+        reject(new ObsidianConnectionError(`Request timed out after ${String(effectiveTimeout)}ms: ${method} ${path}`));
       });
 
       req.on("error", (err: Error) => {
@@ -327,6 +302,42 @@ export class ObsidianClient {
       }
       req.end();
     });
+  }
+
+  /** Performs a raw HTTP request against the Obsidian REST API with auth, timeout, and debug logging. */
+  private async request(
+    method: string,
+    path: string,
+    options: {
+      readonly body?: string;
+      readonly headers?: Record<string, string>;
+      readonly auth?: boolean;
+      readonly timeoutMultiplier?: number;
+    } = {},
+  ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
+    const { body, headers: extraHeaders, auth = true, timeoutMultiplier = 1 } = options;
+    const url = new URL(path, this.baseUrl);
+
+    const reqHeaders: Record<string, string> = { ...extraHeaders };
+    if (auth && this.apiKey) {
+      reqHeaders["Authorization"] = `Bearer ${this.apiKey}`;
+    }
+    if (body !== undefined) {
+      reqHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf-8"));
+    }
+
+    const effectiveTimeout = this.timeout * timeoutMultiplier;
+    const reqOptions: RequestOptions = {
+      method,
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      headers: reqHeaders,
+      agent: this.agent,
+      timeout: effectiveTimeout,
+    };
+
+    return this.executeRequest(reqOptions, method, path, body, Date.now(), effectiveTimeout);
   }
 
   /** Safely parses a JSON response body, validating Content-Type and throwing structured errors. */

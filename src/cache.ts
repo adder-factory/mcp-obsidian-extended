@@ -279,13 +279,14 @@ export class VaultCache implements VaultCacheInterface {
    * to check mtime. For large vaults this means N HTTP requests per refresh cycle.
    * The comparison itself is incremental (only changed notes are re-parsed),
    * but the network cost is proportional to vault size.
-   * @throws {Error} When uninitialized, delegates to initialize() which may throw.
+   * Errors are caught and logged — never throws.
    */
   async refresh(): Promise<void> {
     if (this.isRefreshing) {
       return;
     }
     this.isRefreshing = true;
+    const refreshGeneration = this.generation;
     try {
       if (!this.isInitialized) {
         await this.initialize();
@@ -321,6 +322,8 @@ export class VaultCache implements VaultCacheInterface {
             const existing = this.notes.get(filePath);
 
             if (existing?.stat.mtime !== noteJson.stat.mtime) {
+              // Skip if cache was invalidated during this refresh cycle
+              if (this.generation !== refreshGeneration) return;
               const links = parseLinks(noteJson.content, filePath);
               this.notes.set(filePath, {
                 path: filePath,
@@ -341,6 +344,12 @@ export class VaultCache implements VaultCacheInterface {
             log("debug", `Cache refresh: failed to fetch a file: ${String(result.reason)}`);
           }
         }
+      }
+
+      // Discard if invalidateAll() was called during refresh
+      if (this.generation !== refreshGeneration) {
+        log("debug", "Cache refresh discarded: vault was invalidated during refresh");
+        return;
       }
 
       if (updated > 0 || deleted > 0) {

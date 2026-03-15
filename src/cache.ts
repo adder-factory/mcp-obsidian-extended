@@ -168,6 +168,8 @@ export class VaultCache implements VaultCacheInterface {
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
   private isRefreshing = false;
+  /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
+  private generation = 0;
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
   private readonly shortNameIndex = new Map<string, Set<string>>();
 
@@ -179,9 +181,10 @@ export class VaultCache implements VaultCacheInterface {
 
   // --- Initialization ---
 
-  /** Performs a full cache build by fetching all markdown files from the vault. Builds into a fresh snapshot then swaps atomically. */
+  /** Performs a full cache build by fetching all markdown files from the vault. Builds into a fresh snapshot then swaps atomically. Discards results if invalidateAll() was called during the build (generation mismatch). */
   async initialize(): Promise<void> {
     const startTime = Date.now();
+    const buildGeneration = this.generation;
     try {
       const { files } = await this.client.listFilesInVault();
       const mdFiles = files.filter((f) => f.endsWith(".md"));
@@ -221,6 +224,11 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
 
+      // Discard if invalidateAll() was called while we were building
+      if (this.generation !== buildGeneration) {
+        log("debug", "Cache build discarded: vault was invalidated during build");
+        return;
+      }
       // Swap atomically: clear old entries and copy fresh ones in
       this.notes.clear();
       for (const [key, value] of freshNotes) {
@@ -393,10 +401,10 @@ export class VaultCache implements VaultCacheInterface {
 
   /**
    * Clears the entire cache, index, and resets the initialised flag.
-   * Note: if called concurrently with refresh(), the next refresh cycle
-   * will re-initialise from scratch since isInitialized is set to false.
+   * Increments the generation counter so that any in-flight build discards its stale results.
    */
   invalidateAll(): void {
+    this.generation++;
     this.notes.clear();
     this.shortNameIndex.clear();
     this.isInitialized = false;
@@ -547,14 +555,16 @@ export class VaultCache implements VaultCacheInterface {
   /**
    * Resolves a link target to a full vault path using the short-name index.
    * Returns the first matching full path, or the original target if unresolved.
+   * Note: the exact-match fast-path is case-sensitive; case-insensitive resolution
+   * falls through to the O(1) short-name index lookups below.
    */
   private resolveLinkToFullPath(linkTarget: string): string {
     const normalized = this.normalizeLinkTarget(linkTarget);
-    // Exact match — already a full path
+    // Fast-path: exact case-sensitive match — already a full path
     if (this.notes.has(linkTarget)) {
       return linkTarget;
     }
-    // Short-name lookup via index
+    // Short-name lookup via index (handles case-insensitive resolution)
     const shortName = normalized.split("/").pop() ?? normalized;
     const candidates = this.shortNameIndex.get(shortName);
     if (candidates) {

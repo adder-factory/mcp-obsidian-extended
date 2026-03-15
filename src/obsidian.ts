@@ -222,12 +222,14 @@ export class ObsidianClient {
 
   // --- Core HTTP ---
 
-  /** Normalises raw Node.js response headers (which may be string or string[]) into a plain string record. */
+  /** Normalises raw Node.js response headers (which may be string or string[]) into a plain string record. Array values are joined with ", ". */
   private normalizeResponseHeaders(rawHeaders: Record<string, string | readonly string[] | undefined>): Record<string, string> {
     const normalized: Record<string, string> = {};
     for (const [key, value] of Object.entries(rawHeaders)) {
       if (typeof value === "string") {
         normalized[key] = value;
+      } else if (Array.isArray(value)) {
+        normalized[key] = value.join(", ");
       }
     }
     return normalized;
@@ -343,9 +345,9 @@ export class ObsidianClient {
     return this.executeRequest(reqOptions, method, path, body, Date.now(), effectiveTimeout);
   }
 
-  /** Safely parses a JSON response body, validating Content-Type and throwing structured errors. */
+  /** Safely parses a JSON response body, validating Content-Type (case-insensitive) and throwing structured errors. */
   private parseJsonResponse<T>(body: string, path: string, headers?: Record<string, string>): T {
-    const ct = headers?.["content-type"] ?? "";
+    const ct = (headers?.["content-type"] ?? "").toLowerCase();
     if (ct && !ct.includes("json")) {
       throw new ObsidianApiError(`Unexpected Content-Type "${ct}" from ${path} (expected JSON)`, 200);
     }
@@ -499,13 +501,18 @@ export class ObsidianClient {
     return this.parseJsonResponse<{ files: string[] }>(res.body, "/vault/", res.headers);
   }
 
-  /** Lists files in a vault directory, returning an empty list for empty dirs that 404. */
+  /**
+   * Lists files in a vault directory, returning an empty list for empty dirs that 404.
+   * On 404 the method makes an additional request to list all vault files and checks
+   * whether the directory exists. This double-request is unavoidable because the
+   * Obsidian REST API returns 404 for both non-existent and empty directories.
+   */
   async listFilesInDir(dirPath: string): Promise<{ files: string[] }> {
     const encoded = this.encodePath(dirPath);
     const res = await this.request("GET", `/vault/${encoded}/`);
 
     if (res.statusCode === 404) {
-      // Check if dir exists in vault listing
+      // Disambiguate empty vs non-existent: requires a full vault listing
       const vault = await this.listFilesInVault();
       const normalizedDir = sanitizeFilePath(dirPath).replace(/\/+$/, "");
       const dirExists = vault.files.some((f) => f.startsWith(`${normalizedDir}/`) || f === `${normalizedDir}/`);

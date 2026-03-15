@@ -5,13 +5,16 @@ set -euo pipefail
 REPO="adder-factory/mcp-obsidian-extended"
 PR=1
 
+# Dynamic 24h window
+SINCE=$(date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -d "24 hours ago" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "2026-03-14T00:00:00Z")
+
 echo "============================================================"
 echo "COMPREHENSIVE PR REVIEW AUDIT"
 echo "============================================================"
 
 echo ""
-echo "=== 1. NEW INLINE COMMENTS (last 24h) ==="
-gh api "repos/$REPO/pulls/$PR/comments" --jq '.[] | select(.created_at > "2026-03-14T20:00:00Z") | "\(.user.login) | \(.path):\(.line // .original_line) | \(.body[0:200])"' | head -50
+echo "=== 1. NEW INLINE COMMENTS (since $SINCE) ==="
+gh api "repos/$REPO/pulls/$PR/comments" --jq ".[] | select(.created_at > \"$SINCE\") | \"\(.user.login) | \(.path):\(.line // .original_line) | \(.body[0:200])\"" | head -50 || true
 
 echo ""
 echo "=== 2. CODERABBITAI LATEST REVIEW BODY ==="
@@ -21,14 +24,12 @@ echo "$LATEST_CR" | head -5
 # Check for duplicate comments
 echo ""
 echo "=== 3. CODERABBITAI DUPLICATE COMMENTS ==="
-echo "$LATEST_CR" | grep -A50 "Duplicate comments" | grep -B1 "Potential issue\|MAJOR\|MINOR\|BLOCKER" | head -20
-if [ $? -ne 0 ]; then echo "None found"; fi
+echo "$LATEST_CR" | grep -A50 "Duplicate comments" | grep -B1 "Potential issue\|MAJOR\|MINOR\|BLOCKER" | head -20 || echo "None found"
 
 # Check for nitpick comments
 echo ""
 echo "=== 4. CODERABBITAI NITPICK COMMENTS ==="
-echo "$LATEST_CR" | grep -A50 "Nitpick comments" | grep -B1 "unused\|remove\|simplif\|consider\|prefer\|rename\|dead\|redundant" | head -20
-if [ $? -ne 0 ]; then echo "None found"; fi
+echo "$LATEST_CR" | grep -A50 "Nitpick comments" | grep -B1 "unused\|remove\|simplif\|consider\|prefer\|rename\|dead\|redundant" | head -20 || echo "None found"
 
 # Check for actionable comments
 echo ""
@@ -43,7 +44,7 @@ gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.user.login == "coder
 # Greptile summary Fix All items
 echo ""
 echo "=== 7. GREPTILE SUMMARY FIX-ALL ITEMS ==="
-GREPTILE=$(gh api "repos/$REPO/issues/$PR/comments" --jq '.[1].body')
+GREPTILE=$(gh api "repos/$REPO/issues/$PR/comments" --jq '[.[] | select(.user.login == "greptile-apps[bot]")] | last | .body // ""')
 echo "$GREPTILE" | python3 -c "
 import sys,re,urllib.parse
 t=sys.stdin.read()
@@ -57,29 +58,35 @@ if int(count) > 0:
             print(l[:200])
 " 2>/dev/null || echo "Could not parse"
 
-echo "$GREPTILE" | grep "Last reviewed"
+echo "$GREPTILE" | grep "Last reviewed" || true
 
 # Sonar
 echo ""
 echo "=== 8. SONAR STATUS ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../.env" 2>/dev/null || { echo "Warning: .env not found — Sonar checks will be skipped"; }
-curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots" 2>/dev/null | python3 -c "
+SONAR_LOGIN="${SONAR_LOGIN:-}"
+SONAR_PASSWORD="${SONAR_PASSWORD:-}"
+if [ -z "$SONAR_LOGIN" ] || [ -z "$SONAR_PASSWORD" ]; then
+  echo "Sonar credentials not set — skipping"
+else
+  curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/measures/component?component=mcp-obsidian-extended&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots" 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 for m in d['component']['measures']:
     print(f\"  {m['metric']:25s} = {m['value']}\")
 " 2>/dev/null || echo "Could not reach Sonar"
 
-echo ""
-echo "=== 9. OPEN SONAR ISSUES ==="
-curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=10" 2>/dev/null | python3 -c "
+  echo ""
+  echo "=== 9. OPEN SONAR ISSUES ==="
+  curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=10" 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 print(f'Open issues: {d[\"total\"]}')
 for i in d['issues']:
     print(f\"  {i['severity']:8s} {i['component'].split(':')[-1]}:{i.get('line','')} — {i['message']}\")
 " 2>/dev/null || echo "Could not reach Sonar"
+fi
 
 echo ""
 echo "============================================================"

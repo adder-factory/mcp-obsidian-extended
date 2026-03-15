@@ -24,7 +24,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:smoke": "tsx scripts/smoke-test.ts",
-    "pack:mcpb": "npm run build && mcpb pack",
+    "pack:mcpb": "npm run build && npx mcpb pack",
     "sonar": "sonar-scanner -Dsonar.host.url=http://localhost:9000",
     "verify:all": "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/",
     "security:all": "npx snyk test && npx snyk code test && npx semgrep --config auto src/"

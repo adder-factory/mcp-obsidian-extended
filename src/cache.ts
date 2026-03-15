@@ -112,7 +112,10 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
     if (content[bracketClose + 1] !== "(") { pos = bracketClose + 1; continue; }
     const parenClose = findMatchingParen(content, bracketClose + 1);
     if (parenClose === -1) { pos = bracketClose + 2; continue; }
-    const url = content.slice(bracketClose + 2, parenClose);
+    const rawUrl = content.slice(bracketClose + 2, parenClose);
+    // Decode URL-encoded paths (e.g. %20 → space) before extraction
+    let url: string;
+    try { url = decodeURIComponent(rawUrl); } catch { url = rawUrl; }
     const urlPath = extractMdLinkPath(url);
     if (urlPath !== undefined) {
       const target = resolveRelativePath(urlPath, currentDir);
@@ -152,7 +155,7 @@ function extractMdLinkPath(url: string): string | undefined {
 /** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */
 function resolveWikilink(target: string): string {
   let resolved = target;
-  if (!resolved.endsWith(".md")) {
+  if (!resolved.toLowerCase().endsWith(".md")) {
     resolved = `${resolved}.md`;
   }
   // Wikilinks are vault-wide; keep as short name — resolved at graph-query time via suffix match
@@ -219,7 +222,7 @@ export class VaultCache implements VaultCacheInterface {
     const buildGeneration = this.generation;
     try {
       const { files } = await this.client.listFilesInVault();
-      const mdFiles = files.filter((f) => f.endsWith(".md"));
+      const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
 
       log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
@@ -304,7 +307,7 @@ export class VaultCache implements VaultCacheInterface {
       }
 
       const { files } = await this.client.listFilesInVault();
-      const mdFiles = new Set(files.filter((f) => f.endsWith(".md")));
+      const mdFiles = new Set(files.filter((f) => f.toLowerCase().endsWith(".md")));
 
       const deleted = this.pruneDeletedNotes(mdFiles);
       const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);
@@ -634,8 +637,11 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
       // Pass 2: suffix fallback for short-name wikilinks in subdirectories
+      // Require a `/` boundary to prevent partial directory segment matches
+      // (e.g. "bar/note.md" should not match "foobar/note.md")
       for (const candidate of candidates) {
-        if (this.normalizeLinkTarget(candidate).endsWith(`/${normalized}`)) {
+        const candidateNorm = this.normalizeLinkTarget(candidate);
+        if (candidateNorm.endsWith(`/${normalized}`) || candidateNorm === normalized) {
           return candidate;
         }
       }

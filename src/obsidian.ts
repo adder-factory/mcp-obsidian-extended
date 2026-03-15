@@ -353,7 +353,9 @@ export class ObsidianClient {
   /** Safely parses a JSON response body, validating Content-Type (case-insensitive) and throwing structured errors. */
   private parseJsonResponse<T>(body: string, path: string, headers?: Record<string, string>): T {
     const ct = (headers?.["content-type"] ?? "").toLowerCase();
-    if (ct && !ct.includes("json")) {
+    if (!ct) {
+      log("debug", `Missing Content-Type header from ${path}, attempting JSON parse`);
+    } else if (!ct.includes("json")) {
       throw new ObsidianApiError(`Unexpected Content-Type "${ct}" from ${path} (expected JSON)`, 200);
     }
     try {
@@ -401,16 +403,34 @@ export class ObsidianClient {
 
   /**
    * Serialises concurrent writes to the same lock key.
-   * For vault file paths, callers pass the raw path (canonicalized via sanitizeFilePath).
-   * For synthetic resources (__active__, __periodic_daily__, etc.), the key is used as-is.
+   * All file paths are canonicalized via sanitizeFilePath.
    * Uses `.then(fn, fn)` intentionally: if a previous lock-holder fails,
    * the next queued operation still runs (queue keeps moving). Each caller
    * gets its own rejection if its `fn` throws — errors do not propagate
    * across callers. This is the desired behaviour for independent write ops.
    */
   private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-    // Synthetic lock keys (e.g. __active__) bypass path sanitization
-    const lockKey = filePath.startsWith("__") ? filePath : sanitizeFilePath(filePath);
+    const lockKey = sanitizeFilePath(filePath);
+    const existing = this.fileLocks.get(lockKey);
+    const next = (existing ?? Promise.resolve()).then(fn, fn);
+    this.fileLocks.set(lockKey, next);
+    try {
+      return await next;
+    } finally {
+      if (this.fileLocks.get(lockKey) === next) {
+        this.fileLocks.delete(lockKey);
+      }
+    }
+  }
+
+  /**
+   * Serialises concurrent writes using a pre-validated synthetic lock key.
+   * Used for active-file and periodic-note operations where the vault path is
+   * unknown or resolved by Obsidian. Keys use a \0 prefix to guarantee they
+   * never collide with sanitized vault paths.
+   */
+  private async withSyntheticLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const lockKey = `\0${key}`;
     const existing = this.fileLocks.get(lockKey);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
     this.fileLocks.set(lockKey, next);
@@ -663,7 +683,7 @@ export class ObsidianClient {
 
   /** Replaces the content of the currently open file (idempotent). Serialized via active-file lock. */
   async putActiveFile(content: string): Promise<void> {
-    await this.withFileLock("__active__", async () => {
+    await this.withSyntheticLock("active", async () => {
       const res = await this.request("PUT", "/active/", {
         body: content,
         headers: { "Content-Type": "text/markdown" },
@@ -679,7 +699,7 @@ export class ObsidianClient {
 
   /** Appends content to the currently open file (not idempotent). Serialized via active-file lock. */
   async appendActiveFile(content: string): Promise<void> {
-    await this.withFileLock("__active__", async () => {
+    await this.withSyntheticLock("active", async () => {
       const res = await this.request("POST", "/active/", {
         body: content,
         headers: { "Content-Type": "text/markdown" },
@@ -694,7 +714,7 @@ export class ObsidianClient {
 
   /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. Serialized via active-file lock. */
   async patchActiveFile(content: string, options: PatchOptions): Promise<void> {
-    await this.withFileLock("__active__", async () => {
+    await this.withSyntheticLock("active", async () => {
       const headers = this.buildPatchHeaders(options);
       // Active file PATCH does not support Create-Target-If-Missing (vault PATCH only)
       delete headers["Create-Target-If-Missing"];
@@ -712,7 +732,7 @@ export class ObsidianClient {
 
   /** Deletes the currently open file (idempotent). Serialized via active-file lock. */
   async deleteActiveFile(): Promise<void> {
-    await this.withFileLock("__active__", async () => {
+    await this.withSyntheticLock("active", async () => {
       const res = await this.request("DELETE", "/active/");
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -827,7 +847,7 @@ export class ObsidianClient {
 
   /** Replaces the current periodic note content (idempotent). Serialized per period type. */
   async putPeriodicNote(period: string, content: string): Promise<void> {
-    await this.withFileLock(`__periodic_${period}__`, async () => {
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const res = await this.request("PUT", `/periodic/${encodeURIComponent(period)}/`, {
         body: content,
         headers: { "Content-Type": "text/markdown" },
@@ -843,7 +863,7 @@ export class ObsidianClient {
 
   /** Appends content to the current periodic note (not idempotent). Serialized per period type. */
   async appendPeriodicNote(period: string, content: string): Promise<void> {
-    await this.withFileLock(`__periodic_${period}__`, async () => {
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const res = await this.request("POST", `/periodic/${encodeURIComponent(period)}/`, {
         body: content,
         headers: { "Content-Type": "text/markdown" },
@@ -858,7 +878,7 @@ export class ObsidianClient {
 
   /** Patches the current periodic note at a specific target (not idempotent). Serialized per period type. */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
-    await this.withFileLock(`__periodic_${period}__`, async () => {
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
         body: content,
         headers: this.buildPatchHeaders(options),
@@ -873,7 +893,7 @@ export class ObsidianClient {
 
   /** Deletes the current periodic note (idempotent). Serialized per period type. */
   async deletePeriodicNote(period: string): Promise<void> {
-    await this.withFileLock(`__periodic_${period}__`, async () => {
+    await this.withSyntheticLock(`periodic_${period}`, async () => {
       const res = await this.request("DELETE", `/periodic/${encodeURIComponent(period)}/`);
 
       if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
@@ -910,8 +930,8 @@ export class ObsidianClient {
 
   /** Replaces the periodic note for a specific date (idempotent). Serialized per period+date. */
   async putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
-    await this.withFileLock(lockKey, async () => {
+    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
+    await this.withSyntheticLock(lockKey, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("PUT", path, {
         body: content,
@@ -927,8 +947,8 @@ export class ObsidianClient {
 
   /** Appends content to the periodic note for a specific date (not idempotent). Serialized per period+date. */
   async appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void> {
-    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
-    await this.withFileLock(lockKey, async () => {
+    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
+    await this.withSyntheticLock(lockKey, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("POST", path, {
         body: content,
@@ -944,8 +964,8 @@ export class ObsidianClient {
 
   /** Patches the periodic note for a specific date at a target (not idempotent). Serialized per period+date. */
   async patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void> {
-    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
-    await this.withFileLock(lockKey, async () => {
+    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
+    await this.withSyntheticLock(lockKey, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("PATCH", path, {
         body: content,
@@ -961,8 +981,8 @@ export class ObsidianClient {
 
   /** Deletes the periodic note for a specific date (idempotent). Serialized per period+date. */
   async deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void> {
-    const lockKey = `__periodic_${period}_${String(year)}_${String(month)}_${String(day)}__`;
-    await this.withFileLock(lockKey, async () => {
+    const lockKey = `periodic_${period}_${String(year)}_${String(month)}_${String(day)}`;
+    await this.withSyntheticLock(lockKey, async () => {
       const path = this.periodicDatePath(period, year, month, day);
       const res = await this.request("DELETE", path);
 

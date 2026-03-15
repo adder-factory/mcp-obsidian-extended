@@ -348,17 +348,20 @@ describe("ObsidianClient — encodePath", () => {
 // ObsidianClient — buildPatchHeaders
 // ---------------------------------------------------------------------------
 describe("ObsidianClient — buildPatchHeaders", () => {
+  /** Helper: calls buildPatchHeaders with the given options and returns the full headers record. */
+  function buildHeaders(opts: Record<string, unknown>): Record<string, string> {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (o: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    return build.call(client, opts);
+  }
+
   /** Helper: builds patch headers for a given target and returns the Target header value. */
   function targetHeader(target: string): string {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    return build.call(client, { operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
+    return buildHeaders({ operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
   }
 
   it("sets required headers", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "My Heading",

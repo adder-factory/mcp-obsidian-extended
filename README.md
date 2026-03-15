@@ -18,6 +18,7 @@ Install and enable the [Obsidian Local REST API](https://github.com/coddingtonbe
 Add to your Claude Desktop config:
 
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json

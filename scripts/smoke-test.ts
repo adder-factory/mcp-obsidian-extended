@@ -183,6 +183,8 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
 const CACHE_SEED_FILE = "_smoke_cache_seed.md";
 
 async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promise<void> {
+  // Note: client.setCache() is called again in step9 with a fresh cache instance,
+  // so the stopped cache from this step is never used for write-through invalidation.
   const cache = new VaultCache(client, cacheTtl);
   client.setCache(cache);
   try {

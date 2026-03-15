@@ -463,10 +463,10 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Encode only non-ASCII characters (emoji, accented chars). ASCII special chars
-      // (+, &, ::, spaces) must NOT be encoded — Obsidian does plain-text matching for ASCII.
-      // Non-ASCII MUST be percent-encoded: validated against live API — Obsidian decodes
-      // percent-encoded UTF-8 (e.g. %C3%9C → Ü) but rejects raw UTF-8 bytes in headers.
+      // Encode non-printable-ASCII characters (control chars, non-ASCII/unicode, emoji).
+      // Printable ASCII (0x20-0x7E) including +, &, ::, spaces must NOT be encoded —
+      // Obsidian does plain-text matching for these. Non-ASCII MUST be percent-encoded:
+      // validated against live API — Obsidian decodes %C3%9C → Ü but rejects raw UTF-8.
       "Target": options.target.replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {

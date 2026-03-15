@@ -729,7 +729,9 @@ else
   knip_out=$(npx knip 2>&1 || true)
   # Phase 1 expected: tool placeholder files, unlisted dev binaries, types consumed in Phase 2
   # Filter those out and check if any truly unexpected unused items remain
-  knip_unexpected=$(echo "$knip_out" | grep -v "tools/granular\|tools/consolidated\|Unlisted binaries\|Unused exported types\|Unused files\|ParsedLink\|CachedNote\|DocumentMap\|PatchOptions\|SearchMatch\|SearchResult" | grep -c "^Unused" || echo "0")
+  knip_unexpected=$(echo "$knip_out" | grep -v "tools/granular\|tools/consolidated\|Unlisted binaries\|Unused exported types\|Unused files\|ParsedLink\|CachedNote\|DocumentMap\|PatchOptions\|SearchMatch\|SearchResult" | grep -c "^Unused" 2>/dev/null || true)
+  knip_unexpected=$(echo "$knip_unexpected" | tr -d '[:space:]')
+  if [ -z "$knip_unexpected" ]; then knip_unexpected=0; fi
   if [ "$knip_unexpected" -eq 0 ]; then log "PASS"; else log "FAIL ($knip_unexpected unexpected)"; verify_failures=$((verify_failures + 1)); fi
 
   logn "  semgrep:   "

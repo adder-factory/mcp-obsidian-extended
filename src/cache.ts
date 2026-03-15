@@ -262,9 +262,14 @@ export class VaultCache implements VaultCacheInterface {
         this.notes.set(key, value);
       }
       this.rebuildIndex();
-      this.isInitialized = true;
       const elapsed = Date.now() - startTime;
-      log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+      if (this.notes.size > 0 || mdFiles.length === 0) {
+        // Mark initialized if we got some notes, or if the vault is genuinely empty
+        this.isInitialized = true;
+        log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+      } else {
+        log("warn", `Cache: all ${String(mdFiles.length)} file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       log("warn", `Cache initialization failed: ${message}`);

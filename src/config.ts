@@ -146,23 +146,16 @@ function loadConfigFile(filePath: string): ConfigFileShape {
         recovered[key] = fieldResult.data;
       } else if (obj[key] !== null && typeof obj[key] === "object" && !Array.isArray(obj[key])) {
         // Nested object with mixed valid/invalid fields — recover valid nested keys
-        // Unwrap .optional() wrapper to access the inner z.object shape
-        const innerSchema = "unwrap" in fieldSchema && typeof fieldSchema.unwrap === "function"
-          ? (fieldSchema.unwrap() as z.ZodType)
-          : fieldSchema;
-        if (!("shape" in innerSchema)) {
-          continue;
-        }
+        // Use the top-level schema to validate each nested key individually
         const nestedObj = obj[key] as Record<string, unknown>;
-        const nestedSchema = innerSchema as unknown as { shape: Record<string, z.ZodType> };
         const nestedRecovered: Record<string, unknown> = {};
         for (const nestedKey of Object.keys(nestedObj)) {
-          const nestedFieldSchema = nestedSchema.shape[nestedKey];
-          if (nestedFieldSchema) {
-            const nestedResult = nestedFieldSchema.safeParse(nestedObj[nestedKey]);
-            if (nestedResult.success) {
-              nestedRecovered[nestedKey] = nestedResult.data;
-            }
+          // Validate a partial object with only this nested key
+          const partial: Record<string, unknown> = { [nestedKey]: nestedObj[nestedKey] };
+          const partialResult = fieldSchema.safeParse(partial);
+          if (partialResult.success) {
+            const parsed = partialResult.data as Record<string, unknown>;
+            nestedRecovered[nestedKey] = parsed[nestedKey];
           }
         }
         if (Object.keys(nestedRecovered).length > 0) {

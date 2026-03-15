@@ -326,7 +326,9 @@ export class ObsidianClient {
     } = {},
   ): Promise<{ statusCode: number; headers: Record<string, string>; body: string }> {
     const { body, headers: extraHeaders, auth = true, timeoutMultiplier = 1 } = options;
-    const url = new URL(path, this.baseUrl);
+    // Ensure path is relative — absolute URLs would override the base entirely
+    const safePath = path.startsWith("/") ? path : `/${path}`;
+    const url = new URL(safePath, this.baseUrl);
 
     const reqHeaders: Record<string, string> = { ...extraHeaders };
     if (auth && this.apiKey) {

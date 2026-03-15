@@ -545,13 +545,18 @@ export class ObsidianClient {
         return undefined;
       }
 
-      const listing = JSON.parse(listRes.body) as { files?: string[] };
-      if (!listing.files) {
+      const parsed: unknown = JSON.parse(listRes.body);
+      if (parsed === null || typeof parsed !== "object" || !("files" in parsed)) {
         return undefined;
       }
+      const filesVal = (parsed as Record<string, unknown>)["files"];
+      if (!Array.isArray(filesVal)) {
+        return undefined;
+      }
+      const files = filesVal as string[];
 
       // Find files in this directory whose basename matches case-insensitively
-      const matches = listing.files.filter((f) => {
+      const matches = files.filter((f) => {
         if (f.endsWith("/")) return false;
         const base = f.includes("/") ? f.slice(f.lastIndexOf("/") + 1) : f;
         return base.toLowerCase() === fileNameLower;

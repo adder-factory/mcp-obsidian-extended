@@ -467,7 +467,7 @@ export class ObsidianClient {
       // (+, &, ::, spaces) must NOT be encoded — Obsidian does plain-text matching for ASCII.
       // Non-ASCII MUST be percent-encoded: validated against live API — Obsidian decodes
       // percent-encoded UTF-8 (e.g. %C3%9C → Ü) but rejects raw UTF-8 bytes in headers.
-      "Target": options.target.replace(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
+      "Target": options.target.replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

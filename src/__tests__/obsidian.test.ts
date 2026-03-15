@@ -363,33 +363,40 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(headers["Content-Type"]).toBe("text/markdown");
   });
 
-  it("preserves special characters in Target header without encoding", () => {
+  it("preserves + and & in Target header without encoding", () => {
     const client = new ObsidianClient(makeConfig());
     const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-
-    // + and & characters must not be percent-encoded
-    const plusAmp = build.call(client, {
+    const headers = build.call(client, {
       operation: "append", targetType: "heading", target: "Q&A + Notes", contentType: "markdown",
     });
-    expect(plusAmp["Target"]).toBe("Q&A + Notes");
+    expect(headers["Target"]).toBe("Q&A + Notes");
+  });
 
-    // :: delimiter must pass through as-is
-    const delimiter = build.call(client, {
+  it("preserves :: delimiter in Target header without encoding", () => {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    const headers = build.call(client, {
       operation: "append", targetType: "heading", target: "Parent::Child", contentType: "markdown",
     });
-    expect(delimiter["Target"]).toBe("Parent::Child");
+    expect(headers["Target"]).toBe("Parent::Child");
+  });
 
-    // Unicode characters must not be percent-encoded
-    const unicode = build.call(client, {
+  it("preserves unicode in Target header without encoding", () => {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    const headers = build.call(client, {
       operation: "append", targetType: "heading", target: "Notizen über Bücher", contentType: "markdown",
     });
-    expect(unicode["Target"]).toBe("Notizen über Bücher");
+    expect(headers["Target"]).toBe("Notizen über Bücher");
+  });
 
-    // Spaces must remain as spaces (not %20)
-    const spaces = build.call(client, {
+  it("preserves spaces in Target header without encoding", () => {
+    const client = new ObsidianClient(makeConfig());
+    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    const headers = build.call(client, {
       operation: "append", targetType: "heading", target: "My Long Heading", contentType: "markdown",
     });
-    expect(spaces["Target"]).toBe("My Long Heading");
+    expect(headers["Target"]).toBe("My Long Heading");
   });
 
   it("uses application/json when contentType is json", () => {

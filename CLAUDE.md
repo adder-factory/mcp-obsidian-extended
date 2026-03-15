@@ -135,6 +135,13 @@ API reference: @docs/cc-reference.md
 - Include @param, @returns, @throws where applicable
 - Keep JSDoc concise — one line description, params on separate lines
 
+## Context Management
+
+- Run /compact proactively at 50% context usage — do not wait until degraded
+- If you lose track of instructions, re-read CLAUDE.md
+- For detailed specs, only read docs/ files when starting a new phase
+- Break large review cycles into per-file batches — don't try to fix 50+ comments in one pass
+
 ## Verification Checklist (Before Every PR)
 
 ```bash

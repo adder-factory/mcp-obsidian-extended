@@ -1,4 +1,4 @@
-import type { ObsidianClient, NoteJson, VaultCacheInterface } from "./obsidian.js";
+import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
 import { log } from "./config.js";
 
 // --- Types ---
@@ -191,7 +191,11 @@ export class VaultCache implements VaultCacheInterface {
         const batch = mdFiles.slice(i, i + batchSize);
         const results = await Promise.allSettled(
           batch.map(async (filePath) => {
-            const noteJson = await this.client.getFileContents(filePath, "json") as NoteJson;
+            const result = await this.client.getFileContents(filePath, "json");
+            if (typeof result === "string" || !("content" in result)) {
+              throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+            }
+            const noteJson = result;
             const links = parseLinks(noteJson.content, filePath);
             const cached: CachedNote = {
               path: filePath,
@@ -269,7 +273,11 @@ export class VaultCache implements VaultCacheInterface {
         const batch = filesToCheck.slice(i, i + batchSize);
         const results = await Promise.allSettled(
           batch.map(async (filePath) => {
-            const noteJson = await this.client.getFileContents(filePath, "json") as NoteJson;
+            const result = await this.client.getFileContents(filePath, "json");
+            if (typeof result === "string" || !("content" in result)) {
+              throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+            }
+            const noteJson = result;
             const existing = this.notes.get(filePath);
 
             if (existing?.stat.mtime !== noteJson.stat.mtime) {

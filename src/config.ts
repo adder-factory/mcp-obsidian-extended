@@ -97,7 +97,7 @@ function findConfigFile(): string | undefined {
 
 const configFileSchema = z.object({
   host: z.string().optional(),
-  port: z.number().int().positive().optional(),
+  port: z.number().int().min(1).max(65535).optional(),
   scheme: z.string().optional(),
   tools: z.object({
     mode: z.string().optional(),
@@ -128,7 +128,7 @@ function loadConfigFile(filePath: string): ConfigFileShape {
   const result = configFileSchema.safeParse(parsed);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-    log("warn", `Config file validation errors: ${issues}. Ignoring config file.`);
+    log("warn", `Config file ${filePath} validation errors: ${issues}. Ignoring config file.`);
     return {};
   }
   return result.data as ConfigFileShape;

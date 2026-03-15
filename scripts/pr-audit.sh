@@ -72,7 +72,7 @@ log "=== 1. UNRESOLVED REVIEW THREADS ==="
 
 # Paginated GraphQL fetch via a Python helper that handles cursor-based pagination
 THREADS_FILE=$(mktemp)
-trap "rm -f $THREADS_FILE" EXIT
+trap 'rm -f "$THREADS_FILE"' EXIT
 
 python3 -c "
 import subprocess, json, sys
@@ -326,7 +326,7 @@ mergeable_state=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load
 mergeable=$(echo "$PR_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('mergeable') else 'false')" 2>/dev/null || echo "unknown")
 
 # Count approvals
-approval_count=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "0")
+approval_count=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "0")
 if ! echo "$approval_count" | grep -qE '^[0-9]+$'; then approval_count=0; fi
 log "  Approvals: $approval_count"
 log "  Mergeable: $mergeable (state: $mergeable_state)"
@@ -400,7 +400,7 @@ fi
 # ================================================================
 log ""
 log "=== 4. CHANGES_REQUESTED REVIEWS ==="
-cr_raw=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "")
+cr_raw=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "")
 changes_requested=0
 if echo "$cr_raw" | grep -qE '^[0-9]+$'; then
   changes_requested=$cr_raw
@@ -408,7 +408,7 @@ fi
 if [ "$changes_requested" -gt 0 ]; then
   log "CHANGES_REQUESTED: $changes_requested"
   if [ "$JSON_OUTPUT" = false ]; then
-    gh api "repos/$REPO/pulls/$PR/reviews" --jq '.[] | select(.state == "CHANGES_REQUESTED") | "  \(.user.login): \(.body[0:200])"' 2>/dev/null || true
+    gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '.[] | select(.state == "CHANGES_REQUESTED") | "  \(.user.login): \(.body[0:200])"' 2>/dev/null || true
   fi
 else
   log "None"
@@ -437,7 +437,7 @@ fi
 # ================================================================
 log ""
 log "=== 6. CODERABBITAI LATEST REVIEW ==="
-LATEST_CR=$(gh api "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | last | .body // ""' 2>/dev/null || echo "")
+LATEST_CR=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.user.login == "coderabbitai[bot]")] | last | .body // ""' 2>/dev/null || echo "")
 
 # Check staleness
 cr_reviewed_sha=$(echo "$LATEST_CR" | sed -n 's/.*between [a-f0-9]* and \([a-f0-9]*\)\..*/\1/p' | head -1)

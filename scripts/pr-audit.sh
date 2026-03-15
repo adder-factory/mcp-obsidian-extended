@@ -5,7 +5,7 @@
 #
 # Flags:
 #   --quick              Skip local verification (build/lint/test/audit/circular/knip)
-#   --fix-stale          Re-run Sonar scan when stale instead of just warning
+#   --fix-stale          (reserved for future use — Sonar always re-scans when stale)
 #   --resolve            Auto-resolve outdated review threads via GraphQL
 #   --json               Output structured JSON summary (implies --quick)
 #   --verify-resolved    Check resolved threads for premature auto-resolution
@@ -57,6 +57,7 @@ checks_in_progress=0
 merge_blocked=0
 human_comments=0
 cr_review_issues=0
+fetch_failures=0
 unchecked_tasks=0
 branch_behind=0
 greptile_low_confidence=0
@@ -69,6 +70,15 @@ HEAD_FULL=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 # --- Logging helpers (suppressed in JSON mode) ---
 log() { if [ "$JSON_OUTPUT" = false ]; then echo "$@"; fi; }
 logn() { if [ "$JSON_OUTPUT" = false ]; then echo -n "$@"; fi; }
+
+# --- Fail-closed API helper ---
+# For merge-gating fetches: if the API call fails, log a warning and increment
+# fetch_failures so the audit blocks merge instead of silently under-counting.
+# Usage: result=$(gh_api_critical "description" gh api ... || true)
+api_failed() {
+  log "  WARNING: Failed to fetch $1 — audit may be incomplete"
+  fetch_failures=$((fetch_failures + 1))
+}
 
 log "============================================================"
 log "PR #$PR MERGE-READINESS AUDIT  (HEAD: $HEAD_SHA)"
@@ -143,6 +153,11 @@ json.dump(all_threads, open('$THREADS_FILE', 'w'))
 " 2>/dev/null
 
 ALL_THREADS=$(cat "$THREADS_FILE" 2>/dev/null || echo "[]")
+# Fail closed: if thread fetch returned empty/invalid, block merge
+thread_file_size=$(wc -c < "$THREADS_FILE" 2>/dev/null || echo "0")
+if [ "$thread_file_size" -lt 3 ]; then
+  api_failed "review threads (GraphQL)"
+fi
 
 # Parse thread counts — also count CR-authored unresolved threads for deduplication
 thread_analysis=$(echo "$ALL_THREADS" | python3 -c "
@@ -343,14 +358,21 @@ fi
 log ""
 log "=== 2. PR MERGE STATUS ==="
 
-PR_DATA=$(gh api "repos/$REPO/pulls/$PR" --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base: .base.ref, body: .body}' 2>/dev/null || echo '{}')
+PR_DATA=$(gh api "repos/$REPO/pulls/$PR" --jq '{mergeable: .mergeable, mergeable_state: .mergeable_state, base: .base.ref, body: .body}' 2>/dev/null || echo '')
+if [ -z "$PR_DATA" ]; then
+  api_failed "PR data"
+  PR_DATA='{}'
+fi
 mergeable_state=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('mergeable_state','unknown'))" 2>/dev/null || echo "unknown")
 mergeable=$(echo "$PR_DATA" | python3 -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('mergeable') else 'false')" 2>/dev/null || echo "unknown")
 base_branch=$(echo "$PR_DATA" | python3 -c "import json,sys; print(json.load(sys.stdin).get('base','main'))" 2>/dev/null || echo "main")
 
 # Count approvals
-approval_count=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "0")
-if ! echo "$approval_count" | grep -qE '^[0-9]+$'; then approval_count=0; fi
+approval_count=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo "")
+if ! echo "$approval_count" | grep -qE '^[0-9]+$'; then
+  api_failed "PR reviews (approvals)"
+  approval_count=0
+fi
 log "  Approvals: $approval_count"
 log "  Mergeable: $mergeable (state: $mergeable_state)"
 
@@ -406,7 +428,11 @@ fi
 log ""
 log "=== 3. CHECK RUNS & STATUS CHECKS ==="
 
-check_runs_json=$(gh api "repos/$REPO/commits/$HEAD_FULL/check-runs" 2>/dev/null || echo '{"check_runs":[],"total_count":0}')
+check_runs_json=$(gh api "repos/$REPO/commits/$HEAD_FULL/check-runs" 2>/dev/null || echo '')
+if [ -z "$check_runs_json" ]; then
+  api_failed "check runs"
+  check_runs_json='{"check_runs":[],"total_count":0}'
+fi
 check_run_analysis=$(echo "$check_runs_json" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
@@ -460,6 +486,8 @@ cr_raw=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" --jq '[.[] | select(.
 changes_requested=0
 if echo "$cr_raw" | grep -qE '^[0-9]+$'; then
   changes_requested=$cr_raw
+elif [ -n "$cr_raw" ]; then
+  api_failed "PR reviews (changes_requested)"
 fi
 if [ "$changes_requested" -gt 0 ]; then
   log "CHANGES_REQUESTED: $changes_requested"
@@ -676,7 +704,13 @@ import json,sys; d=json.load(sys.stdin); a=d.get('analyses',[]); print(a[0].get(
     if [ "$sonar_stale" = true ]; then stale_warnings=$((stale_warnings + 1)); fi
   fi
 
-  sonar_issues=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=1" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['total'])" 2>/dev/null || echo "0")
+  sonar_issues_raw=$(curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=1" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['total'])" 2>/dev/null || echo "")
+  if echo "$sonar_issues_raw" | grep -qE '^[0-9]+$'; then
+    sonar_issues=$sonar_issues_raw
+  else
+    api_failed "Sonar issues"
+    sonar_issues=0
+  fi
   log "Open issues: $sonar_issues"
   if [ "$sonar_issues" -gt 0 ] && [ "$JSON_OUTPUT" = false ]; then
     curl -s -u "$SONAR_LOGIN:$SONAR_PASSWORD" "http://localhost:9000/api/issues/search?componentKeys=mcp-obsidian-extended&statuses=OPEN&ps=10" 2>/dev/null | python3 -c "
@@ -755,7 +789,7 @@ fi
 # ================================================================
 ELAPSED=$(( $(date +%s) - START_TIME ))
 
-TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked + cr_review_issues + unchecked_tasks + branch_behind))
+TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved + missing_approvals + check_run_failures + merge_blocked + cr_review_issues + unchecked_tasks + branch_behind + fetch_failures))
 
 if [ "$TOTAL_ISSUES" -gt 0 ]; then
   RESULT="NOT ready to merge"
@@ -868,6 +902,7 @@ data = {
         'branch_behind': $branch_behind,
         'acknowledged_threads': $acknowledged_threads,
         'greptile_low_confidence': $greptile_low_confidence,
+        'fetch_failures': $fetch_failures,
         'total_issues': $TOTAL_ISSUES,
     },
     'staleness': {
@@ -909,6 +944,9 @@ log "  PR checklist unchecked:                $unchecked_tasks"
 log "  Branch behind base:                    $branch_behind"
 log "  Human comments (review):               $human_comments"
 log "  Local verification failures:           $verify_failures"
+if [ "$fetch_failures" -gt 0 ]; then
+  log "  API fetch failures (fail-closed):      $fetch_failures"
+fi
 if [ "$acknowledged_threads" -gt 0 ]; then
   log "  Acknowledged threads (info):           $acknowledged_threads"
 fi

@@ -6,10 +6,10 @@
   "author": { "name": "adder-factory" },
   "server": {
     "type": "node",
-    "entry_point": "server/index.js",
+    "entry_point": "dist/index.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/index.js"],
+      "args": ["${__dirname}/dist/index.js"],
       "env": {
         "OBSIDIAN_API_KEY": "${user_config.api_key}",
         "OBSIDIAN_HOST": "${user_config.host}",

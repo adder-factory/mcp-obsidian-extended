@@ -184,7 +184,7 @@ async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promis
   write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
   cache.stopAutoRefresh();
   // Clean up seed file
-  try { await client.deleteFile(CACHE_SEED_FILE); } catch { /* ignore */ }
+  try { await client.deleteFile(CACHE_SEED_FILE); } catch (e: unknown) { write(`    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`); }
 }
 
 async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Promise<void> {
@@ -214,8 +214,8 @@ async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Pro
 }
 
 async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
-  try { await client.deleteFile(LINK_FILE_A); } catch { /* ignore */ }
-  try { await client.deleteFile(LINK_FILE_B); } catch { /* ignore */ }
+  try { await client.deleteFile(LINK_FILE_A); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`); }
+  try { await client.deleteFile(LINK_FILE_B); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`); }
 }
 
 // --- Cleanup ---
@@ -226,8 +226,9 @@ async function cleanup(client: ObsidianClient): Promise<void> {
   for (const file of testFiles) {
     try {
       await client.deleteFile(file);
-    } catch {
-      // Ignore — file may already be deleted
+    } catch (e: unknown) {
+      // Expected for already-deleted files; log for unexpected failures
+      write(`    (cleanup: ${file} — ${e instanceof Error ? e.message : String(e)})`);
     }
   }
 }

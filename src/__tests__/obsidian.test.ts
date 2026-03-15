@@ -397,11 +397,10 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(targetHeader("日本語の見出し")).toBe("%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%81%AE%E8%A6%8B%E5%87%BA%E3%81%97");
   });
 
-  it("passes literal %HH sequences through without double-encoding", () => {
-    // A heading literally containing "%C3%BC" should be sent as-is.
-    // Note: Obsidian will decode this to "ü", so such headings cannot be
-    // targeted via PATCH — this is a documented known limitation.
-    expect(targetHeader("50%C3%BC off")).toBe("50%C3%BC off");
+  it("escapes literal % so Obsidian does not decode %HH sequences", () => {
+    // A heading literally containing "%C3%BC" must have % escaped to %25
+    // so Obsidian decodes %25→% and preserves the literal string.
+    expect(targetHeader("50%C3%BC off")).toBe("50%25C3%25BC off");
   });
 
   it("uses application/json when contentType is json", () => {

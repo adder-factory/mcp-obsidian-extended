@@ -463,13 +463,15 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Encode non-printable-ASCII characters (control chars, non-ASCII/unicode, emoji).
-      // Printable ASCII (0x20-0x7E) including +, &, ::, spaces, % must NOT be encoded —
-      // Obsidian does plain-text matching for these. Non-ASCII MUST be percent-encoded:
-      // validated against live API — Obsidian decodes %C3%9C → Ü but rejects raw UTF-8.
-      // Note: literal %HH sequences in headings (e.g. "50%C3%BC") are passed as-is and
-      // may be decoded by Obsidian — this is an inherent ambiguity of percent-encoding.
-      "Target": options.target.replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
+      // Obsidian always percent-decodes the Target header, so:
+      // 1. Escape literal % → %25 first (so "50%C3%BC" becomes "50%25C3%25BC")
+      // 2. Encode non-printable-ASCII (control chars, unicode, emoji) via encodeURIComponent
+      // This preserves ASCII special chars (+, &, ::, spaces) while ensuring both
+      // non-ASCII headings and headings with literal %HH sequences round-trip correctly.
+      // Validated against live Obsidian API in Phase 3.
+      "Target": options.target
+        .replaceAll("%", "%25")
+        .replaceAll(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

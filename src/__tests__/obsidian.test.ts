@@ -363,51 +363,35 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(headers["Content-Type"]).toBe("text/markdown");
   });
 
-  it("preserves + and & in Target header without encoding", () => {
+  /** Helper: builds patch headers for a given target and returns the Target header value. */
+  function targetHeader(target: string): string {
     const client = new ObsidianClient(makeConfig());
     const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
-      operation: "append", targetType: "heading", target: "Q&A + Notes", contentType: "markdown",
-    });
-    expect(headers["Target"]).toBe("Q&A + Notes");
+    return build.call(client, { operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
+  }
+
+  it("preserves + and & in Target header", () => {
+    expect(targetHeader("Q&A + Notes")).toBe("Q&A + Notes");
   });
 
-  it("preserves :: delimiter in Target header without encoding", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
-      operation: "append", targetType: "heading", target: "Parent::Child", contentType: "markdown",
-    });
-    expect(headers["Target"]).toBe("Parent::Child");
+  it("preserves :: delimiter in Target header", () => {
+    expect(targetHeader("Parent::Child")).toBe("Parent::Child");
   });
 
   it("encodes non-ASCII unicode in Target header for HTTP safety", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
-      operation: "append", targetType: "heading", target: "Notizen über Bücher", contentType: "markdown",
-    });
-    // Non-ASCII chars are percent-encoded; ASCII parts preserved
-    expect(headers["Target"]).toBe("Notizen %C3%BCber B%C3%BCcher");
+    expect(targetHeader("Notizen über Bücher")).toBe("Notizen %C3%BCber B%C3%BCcher");
   });
 
   it("encodes emoji in Target header for HTTP safety", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
-      operation: "append", targetType: "heading", target: "📝 Notes", contentType: "markdown",
-    });
-    // Emoji is percent-encoded; ASCII space and text preserved
-    expect(headers["Target"]).toBe("%F0%9F%93%9D Notes");
+    expect(targetHeader("📝 Notes")).toBe("%F0%9F%93%9D Notes");
   });
 
-  it("preserves spaces in Target header without encoding", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
-      operation: "append", targetType: "heading", target: "My Long Heading", contentType: "markdown",
-    });
-    expect(headers["Target"]).toBe("My Long Heading");
+  it("preserves spaces in Target header", () => {
+    expect(targetHeader("My Long Heading")).toBe("My Long Heading");
+  });
+
+  it("encodes fully non-ASCII heading (CJK)", () => {
+    expect(targetHeader("日本語の見出し")).toBe("%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%81%AE%E8%A6%8B%E5%87%BA%E3%81%97");
   });
 
   it("uses application/json when contentType is json", () => {

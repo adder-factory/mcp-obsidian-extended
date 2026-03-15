@@ -93,7 +93,8 @@ log ""
 log "=== 1. UNRESOLVED REVIEW THREADS ==="
 
 THREADS_FILE=$(mktemp)
-trap 'rm -f "$THREADS_FILE"' EXIT
+trap 'rm -f "$THREADS_FILE" "$DETAILS_FILE" 2>/dev/null' EXIT
+DETAILS_FILE=""
 
 python3 -c "
 import subprocess, json, sys
@@ -313,7 +314,7 @@ for t in threads:
     try:
         with open(path) as f:
             current = f.read()
-    except:
+    except (OSError, IOError):
         continue
 
     still_present = []
@@ -844,7 +845,7 @@ try:
             print(ch)
     else:
         print('No changes since last audit')
-except:
+except (OSError, json.JSONDecodeError, KeyError):
     print('(no previous audit to compare)')
 " 2>/dev/null || echo "(no previous audit to compare)")
 fi
@@ -922,7 +923,6 @@ data = {
 }
 print(json.dumps(data, indent=2))
 "
-  rm -f "$DETAILS_FILE"
   exit "$EXIT_CODE"
 fi
 

@@ -611,13 +611,15 @@ describe("ObsidianClient — getFileContents", () => {
     const { client, mockRequest } = createMockedClient();
     // First request: 404
     mockRequest.mockResolvedValueOnce(notFound());
-    // Fallback with lowercase: 200
+    // Directory listing for case-insensitive fallback
+    mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: JSON.stringify({ files: ["Notes/myfile.md"] }) });
+    // Retry with corrected path: 200
     mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: "found it" });
 
     const result = await client.getFileContents("Notes/MyFile.md");
     expect(result).toBe("found it");
-    // The second call should use lowercase path
-    expect(mockRequest).toHaveBeenCalledTimes(2);
+    // 3 calls: original 404 → directory listing → corrected path
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 });
 

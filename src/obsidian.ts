@@ -494,11 +494,10 @@ export class ObsidianClient {
   // --- Case-insensitive Fallback ---
 
   /**
-   * Sends a GET request and retries with a lowercased path on 404 (case-insensitive fallback).
+   * Sends a GET request and on 404 attempts a case-insensitive directory listing
+   * fallback (inspired by cyanheads/obsidian-mcp-server). Lists the parent directory,
+   * finds a unique case-insensitive filename match, and retries with the corrected path.
    * Only safe for read-only methods — mutating fallback could corrupt data.
-   * Note: lowercasing is a heuristic borrowed from cyanheads/obsidian-mcp-server.
-   * It handles the common case (Title Case → lowercase) but not all permutations.
-   * A full vault listing search would be more accurate but expensive on every 404.
    */
   private async requestWithFallback(
     method: string,
@@ -515,19 +514,60 @@ export class ObsidianClient {
     const res = await this.request(method, fullPath, options);
 
     if (res.statusCode === 404 && method === "GET") {
-      // Try case-insensitive fallback
-      const lowerPath = filePath.toLowerCase();
-      if (lowerPath !== filePath) {
-        const lowerEncoded = this.encodePath(lowerPath);
-        const lowerFullPath = `${basePath}${lowerEncoded}`;
-        const fallbackRes = await this.request(method, lowerFullPath, options);
-        if (fallbackRes.statusCode !== 404) {
-          return fallbackRes;
-        }
+      const correctedPath = await this.findCaseInsensitivePath(filePath);
+      if (correctedPath) {
+        const correctedEncoded = this.encodePath(correctedPath);
+        const correctedFullPath = `${basePath}${correctedEncoded}`;
+        return this.request(method, correctedFullPath, options);
       }
     }
 
     return res;
+  }
+
+  /**
+   * Searches the vault for a case-insensitive match when the exact path returns 404.
+   * Lists the parent directory and finds a unique file whose basename matches
+   * case-insensitively. Returns the corrected path or undefined if no unique match.
+   */
+  private async findCaseInsensitivePath(filePath: string): Promise<string | undefined> {
+    try {
+      const sanitized = sanitizeFilePath(filePath);
+      const lastSlash = sanitized.lastIndexOf("/");
+      const dirPath = lastSlash >= 0 ? sanitized.slice(0, lastSlash) : "";
+      const fileName = lastSlash >= 0 ? sanitized.slice(lastSlash + 1) : sanitized;
+      const fileNameLower = fileName.toLowerCase();
+
+      // List the directory contents
+      const dirEncoded = dirPath ? `${this.encodePath(dirPath)}/` : "";
+      const listRes = await this.request("GET", `/vault/${dirEncoded}`);
+      if (listRes.statusCode !== 200) {
+        return undefined;
+      }
+
+      const listing = JSON.parse(listRes.body) as { files?: string[] };
+      if (!listing.files) {
+        return undefined;
+      }
+
+      // Find files in this directory whose basename matches case-insensitively
+      const matches = listing.files.filter((f) => {
+        if (f.endsWith("/")) return false;
+        const base = f.includes("/") ? f.slice(f.lastIndexOf("/") + 1) : f;
+        return base.toLowerCase() === fileNameLower;
+      });
+
+      if (matches.length === 1) {
+        // Unique match — use the corrected path
+        const match = matches[0];
+        log("debug", `Case-insensitive fallback: "${filePath}" → "${match}"`);
+        return match;
+      }
+      // 0 matches = truly not found, >1 = ambiguous — return undefined for both
+      return undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   // --- System ---

@@ -23,11 +23,13 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+        id: install
       - run: npm run build
+        if: steps.install.outcome == 'success'
       - run: npm run lint
-        if: always()
+        if: steps.install.outcome == 'success'
       - run: npm run test:coverage
-        if: always()
+        if: steps.install.outcome == 'success'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -35,4 +37,4 @@ jobs:
           path: coverage/
           retention-days: 7
       - run: npm audit --omit=dev --audit-level=moderate
-        if: always()
+        if: steps.install.outcome == 'success'

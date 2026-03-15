@@ -75,9 +75,9 @@ function loadDotenv(): void {
 // --- Safety Guard ---
 
 /**
- * Checks that the vault has fewer than a threshold of files, acting as a
- * guard against accidentally running destructive smoke tests on a real vault.
- * The dedicated mcp-test-vault should have very few files.
+ * Safety guard: refuses to run if the vault exceeds this file count.
+ * Real user vaults typically have hundreds or thousands of files;
+ * a dedicated test vault (e.g. mcp-test-vault) should be well under this limit.
  * Can be bypassed with SMOKE_TEST_CONFIRM=true for larger test vaults.
  */
 const VAULT_FILE_LIMIT = 50;
@@ -182,10 +182,13 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
 
 const CACHE_SEED_FILE = "_smoke_cache_seed.md";
 
-async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promise<void> {
+// Short TTL for smoke tests — auto-refresh is stopped immediately, so this only affects the constructor
+const SMOKE_CACHE_TTL = 60_000;
+
+async function step8CacheCheck(client: ObsidianClient): Promise<void> {
   // Note: client.setCache() is called again in step9 with a fresh cache instance,
   // so the stopped cache from this step is never used for write-through invalidation.
-  const cache = new VaultCache(client, cacheTtl);
+  const cache = new VaultCache(client, SMOKE_CACHE_TTL);
   client.setCache(cache);
   try {
     // Seed a note to guarantee the cache has at least one entry, even on an empty vault
@@ -202,13 +205,13 @@ async function step8CacheCheck(client: ObsidianClient, cacheTtl: number): Promis
   }
 }
 
-async function step9BacklinksTest(client: ObsidianClient, cacheTtl: number): Promise<void> {
+async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
   // Create two linked notes
   await client.putContent(LINK_FILE_A, LINK_CONTENT_A);
   await client.putContent(LINK_FILE_B, LINK_CONTENT_B);
 
   // Build a fresh cache that includes the new files
-  const cache = new VaultCache(client, cacheTtl);
+  const cache = new VaultCache(client, SMOKE_CACHE_TTL);
   client.setCache(cache);
   try {
     await cache.initialize();
@@ -298,8 +301,8 @@ async function main(): Promise<void> {
 
   // Independent steps — use their own files, run even if CRUD steps fail
   const independentSteps: readonly Step[] = [
-    { num: 8, name: "Cache check", fn: () => step8CacheCheck(client, config.cacheTtl) },
-    { num: 9, name: "Backlinks test", fn: () => step9BacklinksTest(client, config.cacheTtl) },
+    { num: 8, name: "Cache check", fn: () => step8CacheCheck(client) },
+    { num: 9, name: "Backlinks test", fn: () => step9BacklinksTest(client) },
   ];
 
   const totalSteps = crudSteps.length + independentSteps.length;

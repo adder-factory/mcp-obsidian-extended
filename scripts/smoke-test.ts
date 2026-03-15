@@ -4,6 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { loadConfig } from "../src/config.js";
 import { ObsidianClient } from "../src/obsidian.js";
@@ -45,20 +46,27 @@ function loadDotenv(): void {
     if (eqIndex === -1) {
       continue;
     }
-    const key = trimmed.slice(0, eqIndex).trim();
+    // Strip optional `export ` prefix (e.g. `export FOO=bar`)
+    let key = trimmed.slice(0, eqIndex).trim();
+    if (key.startsWith("export ")) {
+      key = key.slice(7).trim();
+    }
     let value = trimmed.slice(eqIndex + 1).trim();
-    // Strip surrounding quotes if present
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    // Strip surrounding quotes and process escape sequences in double-quoted values
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll('\\"', '"');
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      // Single-quoted: literal value, no escape processing
       value = value.slice(1, -1);
     } else {
-      // Strip inline comments (only for unquoted values)
+      // Unquoted: strip inline comments
       const commentIndex = value.indexOf(" #");
       if (commentIndex !== -1) {
         value = value.slice(0, commentIndex).trim();
       }
     }
     // Only set if not already in env (env vars take precedence)
-    if (process.env[key] === undefined) {
+    if (key.length > 0 && process.env[key] === undefined) {
       process.env[key] = value;
     }
   }
@@ -147,6 +155,8 @@ async function step5AppendAndVerify(client: ObsidianClient): Promise<void> {
 }
 
 async function step6Search(client: ObsidianClient): Promise<void> {
+  // Brief wait for Obsidian's search index to pick up the recently written file
+  await sleep(500);
   const results = await client.simpleSearch("smoke test");
   const found = results.some((r) => r.filename.includes("_smoke_test"));
   if (!found) {
@@ -233,6 +243,14 @@ async function cleanup(client: ObsidianClient): Promise<void> {
   }
 }
 
+// --- Types ---
+
+interface Step {
+  readonly num: number;
+  readonly name: string;
+  readonly fn: () => Promise<void> | void;
+}
+
 // --- Main ---
 
 async function main(): Promise<void> {
@@ -262,12 +280,6 @@ async function main(): Promise<void> {
 
   let passed = 0;
   let failed = 0;
-
-  interface Step {
-    readonly num: number;
-    readonly name: string;
-    readonly fn: () => Promise<void> | void;
-  }
 
   const steps: readonly Step[] = [
     { num: 1, name: "Status check", fn: () => step1StatusCheck(client) },

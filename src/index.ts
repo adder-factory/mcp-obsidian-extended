@@ -187,12 +187,22 @@ async function setup(): Promise<void> {
 
   // Output Claude Desktop config snippet
   process.stderr.write("  Add this to your Claude Desktop config:\n\n");
+  const defaultPaths = [
+    join(homedir(), ".obsidian-mcp.config.json"),
+    join(homedir(), ".config", "obsidian-mcp", "config.json"),
+    resolve("./obsidian-mcp.config.json"),
+  ];
+  const isNonDefaultPath = !defaultPaths.includes(resolvedPath);
+  const envBlock: Record<string, string> = { OBSIDIAN_API_KEY: apiKey };
+  if (isNonDefaultPath) {
+    envBlock["OBSIDIAN_CONFIG"] = resolvedPath;
+  }
   const snippet = {
     mcpServers: {
       "mcp-obsidian-extended": {
         command: "npx",
         args: ["-y", "mcp-obsidian-extended"],
-        env: { OBSIDIAN_API_KEY: apiKey },
+        env: envBlock,
       },
     },
   };

@@ -67,7 +67,11 @@ const CONSOLIDATED_PRESETS: Record<string, readonly string[]> = {
   ],
 };
 
-/** Protected tools that are always registered regardless of filtering. */
+/**
+ * Protected tools that are always registered regardless of filtering or preset.
+ * These may cause the actual tool count to exceed the preset's listed count
+ * (e.g. minimal + protected tools = preset count + unlisted protected tools).
+ */
 const PROTECTED_GRANULAR = new Set(["configure", "get_server_status", "refresh_cache"]);
 const PROTECTED_CONSOLIDATED = new Set(["configure", "status", "vault_analysis"]);
 

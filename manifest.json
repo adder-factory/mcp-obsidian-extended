@@ -1,0 +1,43 @@
+{
+  "mcpb_version": "0.1",
+  "name": "mcp-obsidian-extended",
+  "version": "1.0.0",
+  "description": "Full-featured MCP server for Obsidian — 38 tools covering 100% of the Local REST API",
+  "author": { "name": "adder-factory" },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "OBSIDIAN_API_KEY": "${user_config.api_key}",
+        "TOOL_MODE": "${user_config.tool_mode}",
+        "TOOL_PRESET": "${user_config.tool_preset}"
+      }
+    }
+  },
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "Obsidian API Key",
+      "description": "Found in Obsidian Settings → Local REST API → API Key",
+      "sensitive": true,
+      "required": true
+    },
+    "tool_mode": {
+      "type": "string",
+      "title": "Tool Mode",
+      "description": "granular = 38 individual tools. consolidated = 11 combined tools (saves tokens)",
+      "default": "granular",
+      "enum": ["granular", "consolidated"]
+    },
+    "tool_preset": {
+      "type": "string",
+      "title": "Tool Preset",
+      "description": "full = all tools. read-only = no writes. minimal = essentials. safe = no deletes",
+      "default": "full",
+      "enum": ["full", "read-only", "minimal", "safe"]
+    }
+  }
+}

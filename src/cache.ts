@@ -104,7 +104,7 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
     if (bracketClose === -1) break;
     if (content[bracketClose + 1] !== "(") { pos = bracketClose + 1; continue; }
     const parenClose = findMatchingParen(content, bracketClose + 1);
-    if (parenClose === -1) break;
+    if (parenClose === -1) { pos = bracketClose + 2; continue; }
     const url = content.slice(bracketClose + 2, parenClose);
     const urlPath = extractMdLinkPath(url);
     if (urlPath !== undefined) {

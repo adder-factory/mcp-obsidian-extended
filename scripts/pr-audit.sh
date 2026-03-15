@@ -7,7 +7,8 @@
 #   --quick        Skip local verification (build/lint/test/audit/circular)
 #   --fix-stale    Re-run Sonar scan when stale instead of just warning
 #   --resolve      Auto-resolve outdated review threads via GraphQL
-#   --json         Output structured JSON summary (implies --quick)
+#   --json              Output structured JSON summary (implies --quick)
+#   --verify-resolved   Check resolved threads for premature auto-resolution
 #
 # Exit 0 = ready to merge, Exit 1 = open items remain
 set -euo pipefail
@@ -20,6 +21,7 @@ QUICK=false
 FIX_STALE=false
 AUTO_RESOLVE=false
 JSON_OUTPUT=false
+VERIFY_RESOLVED=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -27,6 +29,7 @@ for arg in "$@"; do
     --fix-stale) FIX_STALE=true ;;
     --resolve) AUTO_RESOLVE=true ;;
     --json) JSON_OUTPUT=true; QUICK=true ;;
+    --verify-resolved) VERIFY_RESOLVED=true ;;
     [0-9]*) PR="$arg" ;;
   esac
 done
@@ -41,6 +44,7 @@ changes_requested=0
 verify_failures=0
 stale_warnings=0
 resolved_count=0
+suspect_resolved=0
 
 # Current HEAD
 HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -185,6 +189,123 @@ for t in threads:
   log "  Resolved $resolved_count outdated thread(s)"
   unresolved_threads=$((unresolved_threads - resolved_count))
   if [ "$unresolved_threads" -lt 0 ]; then unresolved_threads=0; fi
+fi
+
+# --- Verify resolved threads for premature auto-resolution ---
+if [ "$VERIFY_RESOLVED" = true ]; then
+  log ""
+  log "=== 1b. VERIFY RESOLVED THREADS ==="
+
+  # For each resolved bot thread, extract the problematic code pattern from the
+  # suggested diff ("-" lines) and check if it still exists in the current file.
+  # If it does, the thread was resolved prematurely.
+  VERIFY_OUTPUT=$(echo "$ALL_THREADS" | python3 -c "
+import json, sys, subprocess, re, os
+
+threads = json.load(sys.stdin)
+suspect_count = 0
+
+for t in threads:
+    if not t['isResolved']:
+        continue
+
+    comments = t.get('comments', {}).get('nodes', [])
+    if not comments:
+        continue
+
+    c = comments[0]
+    author = c.get('author', {}).get('login', '')
+    # Only check bot comments — human resolutions are intentional
+    if 'bot' not in author and 'apps' not in author:
+        continue
+
+    path = c.get('path', '')
+    if not path:
+        continue
+
+    body = c.get('body', '')
+
+    # Must have 'Addressed' marker — indicates bot auto-resolved
+    if 'Addressed' not in body and 'addressed' not in body:
+        continue
+
+    # Extract the removed lines from suggested diffs (lines starting with -)
+    # These are the patterns that should have been changed
+    diff_patterns = []
+    in_diff = False
+    for line in body.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('\`\`\`diff'):
+            in_diff = True
+            continue
+        if stripped.startswith('\`\`\`') and in_diff:
+            in_diff = False
+            continue
+        if in_diff and stripped.startswith('-') and not stripped.startswith('---'):
+            # Extract the code that should have been removed
+            code = stripped[1:].strip()
+            if len(code) > 10:  # skip trivial lines
+                diff_patterns.append(code)
+
+    if not diff_patterns:
+        # No diff to verify — also check for quoted code blocks that describe the issue
+        # Look for backtick-quoted code snippets the thread says to change
+        code_refs = re.findall(r'\x60([^\x60]{15,80})\x60', body)
+        # Filter to ones that look like code (contain parens, dots, or keywords)
+        diff_patterns = [r for r in code_refs if any(c in r for c in '(){}[].$=')][:3]
+
+    if not diff_patterns:
+        continue
+
+    # Check if the pattern still exists in the current file
+    if not os.path.isfile(path):
+        continue
+
+    try:
+        with open(path) as f:
+            current = f.read()
+    except:
+        continue
+
+    still_present = []
+    for pattern in diff_patterns:
+        # Normalize whitespace for comparison
+        normalized = ' '.join(pattern.split())
+        current_normalized = ' '.join(current.split())
+        if normalized in current_normalized:
+            still_present.append(pattern)
+
+    if still_present:
+        suspect_count += 1
+        orig_commit = c.get('originalCommit', {})
+        orig_sha = (orig_commit.get('oid', '?')[:7]) if orig_commit else '?'
+        # Extract the issue title from body
+        title_match = re.search(r'\*\*(.+?)\*\*', body)
+        title = title_match.group(1) if title_match else body[:80].replace('\n', ' ')
+        print(f'  SUSPECT [{author}] {path}:{c.get(\"line\", \"?\")}  (commit: {orig_sha})')
+        print(f'    {title}')
+        print(f'    Pattern still in code: {still_present[0][:80]}')
+        print()
+
+print(f'SUSPECT_COUNT={suspect_count}')
+" 2>/dev/null || echo "SUSPECT_COUNT=0")
+
+  # Extract count from output (last line)
+  suspect_count_line=$(echo "$VERIFY_OUTPUT" | tail -1)
+  suspect_resolved=$(echo "$suspect_count_line" | sed -n 's/SUSPECT_COUNT=//p')
+  suspect_resolved="${suspect_resolved:-0}"
+
+  # Print details (everything except the last SUSPECT_COUNT line)
+  if [ "$JSON_OUTPUT" = false ]; then
+    echo "$VERIFY_OUTPUT" | sed '$d'
+  fi
+
+  if [ "$suspect_resolved" -gt 0 ]; then
+    log "  Found $suspect_resolved suspect auto-resolved thread(s)"
+    log "  These were marked resolved but the flagged code still exists"
+  else
+    log "  No suspect auto-resolutions found"
+  fi
 fi
 
 # ================================================================
@@ -441,7 +562,7 @@ fi
 # ================================================================
 ELAPSED=$(( $(date +%s) - START_TIME ))
 
-TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures))
+TOTAL_ISSUES=$((unresolved_threads + greptile_fixes + sonar_issues + changes_requested + verify_failures + suspect_resolved))
 
 if [ "$TOTAL_ISSUES" -gt 0 ]; then
   RESULT="NOT ready to merge"
@@ -473,6 +594,7 @@ data = {
         'changes_requested': $changes_requested,
         'verify_failures': $verify_failures,
         'stale_warnings': $stale_warnings,
+        'suspect_resolved': $suspect_resolved,
         'total_issues': $TOTAL_ISSUES,
     },
     'staleness': {
@@ -493,6 +615,7 @@ log "============================================================"
 log "SUMMARY  (${ELAPSED}s elapsed)"
 log "============================================================"
 log "  Unresolved review threads:             $unresolved_threads"
+log "  Suspect auto-resolved threads:         $suspect_resolved"
 log "  Greptile Fix-All items (summary-only): $greptile_fixes"
 log "  Sonar open issues:                     $sonar_issues"
 log "  CHANGES_REQUESTED reviews:             $changes_requested"

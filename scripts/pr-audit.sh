@@ -310,7 +310,22 @@ log "$(echo "$GREPTILE" | sed -n 's/.*Confidence Score: \([0-5]\/5\).*/  Confide
 log ""
 log "=== 5. SONAR STATUS ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../.env" 2>/dev/null || true
+# Safe .env parsing — only extract specific keys, never execute the file
+ENV_FILE="$SCRIPT_DIR/../.env"
+if [ -f "$ENV_FILE" ]; then
+  while IFS='=' read -r key value; do
+    # Strip quotes and carriage returns
+    value="${value%$'\r'}"
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    case "$key" in
+      SONAR_LOGIN) SONAR_LOGIN="$value" ;;
+      SONAR_PASSWORD) SONAR_PASSWORD="$value" ;;
+    esac
+  done < <(grep -E '^(SONAR_LOGIN|SONAR_PASSWORD)=' "$ENV_FILE" 2>/dev/null || true)
+fi
 SONAR_LOGIN="${SONAR_LOGIN:-}"
 SONAR_PASSWORD="${SONAR_PASSWORD:-}"
 sonar_stale=false
@@ -409,7 +424,7 @@ else
 
   # Tests + coverage thresholds
   logn "  coverage:  "
-  if npm run test:coverage --silent 2>&1 >/dev/null; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
+  if npm run test:coverage --silent >/dev/null 2>&1; then log "PASS"; else log "FAIL"; verify_failures=$((verify_failures + 1)); fi
 
   # Audit
   logn "  audit:     "

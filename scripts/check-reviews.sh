@@ -64,7 +64,18 @@ echo "$GREPTILE" | grep "Last reviewed" || true
 echo ""
 echo "=== 8. SONAR STATUS ==="
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../.env" 2>/dev/null || { echo "Warning: .env not found — Sonar checks will be skipped"; }
+ENV_FILE="$SCRIPT_DIR/../.env"
+if [ -f "$ENV_FILE" ]; then
+  while IFS='=' read -r key value; do
+    value="${value%$'\r'}"; value="${value#\"}"; value="${value%\"}"; value="${value#\'}"; value="${value%\'}"
+    case "$key" in
+      SONAR_LOGIN) SONAR_LOGIN="$value" ;;
+      SONAR_PASSWORD) SONAR_PASSWORD="$value" ;;
+    esac
+  done < <(grep -E '^(SONAR_LOGIN|SONAR_PASSWORD)=' "$ENV_FILE" 2>/dev/null || true)
+else
+  echo "Warning: .env not found — Sonar checks will be skipped"
+fi
 SONAR_LOGIN="${SONAR_LOGIN:-}"
 SONAR_PASSWORD="${SONAR_PASSWORD:-}"
 if [ -z "$SONAR_LOGIN" ] || [ -z "$SONAR_PASSWORD" ]; then

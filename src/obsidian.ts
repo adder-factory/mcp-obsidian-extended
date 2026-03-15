@@ -493,7 +493,13 @@ export class ObsidianClient {
 
   // --- Case-insensitive Fallback ---
 
-  /** Sends a GET request and retries with a lowercased path on 404 (case-insensitive fallback). Only safe for read-only methods — mutating fallback could corrupt data. */
+  /**
+   * Sends a GET request and retries with a lowercased path on 404 (case-insensitive fallback).
+   * Only safe for read-only methods — mutating fallback could corrupt data.
+   * Note: lowercasing is a heuristic borrowed from cyanheads/obsidian-mcp-server.
+   * It handles the common case (Title Case → lowercase) but not all permutations.
+   * A full vault listing search would be more accurate but expensive on every 404.
+   */
   private async requestWithFallback(
     method: string,
     basePath: string,
@@ -858,7 +864,12 @@ export class ObsidianClient {
     return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, `/periodic/${period}/`, res.headers);
   }
 
-  /** Replaces the current periodic note content (idempotent). Serialized per period type. */
+  /**
+   * Replaces the current periodic note content (idempotent). Serialized per period type.
+   * Note: lock key is per period type (daily/weekly/etc.), not per resolved file path,
+   * because the Obsidian REST API resolves the period to a file path server-side and
+   * does not expose that path. Different period types cannot resolve to the same file.
+   */
   async putPeriodicNote(period: string, content: string): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const res = await this.request("PUT", `/periodic/${encodeURIComponent(period)}/`, {

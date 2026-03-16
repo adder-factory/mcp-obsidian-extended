@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { ObsidianClient } from "../obsidian.js";
+import type { ObsidianClient, ToolResult } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import { CACHE_INIT_TIMEOUT_MS } from "../cache.js";
@@ -866,6 +866,14 @@ function registerSystemAndAnalysisTools(
     count++;
   }
 
+  /** Ensures the cache is initialized, waiting up to CACHE_INIT_TIMEOUT_MS if a build is in progress. */
+  async function ensureCacheReady(tool: string): Promise<ToolResult | undefined> {
+    if (!config.enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
+    if (cache.getIsInitialized()) return undefined;
+    if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
+    return errorResult(`[${tool}] Cache not available. It may still be building or the build may have failed.`);
+  }
+
   // --- 35. get_backlinks ---
   if (shouldRegister("get_backlinks")) {
     server.registerTool(
@@ -876,10 +884,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
-            return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
-          }
+          const notReady = await ensureCacheReady("get_backlinks");
+          if (notReady) return notReady;
           return jsonResult(cache.getBacklinks(filePath));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path: filePath }));
@@ -899,10 +905,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ limit }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
-            return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
-          }
+          const notReady = await ensureCacheReady("get_vault_structure");
+          if (notReady) return notReady;
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
@@ -922,10 +926,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
-            return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
-          }
+          const notReady = await ensureCacheReady("get_note_connections");
+          if (notReady) return notReady;
           return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path: filePath }));

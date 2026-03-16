@@ -1192,7 +1192,7 @@ describe("granular tools — registration and basic behavior", () => {
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("still building");
+      expect(getText(result)).toContain("Cache not available");
     });
 
     it("succeeds when cache becomes ready within the wait window", async () => {
@@ -2144,7 +2144,7 @@ describe("consolidated tools — registration and behavior", () => {
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("still building");
+      expect(getText(result)).toContain("Cache not available");
     });
 
     it("succeeds when cache becomes ready within the wait window", async () => {

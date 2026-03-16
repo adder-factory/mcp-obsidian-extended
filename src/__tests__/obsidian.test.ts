@@ -831,27 +831,34 @@ describe("ObsidianClient — patchContent", () => {
 
     // Verify 3 requests: original PATCH, GET for map, retry PATCH
     expect(mockRequest).toHaveBeenCalledTimes(3);
-    // Retry PATCH should use the corrected heading
-    const retryCall = mockRequest.mock.calls[2];
-    expect(retryCall?.[0]).toBe("PATCH");
-    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    // Step 1: original PATCH
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/vault/note.md");
+    // Step 2: GET for document map
+    expect(mockRequest.mock.calls[1]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[1]?.[1]).toBe("/vault/note.md");
+    // Step 3: retry PATCH with corrected heading
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/vault/note.md");
+    const retryHeaders = (mockRequest.mock.calls[2]?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
     expect(retryHeaders?.["Target"]).toBe("Tasks List");
   });
 
-  it("throws original error when retry finds no matching heading", async () => {
+  it("throws original 400 error when retry finds no matching heading", async () => {
     const { client, mockRequest } = createMockedClient();
     const docMap = { headings: ["Introduction", "Conclusion"], blocks: [], frontmatterFields: [] };
     mockRequest
       .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
 
-    await expect(
-      client.patchContent("note.md", "text", {
-        operation: "append",
-        targetType: "heading",
-        target: "Nonexistent Heading",
-      }),
-    ).rejects.toThrow(ObsidianApiError);
+    const err = await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Nonexistent Heading",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ObsidianApiError);
+    expect((err as ObsidianApiError).statusCode).toBe(400);
+    expect((err as ObsidianApiError).message).toBe("heading not found");
   });
 
   it("retries with progressive suffix match when parent heading was renamed", async () => {

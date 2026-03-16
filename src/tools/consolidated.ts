@@ -298,10 +298,9 @@ async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNo
 
 /** Ensures the cache is initialized, waiting up to 5s if a build is in progress. */
 async function ensureCacheReady(cache: VaultCache): Promise<ToolResult | undefined> {
-  if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
-    return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-  }
-  return undefined;
+  if (cache.getIsInitialized()) return undefined;
+  if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
+  return errorResult("[vault_analysis] Cache not available. It may still be building or the build may have failed.");
 }
 
 /** Dispatches a vault_analysis action to the appropriate cache query. */

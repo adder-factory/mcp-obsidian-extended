@@ -580,7 +580,8 @@ export class VaultCache implements VaultCacheInterface {
     // Fallback: poll for refresh/rebuild completion using remaining time budget
     const pollInterval = 200;
     while (Date.now() < deadline) {
-      // Check state before sleeping to avoid unnecessary 200ms delay
+      // Check state before sleeping to avoid unnecessary 200ms delay.
+      // A new initialize() from refresh() will set isBuilding=true, keeping us polling.
       if (this.isInitialized) return true;
       if (!this.isBuilding && !this.isRefreshing) return false;
       const remaining = deadline - Date.now();

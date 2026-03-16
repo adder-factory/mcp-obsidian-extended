@@ -177,7 +177,8 @@ while True:
         break
     cursor = rt['pageInfo']['endCursor']
 
-json.dump(all_threads, open('$THREADS_FILE', 'w'))
+with open('$THREADS_FILE', 'w') as f:
+    json.dump(all_threads, f)
 # Exit non-zero if any API call failed (partial results)
 if result.returncode != 0:
     sys.exit(1)

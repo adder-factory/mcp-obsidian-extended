@@ -168,10 +168,11 @@ function findClosestHeading(
  * Other 400 errors (malformed request, invalid operation, etc.) should not retry.
  */
 function isHeadingNotFoundError(body: string): boolean {
-  // Only match responses that explicitly mention "heading" — the most specific
-  // indicator from the Obsidian REST API that the target heading wasn't found.
-  // Avoids false-positive retries on unrelated 400 errors.
-  return body.toLowerCase().includes("heading");
+  // Only retry when the error mentions both "heading" and an absence indicator.
+  // This avoids false-positive retries on errors like "heading delimiter required"
+  // or "malformed heading syntax" which are not heading-not-found scenarios.
+  const lower = body.toLowerCase();
+  return lower.includes("heading") && (lower.includes("not found") || lower.includes("no match") || lower.includes("missing"));
 }
 
 // --- Accept Header Mapping ---

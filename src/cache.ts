@@ -517,7 +517,9 @@ export class VaultCache implements VaultCacheInterface {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing && !this.pendingRebuild) return false;
 
-    // If a build promise exists, race it against a timeout for immediate response
+    const deadline = Date.now() + timeoutMs;
+
+    // If a build promise exists, race it against the timeout for immediate response
     if (this.buildPromise) {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
@@ -528,14 +530,13 @@ export class VaultCache implements VaultCacheInterface {
         new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, timeoutMs); }),
       ]);
       if (this.isInitialized) return true;
-      // Don't return false — fall through to polling loop.
+      // Don't return false — fall through to polling loop with remaining budget.
       // pendingRebuild may have been set during the build, and the
       // polling loop will correctly detect and wait for the rebuild.
     }
 
-    // Fallback: poll for refresh completion (no shared promise available)
+    // Fallback: poll for refresh/rebuild completion using remaining time budget
     const pollInterval = 200;
-    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const remaining = deadline - Date.now();
       const wait = Math.min(pollInterval, Math.max(remaining, 0));

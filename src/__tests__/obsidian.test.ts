@@ -887,7 +887,7 @@ describe("ObsidianClient — patchContent", () => {
     // Stage 4 leaf match should find it
     const docMap = { headings: ["New Section::Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce(ok204());
 
@@ -927,7 +927,7 @@ describe("ObsidianClient — patchContent", () => {
     // Both have same leaf (stage 4 ambiguous too) — no unique match possible
     const docMap = { headings: ["Tasks", "TASKS"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
 
     await expect(
@@ -964,7 +964,7 @@ describe("ObsidianClient — patchContent", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce(ok204());
 
@@ -1154,7 +1154,7 @@ describe("ObsidianClient — active file", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["My Heading"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce(ok204());
 
@@ -1440,7 +1440,7 @@ describe("ObsidianClient — periodic notes (current)", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Summary"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce(ok204());
 
@@ -1598,7 +1598,7 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce(ok204());
 

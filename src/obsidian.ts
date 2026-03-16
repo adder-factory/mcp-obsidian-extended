@@ -168,9 +168,10 @@ function findClosestHeading(
  * Other 400 errors (malformed request, invalid operation, etc.) should not retry.
  */
 function isHeadingNotFoundError(body: string): boolean {
-  const lower = body.toLowerCase();
-  // Match Obsidian REST API error messages for heading/target not found
-  return lower.includes("heading") || lower.includes("no match") || lower.includes("not found");
+  // Only match responses that explicitly mention "heading" — the most specific
+  // indicator from the Obsidian REST API that the target heading wasn't found.
+  // Avoids false-positive retries on unrelated 400 errors.
+  return body.toLowerCase().includes("heading");
 }
 
 // --- Accept Header Mapping ---
@@ -885,7 +886,8 @@ export class ObsidianClient {
       if (
         typeof mapResult === "string" ||
         !("headings" in mapResult) ||
-        !Array.isArray(mapResult.headings)
+        !Array.isArray(mapResult.headings) ||
+        !mapResult.headings.every((h) => typeof h === "string")
       ) return false;
 
       const match = findClosestHeading(options.target.trim(), mapResult.headings, options.targetDelimiter ?? "::");

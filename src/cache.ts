@@ -1,5 +1,5 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
-import { ObsidianConnectionError, ObsidianAuthError, ObsidianApiError } from "./errors.js";
+import { ObsidianConnectionError, ObsidianAuthError } from "./errors.js";
 import { log } from "./config.js";
 
 /** Sentinel error for generation-mismatch discards — retried immediately without backoff. */
@@ -240,34 +240,13 @@ export class VaultCache implements VaultCacheInterface {
    *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
-    if (this.isInitialized) return; // Already built — no-op
-    if (this.buildPromise) {
-      // Concurrent callers await the same build. Wrap any rejection
-      // in ObsidianConnectionError for consistent error typing.
-      // Note: invalidateAll() resets isInitialized to false and increments the
-      // generation counter, so even if this build succeeds the caller may find
-      // the cache immediately invalidated. The generation check inside
-      // executeBuildAttempt() handles this — the build will be discarded and
-      // retried (up to INIT_MAX_ATTEMPTS times) within the same promise.
-      try {
-        await this.buildPromise;
-      } catch (err: unknown) {
-        if (err instanceof ObsidianConnectionError || err instanceof ObsidianAuthError || err instanceof ObsidianApiError) throw err;
-        throw new ObsidianConnectionError(
-          "Cache initialization failed. Try refresh_cache later.",
-          { cause: err instanceof Error ? err : undefined },
-        );
-      }
-      // Re-check: a caller that races initialize() calls (e.g. refresh() triggered
-      // invalidateAll() before this continuation ran) may find isInitialized still false.
-      // In that case fall through to start a fresh build.
+    // Join any in-flight build. Loop handles the case where a build finishes
+    // but cache was immediately invalidated, and another caller starts a new build.
+    while (this.buildPromise) {
+      try { await this.buildPromise; } catch { /* primary caller handles errors */ }
       if (this.isInitialized) return;
     }
-    // Re-check: another concurrent caller may have already started a new build
-    if (this.buildPromise) {
-      try { await this.buildPromise; } catch { /* handled by that caller */ }
-      if (this.isInitialized) return;
-    }
+    if (this.isInitialized) return;
     // Both assignments are synchronous — no microtask gap between them.
     // waitForInitialization can safely rely on buildPromise being set when isBuilding is true.
     this.isBuilding = true;

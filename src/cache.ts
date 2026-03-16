@@ -282,7 +282,10 @@ export class VaultCache implements VaultCacheInterface {
           continue; // Retry on network errors too
         }
         log("warn", `Cache initialization failed after ${String(maxAttempts)} attempts: ${message}`);
-        throw err;
+        throw new ObsidianConnectionError(
+          `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
+          { cause: err instanceof Error ? err : new Error(String(err)) },
+        );
       }
     }
     log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts`);

@@ -284,8 +284,9 @@ export class VaultCache implements VaultCacheInterface {
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
         log("warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
-        // Exponential backoff: 1s, 2s between retries
-        if (attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
+        // Backoff only for transient network errors, not generation-mismatch discards
+        const isDiscard = err instanceof Error && err.message.startsWith("Cache build discarded");
+        if (!isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
         }
       }

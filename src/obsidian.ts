@@ -905,7 +905,8 @@ export class ObsidianClient {
       log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
       const retryOptions = { ...options, target: match };
       const retryHeaders = this.buildPatchHeaders(retryOptions);
-      // Defence in depth: active file PATCH doesn't support this header
+      // The corrected heading was confirmed present in the document map;
+      // strip Create-Target-If-Missing so the retry doesn't create a stale heading.
       delete retryHeaders["Create-Target-If-Missing"];
       const retryRes = await this.request("PATCH", patchPath, {
         body: content,

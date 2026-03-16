@@ -296,17 +296,30 @@ All errors are gracefully handled with structured error messages. No crashes, no
 
 ## Comparison
 
-| Feature | mcp-obsidian-extended | cyanheads (363★) | mcpvault (~50★) | ToKiDoO (6★) |
-|---------|----------------------|-------------------|-----------------|--------------|
-| 100% REST API | 38 tools | 8 | 14 (filesystem) | ~15 |
-| Tool filtering | INCLUDE/EXCLUDE + presets | — | — | INCLUDE only |
-| Dual mode | granular + consolidated | — | — | — |
-| Dataview DQL | Yes | — | — | — |
-| Periodic notes CRUD | Full (+ by date) | — | — | — |
-| Self-config tool | Yes | — | — | — |
-| Setup wizard | Yes | — | — | — |
-| Configurable timeouts | Yes | — | N/A | — |
-| Vault cache + graph | REST-only | Yes | — | Filesystem |
+| Feature | mcp-obsidian-extended | mcp-obsidian (original) | cyanheads (363★) | mcpvault (~50★) | ToKiDoO (6★) |
+|---------|----------------------|------------------------|------------------|-----------------|--------------|
+| Language | TypeScript | Python | TypeScript | TypeScript | TypeScript |
+| Install | npx / .mcpb | uvx (requires Python) | npx | npx | npx |
+| Tools | 38 granular / 11 consolidated | 7 | 8 | 14 (filesystem) | ~15 |
+| REST API coverage | 100% | ~20% | ~25% | 0% (filesystem) | ~40% |
+| Tool filtering | INCLUDE/EXCLUDE + presets | — | — | — | INCLUDE only |
+| Dual mode | granular + consolidated | — | — | — | — |
+| Dataview DQL | Yes (TABLE queries) | — | — | — | — |
+| Active file ops | Full CRUD | — | — | — | — |
+| Commands | list + execute | — | — | — | — |
+| Periodic notes | Full CRUD + by date | — | — | — | — |
+| Self-config tool | Yes (from chat) | — | — | — | — |
+| Setup wizard | Yes (--setup) | — | — | — | — |
+| Desktop Extension | .mcpb one-click install | — | — | — | — |
+| Configurable timeouts | Yes | — | — | N/A | — |
+| Vault cache + offline | REST-only cache | — | Yes | — | — |
+| Graph analysis | Backlinks, orphans, connections | — | — | — | Filesystem |
+| Write locks | Per-file mutex | — | — | — | — |
+| Benchmarked | 395K ops, 1,282 ops/s | — | — | — | — |
+| CI/CD | GitHub Actions | — | — | — | — |
+| Known bugs | Fixed (7 upstream) | 50+ open issues | — | — | — |
+
+> mcp-obsidian-extended is a TypeScript rewrite of [mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian) by Markus Pfundstein, which pioneered the MCP server approach for Obsidian. We fix 7 upstream bugs and expand from 7 tools to 38 with full API coverage.
 
 ## Known Limitations
 

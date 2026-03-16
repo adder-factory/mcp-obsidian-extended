@@ -333,7 +333,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected format`, 200);
+            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`, 0);
           }
           const links = parseLinks(result.content, filePath);
           freshNotes.set(filePath, {
@@ -436,7 +436,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected format`, 200);
+            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`, 0);
           }
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {

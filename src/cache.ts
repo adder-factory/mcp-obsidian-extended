@@ -280,6 +280,7 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
     log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts (vault keeps being invalidated)`);
+    throw new Error(`Cache initialization failed: vault was invalidated ${String(maxAttempts)} times during build`);
   }
 
   /** Fetches all markdown notes from the vault in batches. */

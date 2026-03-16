@@ -116,16 +116,16 @@ function findClosestHeading(
   const caseMatches = headings.filter((h) => h.toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0];
 
-  // 3. Suffix match — only if unique (avoids "Project A::Tasks" vs "Project B::Tasks")
+  // 3. Suffix match — use full target as suffix, only if unique
   const delimiterLower = delimiter.toLowerCase();
-  const targetTail = targetLower.split(delimiterLower).pop() ?? targetLower;
-  const suffixMatches = headings.filter((h) => h.toLowerCase().endsWith(delimiterLower + targetTail));
+  const suffixMatches = headings.filter((h) => h.toLowerCase().endsWith(delimiterLower + targetLower));
   if (suffixMatches.length === 1) return suffixMatches[0];
 
-  // 4. Leaf-name match — only if unique
+  // 4. Leaf-name match — compare only the final segment, only if unique
+  const targetLeaf = targetLower.split(delimiterLower).pop() ?? targetLower;
   const leafMatches = headings.filter((h) => {
     const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
-    return hLeaf === targetTail;
+    return hLeaf === targetLeaf;
   });
   if (leafMatches.length === 1) return leafMatches[0];
 
@@ -838,7 +838,11 @@ export class ObsidianClient {
         headers: this.buildPatchHeaders(retryOptions),
       });
 
-      return retryRes.statusCode === 204 || retryRes.statusCode === 200;
+      if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
+        return true;
+      }
+      log("debug", `PATCH retry failed for ${filePath}: status ${String(retryRes.statusCode)}`);
+      return false;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       log("debug", `PATCH retry lookup failed for ${filePath}: ${message}`);

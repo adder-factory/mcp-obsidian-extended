@@ -184,6 +184,8 @@ while True:
     if not page_info.get('hasNextPage'):
         break
     cursor = page_info.get('endCursor')
+    if not cursor:
+        break  # Prevent infinite loop if endCursor is absent
 
 with open('$THREADS_FILE', 'w') as f:
     json.dump(all_threads, f)

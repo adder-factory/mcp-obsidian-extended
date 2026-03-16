@@ -1,5 +1,5 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
-import { ObsidianConnectionError, ObsidianAuthError } from "./errors.js";
+import { ObsidianConnectionError, ObsidianAuthError, ObsidianApiError } from "./errors.js";
 import { log } from "./config.js";
 
 // --- Types ---
@@ -223,7 +223,8 @@ export class VaultCache implements VaultCacheInterface {
    * Performs a full cache build by fetching all markdown files from the vault.
    * Builds into a fresh snapshot then swaps atomically. Discards results if
    * invalidateAll() was called during the build (generation mismatch).
-   * @throws {Error} On network failure, vault listing failure, or after exhausting retry attempts.
+   * @throws {ObsidianConnectionError} On network failure or after exhausting retry attempts.
+   * @throws {ObsidianAuthError} On authentication failure (not retried).
    *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
@@ -260,7 +261,7 @@ export class VaultCache implements VaultCacheInterface {
         return;
       } catch (err: unknown) {
         // Don't retry non-transient errors (auth, unexpected format)
-        if (err instanceof ObsidianAuthError) throw err;
+        if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) throw err;
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
         log("warn", `Cache init attempt ${String(attempt + 1)}/${String(maxAttempts)} failed: ${msg}`);
@@ -308,7 +309,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected format`, 200);
           }
           const links = parseLinks(result.content, filePath);
           freshNotes.set(filePath, {
@@ -411,7 +412,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected format`, 200);
           }
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {

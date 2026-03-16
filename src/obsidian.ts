@@ -105,29 +105,22 @@ function acceptHeaderForFormat(format: FileFormat): string {
 
 // --- Target Header Encoding ---
 
-/** Regex matching runs of non-printable-ASCII characters (control chars, unicode, emoji). */
-const NON_PRINTABLE_ASCII = /[^\x20-\x7E]+/g;
-
 /**
  * Encodes a PATCH Target header value for the Obsidian REST API.
  *
- * Encoding strategy (each step validated against live Obsidian v3.4.6):
- * 1. Escape `%` → `%25`: Obsidian decodes `%25` back to `%`, so headings
- *    like "100% Complete" round-trip correctly. (Live-tested: Target header
- *    `Root::100%25 Complete` matched heading `## 100% Complete`.)
- * 2. Encode non-printable-ASCII (unicode, emoji) via encodeURIComponent:
- *    Node.js rejects raw UTF-8 in HTTP headers; Obsidian decodes the
- *    percent-encoded UTF-8 back. (Live-tested: `%C3%9C` decoded to `Ü`,
- *    raw `Ü` in header rejected with `invalid-target`.)
- * 3. Printable ASCII (+, &, ::, spaces) sent as-is: Obsidian matches them
- *    directly. (Live-tested: plain `+` and encoded `%2B` both matched
- *    heading `## Q+A Notes`.)
+ * Obsidian decodes ALL %HH sequences in the Target header — both ASCII
+ * (%2B→+, %3A%3A→::, %20→space) and non-ASCII (%C3%9C→Ü). Full
+ * `encodeURIComponent` would technically work, but selective encoding
+ * is simpler and avoids unnecessary transformation of readable ASCII.
  *
- * The original bug: `encodeURIComponent` encoded ALL characters including
- * `+` → `%2B` and `::` → `%3A%3A`. While Obsidian does decode these back,
- * the full encoding was unnecessary and caused issues with the `::` heading
- * delimiter parsing. Selective encoding (non-ASCII only) is both correct
- * and simpler.
+ * Encoding strategy (each step validated against live Obsidian v3.4.6):
+ * 1. Escape `%` → `%25`: required so headings with literal `%` round-trip
+ *    correctly. (Live-tested: `Root::100%25 Complete` matched `## 100% Complete`.)
+ * 2. Encode non-printable-ASCII (unicode, emoji) via encodeURIComponent:
+ *    Node.js rejects raw UTF-8 in HTTP headers. (Live-tested: `%C3%9C`
+ *    decoded to `Ü`; raw `Ü` in header rejected with `invalid-target`.)
+ * 3. Printable ASCII sent as-is: simpler, no transformation needed.
+ *    (Live-tested: plain `+`, `%2B`, `::`, `%3A%3A` all match correctly.)
  *
  * Full stress test: 40/40 cases pass (scripts/stress-test-patch.ts) covering
  * ASCII specials, 7 unicode scripts, emoji variants, CJK, RTL, literal %,
@@ -135,7 +128,10 @@ const NON_PRINTABLE_ASCII = /[^\x20-\x7E]+/g;
  */
 function encodeTargetHeader(target: string): string {
   const escaped = target.replaceAll("%", "%25");
-  return escaped.replace(NON_PRINTABLE_ASCII, (match) => encodeURIComponent(match)); // NOSONAR: replace with /g regex is idiomatic; replaceAll with regex is unconventional
+  // Encode non-printable-ASCII runs. Regex is created inline to avoid shared
+  // /g state (a module-level /g regex carries lastIndex risk if reused with
+  // .test() or .exec() by future code).
+  return escaped.replace(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)); // NOSONAR: replace with /g is idiomatic
 }
 
 // --- Tool Result Helpers ---

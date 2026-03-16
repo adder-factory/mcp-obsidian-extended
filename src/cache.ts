@@ -1,6 +1,9 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
 import { log } from "./config.js";
 
+/** Maximum time (ms) graph tools will wait for a cache build to complete. */
+export const CACHE_INIT_TIMEOUT_MS = 5000;
+
 // --- Types ---
 
 /** A parsed link extracted from note content, with resolved target and context. */
@@ -458,11 +461,11 @@ export class VaultCache implements VaultCacheInterface {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing) return false;
     const pollInterval = 200;
-    let elapsed = 0;
-    while (elapsed < timeoutMs) {
-      const wait = Math.min(pollInterval, timeoutMs - elapsed);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      const wait = Math.min(pollInterval, Math.max(remaining, 0));
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
-      elapsed += wait;
       if (this.isInitialized) return true;
       // Stop polling if the build/refresh completed without success (e.g. threw)
       if (!this.isBuilding && !this.isRefreshing) return false;

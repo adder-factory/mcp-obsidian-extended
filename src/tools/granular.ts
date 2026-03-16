@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ObsidianClient } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
+import { CACHE_INIT_TIMEOUT_MS } from "../cache.js";
 import type { Config } from "../config.js";
 import { buildErrorMessage } from "../errors.js";
 import {
@@ -876,7 +877,7 @@ function registerSystemAndAnalysisTools(
       async ({ filePath }) => {
         try {
           if (!config.enableCache) return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
             return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
           }
           return jsonResult(cache.getBacklinks(filePath));
@@ -899,7 +900,7 @@ function registerSystemAndAnalysisTools(
       async ({ limit }) => {
         try {
           if (!config.enableCache) return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
             return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
           }
           return buildVaultStructure(cache, limit);
@@ -922,7 +923,7 @@ function registerSystemAndAnalysisTools(
       async ({ filePath }) => {
         try {
           if (!config.enableCache) return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
             return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
           }
           return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });

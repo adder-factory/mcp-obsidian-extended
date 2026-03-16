@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { ObsidianClient, ToolResult, PatchOptions } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
+import { CACHE_INIT_TIMEOUT_MS } from "../cache.js";
 import type { Config } from "../config.js";
 import { buildErrorMessage } from "../errors.js";
 import {
@@ -297,7 +298,7 @@ async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNo
 
 /** Ensures the cache is initialized, waiting up to 5s if a build is in progress. */
 async function ensureCacheReady(cache: VaultCache): Promise<ToolResult | undefined> {
-  if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+  if (!cache.getIsInitialized() && !(await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS))) {
     return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
   }
   return undefined;

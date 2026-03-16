@@ -295,6 +295,14 @@ async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNo
 
 // --- Extracted vault_analysis handler ---
 
+/** Ensures the cache is initialized, waiting up to 5s if a build is in progress. */
+async function ensureCacheReady(cache: VaultCache): Promise<ToolResult | undefined> {
+  if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+    return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+  }
+  return undefined;
+}
+
 /** Dispatches a vault_analysis action to the appropriate cache query. */
 async function handleVaultAnalysisAction(
   cache: VaultCache,
@@ -307,23 +315,23 @@ async function handleVaultAnalysisAction(
     return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
   }
   switch (action) {
-    case "backlinks":
+    case "backlinks": {
       if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
-        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-      }
+      const notReady = await ensureCacheReady(cache);
+      if (notReady) return notReady;
       return jsonResult(cache.getBacklinks(path));
-    case "connections":
+    }
+    case "connections": {
       if (!path) return errorResult("[vault_analysis] path is required for connections");
-      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
-        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-      }
+      const notReady = await ensureCacheReady(cache);
+      if (notReady) return notReady;
       return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
-    case "structure":
-      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
-        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
-      }
+    }
+    case "structure": {
+      const notReady = await ensureCacheReady(cache);
+      if (notReady) return notReady;
       return buildVaultStructure(cache, limit);
+    }
     case "refresh":
       await cache.refresh();
       if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");

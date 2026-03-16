@@ -126,8 +126,9 @@ function findClosestHeading(
   const caseMatches = headings.filter((h) => h.trim().toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0]!.trim();
 
-  // Guard against empty/whitespace delimiter — fall back to "::"
-  const safeDelimiter = delimiter.trim() || "::";
+  // Guard against empty/whitespace delimiter — fall back to default "::"
+  const trimmed = delimiter.trim();
+  const safeDelimiter = trimmed.length > 0 ? trimmed : "::";
   const delimiterLower = safeDelimiter.toLowerCase();
 
   const segments = targetLower.split(delimiterLower);

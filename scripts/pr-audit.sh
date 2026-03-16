@@ -175,7 +175,7 @@ while True:
         result = subprocess.CompletedProcess([], 1)
         break
     rt = pr_data.get('reviewThreads')
-    if not rt:
+    if rt is None:
         result = subprocess.CompletedProcess([], 1)
         break
     all_threads.extend(rt['nodes'])

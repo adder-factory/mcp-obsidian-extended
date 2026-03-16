@@ -968,6 +968,22 @@ describe("ObsidianClient — patchContent", () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
 
+  it("does not retry when 400 body is not a heading-not-found error", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Only 1 request — no retry because body doesn't match heading-not-found pattern
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("invalidates cache after successful retry", async () => {
     const { client, mockRequest } = createMockedClient();
     const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };

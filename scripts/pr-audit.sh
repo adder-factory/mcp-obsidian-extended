@@ -121,7 +121,7 @@ import subprocess, json, sys
 
 owner, name, pr = '$OWNER', '$NAME', $PR
 all_threads = []
-result = type('Result', (), {'returncode': 0})()
+result = subprocess.CompletedProcess([], 0)
 cursor = None
 
 while True:
@@ -163,7 +163,7 @@ while True:
     repo = data.get('data', {}).get('repository')
     if not repo:
         # GraphQL-level error (auth, missing repo, rate limit) — treat as failure
-        result = type('Result', (), {'returncode': 1})()
+        result = subprocess.CompletedProcess([], 1)
         break
 
     rt = repo['pullRequest']['reviewThreads']

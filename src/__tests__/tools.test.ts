@@ -2269,6 +2269,16 @@ describe("consolidated tools — registration and behavior", () => {
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
     });
 
+    it("returns error when cache not initialized and wait times out", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false, false);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Cache not available");
+    });
+
     it("returns errorResult when cache not initialized", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();

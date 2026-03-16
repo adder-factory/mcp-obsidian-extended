@@ -292,7 +292,6 @@ export class VaultCache implements VaultCacheInterface {
     }
   }
 
-  /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
   private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
     const { files } = await this.client.listFilesInVault();

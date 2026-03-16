@@ -263,6 +263,11 @@ export class VaultCache implements VaultCacheInterface {
       // In that case fall through to start a fresh build.
       if (this.isInitialized) return;
     }
+    // Re-check: another concurrent caller may have already started a new build
+    if (this.buildPromise) {
+      try { await this.buildPromise; } catch { /* handled by that caller */ }
+      if (this.isInitialized) return;
+    }
     // Both assignments are synchronous — no microtask gap between them.
     // waitForInitialization can safely rely on buildPromise being set when isBuilding is true.
     this.isBuilding = true;
@@ -286,8 +291,7 @@ export class VaultCache implements VaultCacheInterface {
    * Callers share buildPromise; see initialize() finally block for ordering invariants.
    */
   private async doInitialize(): Promise<void> {
-    // Initialized as undefined; always set by at least one catch iteration
-    let lastError: unknown;
+    let lastError: unknown = new Error("No build attempt was made");
     let firstRealError: unknown; // First non-discard error for root cause diagnostics
     let hadNonDiscardError = false;
     for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {

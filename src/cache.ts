@@ -222,7 +222,8 @@ export class VaultCache implements VaultCacheInterface {
    * Performs a full cache build by fetching all markdown files from the vault.
    * Builds into a fresh snapshot then swaps atomically. Discards results if
    * invalidateAll() was called during the build (generation mismatch).
-   * @throws {Error} On network failure or when the vault listing cannot be retrieved.
+   * @throws {Error} On network failure, vault listing failure, or after exhausting retry attempts.
+   *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
@@ -274,12 +275,16 @@ export class VaultCache implements VaultCacheInterface {
         return;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        log("warn", `Cache initialization failed: ${message}`);
+        if (attempt < maxAttempts - 1) {
+          log("warn", `Cache initialization failed (attempt ${String(attempt + 1)}/${String(maxAttempts)}): ${message} — retrying`);
+          continue; // Retry on network errors too
+        }
+        log("warn", `Cache initialization failed after ${String(maxAttempts)} attempts: ${message}`);
         throw err;
       }
     }
-    log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts (vault keeps being invalidated)`);
-    throw new Error(`Cache initialization failed after ${String(maxAttempts)} attempts (vault keeps being invalidated). Try refresh_cache later.`);
+    log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts`);
+    throw new Error(`Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`);
   }
 
   /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */

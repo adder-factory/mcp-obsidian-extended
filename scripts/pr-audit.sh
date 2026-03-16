@@ -170,7 +170,6 @@ while True:
         break
     cursor = rt['pageInfo']['endCursor']
 
-fetch_ok = True
 json.dump(all_threads, open('$THREADS_FILE', 'w'))
 # Exit non-zero if any API call failed (partial results)
 if result.returncode != 0:

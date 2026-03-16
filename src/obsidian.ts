@@ -904,9 +904,12 @@ export class ObsidianClient {
 
       log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
       const retryOptions = { ...options, target: match };
+      const retryHeaders = this.buildPatchHeaders(retryOptions);
+      // Defence in depth: active file PATCH doesn't support this header
+      delete retryHeaders["Create-Target-If-Missing"];
       const retryRes = await this.request("PATCH", patchPath, {
         body: content,
-        headers: this.buildPatchHeaders(retryOptions),
+        headers: retryHeaders,
       });
 
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {

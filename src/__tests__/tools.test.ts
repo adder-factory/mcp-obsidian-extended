@@ -144,10 +144,10 @@ function makeMockClient(): ObsidianClient {
 }
 
 /** Creates a mock VaultCache with configurable initialization state. */
-function makeMockCache(initialized = true): VaultCache {
+function makeMockCache(initialized = true, willInitialize = initialized): VaultCache {
   return {
     getIsInitialized: vi.fn().mockReturnValue(initialized),
-    waitForInitialization: vi.fn().mockResolvedValue(initialized),
+    waitForInitialization: vi.fn().mockResolvedValue(willInitialize),
     getAllNotes: vi.fn().mockReturnValue([]),
     getFileList: vi.fn().mockReturnValue([]),
     noteCount: 0,
@@ -1206,6 +1206,16 @@ describe("granular tools — registration and basic behavior", () => {
       const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
+    });
+
+    it("returns error when cache build fails", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false, false);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_backlinks").handler({ filePath: "x.md" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Cache not available");
     });
   });
 

@@ -504,19 +504,18 @@ export class VaultCache implements VaultCacheInterface {
     // If a build promise exists, race it against the timeout for immediate response
     if (this.buildPromise) {
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<void>((resolve) => {
+        timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+      });
       await Promise.race([
-        this.buildPromise.then(
-          () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
-          (err: unknown) => {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-            log("debug", `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`);
-          },
-        ),
-        new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now())); }),
+        this.buildPromise.then(() => undefined, (err: unknown) => {
+          log("debug", `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+        timeoutPromise,
       ]);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
       if (this.isInitialized) return true;
-      // Don't return false — fall through to polling loop with remaining budget.
-      // A refresh may still be in progress (isRefreshing=true).
+      // Fall through to polling with remaining budget
     }
 
     // Fallback: poll for refresh/rebuild completion using remaining time budget

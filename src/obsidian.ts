@@ -862,8 +862,9 @@ export class ObsidianClient {
           `/vault/${encoded}`,
           content, options, filePath,
         );
-        if (corrected) {
+        if (corrected !== false) {
           this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in ${filePath}`);
           return;
         }
       }
@@ -874,13 +875,13 @@ export class ObsidianClient {
 
   /**
    * Re-reads the document map and attempts to find the closest matching heading
-   * for a failed PATCH. Returns true if the retry succeeded.
+   * for a failed PATCH. Returns the corrected heading name if the retry succeeded, or false.
    * @param readMap - Fetches the current document map for heading lookup.
    * @param patchPath - The API path to retry the PATCH against.
    * @param content - The markdown/JSON content body for the PATCH.
    * @param options - The original PATCH options (target will be corrected).
    * @param label - Human-readable label for debug logging.
-   * @returns true if the retry succeeded, false otherwise.
+   * @returns The corrected heading name if the retry succeeded, false otherwise.
    */
   private async retryPatchWithMapLookup(
     readMap: () => Promise<FileContentsResult>,
@@ -888,7 +889,7 @@ export class ObsidianClient {
     content: string,
     options: PatchOptions,
     label: string,
-  ): Promise<boolean> {
+  ): Promise<string | false> {
     try {
       const mapResult = await readMap();
       if (
@@ -909,7 +910,7 @@ export class ObsidianClient {
       });
 
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
-        return true;
+        return match;
       }
       log("debug", `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
       return false;
@@ -1005,8 +1006,9 @@ export class ObsidianClient {
           "/active/",
           content, options, "(active file)",
         );
-        if (corrected) {
+        if (corrected !== false) {
           this.cacheRef?.invalidateAll();
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (active file)`);
           return;
         }
       }
@@ -1187,8 +1189,9 @@ export class ObsidianClient {
           periodicPath,
           content, options, `(periodic: ${period})`,
         );
-        if (corrected) {
+        if (corrected !== false) {
           this.cacheRef?.invalidateAll();
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period})`);
           return;
         }
       }
@@ -1292,8 +1295,9 @@ export class ObsidianClient {
           datePath,
           content, options, `(periodic: ${period} date)`,
         );
-        if (corrected) {
+        if (corrected !== false) {
           this.cacheRef?.invalidateAll();
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period} date)`);
           return;
         }
       }

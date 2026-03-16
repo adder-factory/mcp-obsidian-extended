@@ -1,8 +1,29 @@
-import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
+import type { ObsidianClient, VaultCacheInterface, ToolResult } from "./obsidian.js";
+import { errorResult } from "./obsidian.js";
 import { log } from "./config.js";
 
 /** Maximum time (ms) graph tools will wait for a cache build to complete. */
 export const CACHE_INIT_TIMEOUT_MS = 5000;
+
+/**
+ * Shared helper: ensures the cache is initialized before running a graph query.
+ * Returns an error ToolResult if the cache is disabled or not yet available,
+ * or undefined if the cache is ready.
+ * @param cache - The vault cache instance.
+ * @param tool - The tool name for error messages.
+ * @param enableCache - Whether caching is enabled in config.
+ * @returns An error result if cache is unavailable, undefined if ready.
+ */
+export async function ensureCacheReady(
+  cache: VaultCache,
+  tool: string,
+  enableCache: boolean,
+): Promise<ToolResult | undefined> {
+  if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
+  if (cache.getIsInitialized()) return undefined;
+  if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
+  return errorResult(`[${tool}] Cache not available. It may still be building or the build may have failed.`);
+}
 
 // --- Types ---
 
@@ -226,6 +247,7 @@ export class VaultCache implements VaultCacheInterface {
    * @throws {Error} On network failure or when the vault listing cannot be retrieved.
    */
   async initialize(): Promise<void> {
+    if (this.isBuilding) return; // Guard against concurrent invocations
     this.isBuilding = true;
     const startTime = Date.now();
     const buildGeneration = this.generation;

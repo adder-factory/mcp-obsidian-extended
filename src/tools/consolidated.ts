@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ObsidianClient, ToolResult, PatchOptions } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
-import { CACHE_INIT_TIMEOUT_MS } from "../cache.js";
+import { ensureCacheReady } from "../cache.js";
 import type { Config } from "../config.js";
 import { buildErrorMessage } from "../errors.js";
 import {
@@ -296,13 +296,6 @@ async function handlePeriodicNoteAction(client: ObsidianClient, args: PeriodicNo
 
 // --- Extracted vault_analysis handler ---
 
-/** Ensures the cache is initialized, waiting up to 5s if a build is in progress. */
-async function ensureCacheReady(cache: VaultCache): Promise<ToolResult | undefined> {
-  if (cache.getIsInitialized()) return undefined;
-  if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
-  return errorResult("[vault_analysis] Cache not available. It may still be building or the build may have failed.");
-}
-
 /** Dispatches a vault_analysis action to the appropriate cache query. */
 async function handleVaultAnalysisAction(
   cache: VaultCache,
@@ -311,28 +304,26 @@ async function handleVaultAnalysisAction(
   path: string | undefined,
   limit: number,
 ): Promise<ToolResult> {
-  if (!config.enableCache) {
-    return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-  }
   switch (action) {
     case "backlinks": {
       if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-      const notReady = await ensureCacheReady(cache);
+      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
       if (notReady) return notReady;
       return jsonResult(cache.getBacklinks(path));
     }
     case "connections": {
       if (!path) return errorResult("[vault_analysis] path is required for connections");
-      const notReady = await ensureCacheReady(cache);
+      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
       if (notReady) return notReady;
       return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
     }
     case "structure": {
-      const notReady = await ensureCacheReady(cache);
+      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
       if (notReady) return notReady;
       return buildVaultStructure(cache, limit);
     }
     case "refresh":
+      if (!config.enableCache) return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
       await cache.refresh();
       if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");
       return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);

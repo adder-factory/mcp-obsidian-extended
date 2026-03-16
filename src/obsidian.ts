@@ -975,11 +975,11 @@ export class ObsidianClient {
       }
 
       if (res.statusCode === 400 && options.targetType === "heading") {
+        // No stripHeaders needed — createIfMissing is absent from Omit<PatchOptions, "createIfMissing">
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getActiveFile("map"),
           "/active/",
           content, options, "(active file)",
-          ["Create-Target-If-Missing"],
         );
         if (corrected) {
           this.cacheRef?.invalidateAll();

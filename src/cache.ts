@@ -255,6 +255,7 @@ export class VaultCache implements VaultCacheInterface {
    * @throws {Error} On network failure or when the vault listing cannot be retrieved.
    */
   async initialize(): Promise<void> {
+    if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
       await this.buildPromise; // Concurrent callers await the same build, symmetric rejection
       return;
@@ -314,7 +315,9 @@ export class VaultCache implements VaultCacheInterface {
 
       // Discard if invalidateAll() was called while we were building
       if (this.generation !== buildGeneration) {
-        log("debug", "Cache build discarded: vault was invalidated during build");
+        log("debug", "Cache build discarded: vault was invalidated during build — scheduling re-init");
+        // Schedule immediate re-initialize so waitForInitialization callers aren't stranded
+        void this.initialize();
         return;
       }
       // Swap atomically: clear old entries and copy fresh ones in

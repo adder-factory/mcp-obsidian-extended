@@ -167,6 +167,8 @@ function findClosestHeading(
  * Known Obsidian REST API phrasing: "heading not found" (v1.7+).
  * Uses regex to tolerate minor variations while staying specific.
  * Only these errors should trigger the heading retry logic.
+ * @param body - The raw HTTP response body string (may be JSON).
+ * @returns true if the parsed message matches a heading-not-found pattern.
  */
 function isHeadingNotFoundError(body: string): boolean {
   let message = body;
@@ -881,6 +883,9 @@ export class ObsidianClient {
    * @param options - The original PATCH options (target will be corrected).
    * @param label - Human-readable label for debug logging.
    * @returns The corrected heading name if the retry succeeded, false otherwise.
+   *   All exceptions are caught and logged — this method never throws.
+   *   When it returns false, callers should fall through to handleErrorResponse
+   *   with the original error.
    */
   private async retryPatchWithMapLookup(
     readMap: () => Promise<FileContentsResult>,

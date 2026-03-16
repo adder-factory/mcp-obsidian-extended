@@ -162,6 +162,8 @@ while True:
     data = json.loads(result.stdout)
     repo = data.get('data', {}).get('repository')
     if not repo:
+        # GraphQL-level error (auth, missing repo, rate limit) — treat as failure
+        result = type('Result', (), {'returncode': 1})()
         break
 
     rt = repo['pullRequest']['reviewThreads']

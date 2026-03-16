@@ -1,4 +1,5 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
+import { ObsidianConnectionError } from "./errors.js";
 import { log } from "./config.js";
 
 // --- Types ---
@@ -270,7 +271,8 @@ export class VaultCache implements VaultCacheInterface {
           this.isInitialized = true;
           log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
         } else {
-          log("warn", `Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
+          // All fetches failed — treat as a retriable error
+          throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
         }
         return;
       } catch (err: unknown) {
@@ -284,7 +286,7 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
     log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts`);
-    throw new Error(`Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`);
+    throw new ObsidianConnectionError(`Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`);
   }
 
   /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */

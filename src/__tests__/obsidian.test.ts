@@ -509,6 +509,16 @@ describe("ObsidianClient — setCache", () => {
 // ---------------------------------------------------------------------------
 type RequestResult = { statusCode: number; headers: Record<string, string>; body: string };
 
+/** Extracts HTTP headers from a mock request call's third argument. */
+function getCallHeaders(call: unknown[] | undefined): Record<string, string> {
+  if (!call) return {};
+  const opts = call[2];
+  if (opts !== null && typeof opts === "object" && "headers" in opts) {
+    return (opts as { headers: Record<string, string> }).headers;
+  }
+  return {};
+}
+
 function createMockedClient(
   overrides: Partial<Config> = {},
 ): { client: ObsidianClient; mockRequest: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<RequestResult>>> } {
@@ -840,8 +850,8 @@ describe("ObsidianClient — patchContent", () => {
     // Step 3: retry PATCH with corrected heading
     expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
     expect(mockRequest.mock.calls[2]?.[1]).toBe("/vault/note.md");
-    const retryHeaders = (mockRequest.mock.calls[2]?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("Tasks List");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks List");
   });
 
   it("throws original 400 error when retry finds no matching heading", async () => {
@@ -877,8 +887,8 @@ describe("ObsidianClient — patchContent", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const retryCall = mockRequest.mock.calls[2];
-    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("NewParent::Tasks");
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("NewParent::Tasks");
   });
 
   it("retries via leaf match when flat heading gains a parent", async () => {
@@ -898,8 +908,8 @@ describe("ObsidianClient — patchContent", () => {
     });
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
-    const retryHeaders = (mockRequest.mock.calls[2]?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("New Section::Tasks");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("New Section::Tasks");
   });
 
   it("does not retry when leaf match is ambiguous", async () => {
@@ -1162,8 +1172,8 @@ describe("ObsidianClient — active file", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const retryCall = mockRequest.mock.calls[2];
-    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("My Heading");
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("My Heading");
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
@@ -1450,8 +1460,8 @@ describe("ObsidianClient — periodic notes (current)", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const retryCall = mockRequest.mock.calls[2];
-    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("Summary");
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("Summary");
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
@@ -1608,8 +1618,8 @@ describe("ObsidianClient — periodic notes (by date)", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const retryCall = mockRequest.mock.calls[2];
-    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
-    expect(retryHeaders?.["Target"]).toBe("Tasks");
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("Tasks");
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 

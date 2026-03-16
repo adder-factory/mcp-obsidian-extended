@@ -257,7 +257,7 @@ export class VaultCache implements VaultCacheInterface {
       const startTime = Date.now();
       const buildGeneration = this.generation;
       try {
-        const freshNotes = await this.fetchAllNotes();
+        const { notes: freshNotes, totalFiles } = await this.fetchAllNotes();
 
         if (this.generation !== buildGeneration) {
           log("debug", `Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
@@ -266,11 +266,12 @@ export class VaultCache implements VaultCacheInterface {
 
         this.applySnapshot(freshNotes);
         const elapsed = Date.now() - startTime;
-        if (this.notes.size > 0 || freshNotes.size === 0) {
+        if (this.notes.size > 0 || totalFiles === 0) {
+          // Mark ready if we cached some notes, or if the vault genuinely has no .md files
           this.isInitialized = true;
           log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
         } else {
-          log("warn", `Cache: all file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
+          log("warn", `Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
         }
         return;
       } catch (err: unknown) {
@@ -280,11 +281,11 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
     log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts (vault keeps being invalidated)`);
-    throw new Error(`Cache initialization failed: vault was invalidated ${String(maxAttempts)} times during build`);
+    throw new Error(`Cache initialization failed after ${String(maxAttempts)} attempts (vault keeps being invalidated). Try refresh_cache later.`);
   }
 
-  /** Fetches all markdown notes from the vault in batches. */
-  private async fetchAllNotes(): Promise<Map<string, CachedNote>> {
+  /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */
+  private async fetchAllNotes(): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
     const { files } = await this.client.listFilesInVault();
     const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
@@ -317,7 +318,7 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
     }
-    return freshNotes;
+    return { notes: freshNotes, totalFiles: mdFiles.length };
   }
 
   /** Atomically swaps the cache contents with a fresh snapshot. */

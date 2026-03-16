@@ -1,9 +1,6 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
 import { log } from "./config.js";
 
-
-
-
 // --- Types ---
 
 /** A parsed link extracted from note content, with resolved target and context. */

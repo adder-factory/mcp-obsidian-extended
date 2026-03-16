@@ -169,7 +169,8 @@ function findClosestHeading(
  */
 function isHeadingNotFoundError(body: string): boolean {
   const lower = body.toLowerCase();
-  return lower.includes("heading") || lower.includes("not found");
+  // Match Obsidian REST API error messages for heading/target not found
+  return lower.includes("heading") || lower.includes("no match") || lower.includes("not found");
 }
 
 // --- Accept Header Mapping ---

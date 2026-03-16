@@ -455,7 +455,10 @@ export class VaultCache implements VaultCacheInterface {
    * Returns true if initialized within the timeout, false otherwise.
    * If already initialized, resolves immediately. If no build is in
    * progress (isBuilding and isRefreshing are both false), returns
-   * false immediately to avoid a pointless wait after invalidateAll().
+   * false immediately — this covers the case where invalidateAll()
+   * cleared the cache without triggering a rebuild. The next scheduled
+   * auto-refresh (startAutoRefresh timer) will rebuild the cache;
+   * callers should not block indefinitely waiting for that.
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;

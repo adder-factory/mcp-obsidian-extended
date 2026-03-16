@@ -134,6 +134,7 @@ function findClosestHeading(
   //    For "A::B::C", tries matching "B::C" exactly or "...::B::C" as suffix, then "C"
   for (let i = 1; i < segments.length; i++) {
     const tail = segments.slice(i).join(delimiterLower);
+    if (tail.length === 0) continue; // Skip empty tail from trailing delimiter
     const matches = headings.filter((h) => {
       const hLower = h.toLowerCase();
       return hLower === tail || hLower.endsWith(delimiterLower + tail);
@@ -143,6 +144,7 @@ function findClosestHeading(
 
   // 4. Leaf-name match — compare only the final segment, only if unique
   const targetLeaf = segments.at(-1) ?? targetLower;
+  if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf
   const leafMatches = headings.filter((h) => {
     const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
     return hLeaf === targetLeaf;
@@ -807,6 +809,10 @@ export class ObsidianClient {
    * On 400 failure with a heading target, retries once after re-reading the document map
    * and finding the closest matching heading. This mitigates the ~5% failure rate when
    * concurrent writes change the heading structure between read and patch.
+   *
+   * The retry (retryPatchWithMapLookup) runs inside withFileLock intentionally: holding
+   * the lock during re-read+retry prevents other server-initiated writes from changing
+   * the heading structure between the map read and the retry PATCH.
    */
   async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {

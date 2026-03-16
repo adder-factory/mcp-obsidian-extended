@@ -499,9 +499,13 @@ export class VaultCache implements VaultCacheInterface {
 
     // If a build promise exists, race it against a timeout for immediate response
     if (this.buildPromise) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
-        this.buildPromise.then(() => undefined, () => undefined),
-        new Promise<void>((resolve) => { setTimeout(resolve, timeoutMs); }),
+        this.buildPromise.then(
+          () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
+          () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
+        ),
+        new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, timeoutMs); }),
       ]);
       return this.isInitialized;
     }

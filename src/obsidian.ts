@@ -128,6 +128,10 @@ function findClosestHeading(
   // Guard against empty/whitespace delimiter — fall back to "::"
   const safeDelimiter = delimiter.trim().length > 0 ? delimiter : "::";
   const delimiterLower = safeDelimiter.toLowerCase();
+
+  // No matches and no hierarchy — suffix/leaf stages can't help
+  if (caseMatches.length === 0 && !targetLower.includes(delimiterLower)) return undefined;
+
   const segments = targetLower.split(delimiterLower);
 
   // 3. Progressive suffix match — try dropping leading segments one at a time

@@ -408,6 +408,11 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(targetHeader("50% über")).toBe("50%25 %C3%BCber");
   });
 
+  it("escapes literal % in simple heading names", () => {
+    // "100% Complete" → "100%25 Complete" — Obsidian decodes %25→%
+    expect(targetHeader("100% Complete")).toBe("100%25 Complete");
+  });
+
   it("uses application/json when contentType is json", () => {
     const headers = buildHeaders({
       operation: "replace",

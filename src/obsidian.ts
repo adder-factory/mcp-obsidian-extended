@@ -110,10 +110,12 @@ const NON_PRINTABLE_ASCII = /[^\x20-\x7E]+/g;
 
 /**
  * Encodes a PATCH Target header value for the Obsidian REST API.
- * 1. Escapes literal `%` → `%25` so Obsidian doesn't decode `%HH` sequences in headings.
- * 2. Percent-encodes non-printable-ASCII (unicode, emoji) for Node.js HTTP header safety.
- * Printable ASCII (+, &, ::, spaces) is preserved — Obsidian does plain-text matching for these.
- * Validated against live Obsidian API in Phase 3.
+ * Obsidian decodes ALL %HH sequences in the Target header (both ASCII
+ * like %2B→+ and non-ASCII like %C3%9C→Ü). Our encoding strategy:
+ * 1. Escape literal `%` → `%25` so headings containing `%` round-trip correctly.
+ * 2. Percent-encode non-printable-ASCII (unicode, emoji) for Node.js HTTP header safety.
+ * Printable ASCII (+, &, ::, spaces) is sent as-is — works because Obsidian matches
+ * both plain ASCII and its decoded %HH equivalent. Validated against live Obsidian API.
  */
 function encodeTargetHeader(target: string): string {
   const escaped = target.replaceAll("%", "%25");

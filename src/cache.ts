@@ -225,6 +225,7 @@ export class VaultCache implements VaultCacheInterface {
    * invalidateAll() was called during the build (generation mismatch).
    * @throws {ObsidianConnectionError} On network failure or after exhausting retry attempts.
    * @throws {ObsidianAuthError} On authentication failure (not retried).
+   * @throws {ObsidianApiError} On unexpected API response format (not retried).
    *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {

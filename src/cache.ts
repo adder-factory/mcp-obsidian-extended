@@ -206,8 +206,6 @@ export class VaultCache implements VaultCacheInterface {
   private isRefreshing = false;
   /** Set to true during initialize() to signal that an initial build is in flight. */
   private isBuilding = false;
-  /** Set to true when a rebuild is scheduled via setTimeout after generation mismatch. */
-  private pendingRebuild = false;
   /** In-flight initialize() promise — concurrent callers await the same build. */
   private buildPromise: Promise<void> | undefined;
   /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
@@ -248,79 +246,87 @@ export class VaultCache implements VaultCacheInterface {
     }
   }
 
-  /** Internal build logic — separated to allow promise sharing across concurrent callers. */
+  /**
+   * Internal build logic with retry on generation mismatch.
+   * Retries up to 3 times within the same promise if invalidateAll() discards a build,
+   * so concurrent callers awaiting buildPromise see the final result.
+   */
   private async doInitialize(): Promise<void> {
-    this.pendingRebuild = false;
-    const startTime = Date.now();
-    const buildGeneration = this.generation;
-    try {
-      const { files } = await this.client.listFilesInVault();
-      const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const startTime = Date.now();
+      const buildGeneration = this.generation;
+      try {
+        const freshNotes = await this.fetchAllNotes();
 
-      log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
+        if (this.generation !== buildGeneration) {
+          log("debug", `Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
+          continue; // Retry within the same promise
+        }
 
-      // Build into a temporary map so stale entries from previous runs don't persist
-      const freshNotes = new Map<string, CachedNote>();
-      const batchSize = 20;
-      for (let i = 0; i < mdFiles.length; i += batchSize) {
-        const batch = mdFiles.slice(i, i + batchSize);
-        const results = await Promise.allSettled(
-          batch.map(async (filePath) => {
-            const result = await this.client.getFileContents(filePath, "json");
-            if (typeof result === "string" || !("content" in result)) {
-              throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
-            }
-            const noteJson = result;
-            const links = parseLinks(noteJson.content, filePath);
-            const cached: CachedNote = {
-              path: filePath,
-              content: noteJson.content,
-              frontmatter: noteJson.frontmatter,
-              tags: noteJson.tags,
-              stat: noteJson.stat,
-              links,
-              cachedAt: Date.now(),
-            };
-            freshNotes.set(filePath, cached);
-          }),
-        );
+        this.applySnapshot(freshNotes);
+        const elapsed = Date.now() - startTime;
+        if (this.notes.size > 0 || freshNotes.size === 0) {
+          this.isInitialized = true;
+          log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+        } else {
+          log("warn", `Cache: all file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
+        }
+        return;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        log("warn", `Cache initialization failed: ${message}`);
+        throw err;
+      }
+    }
+    log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts (vault keeps being invalidated)`);
+  }
 
-        for (const result of results) {
-          if (result.status === "rejected") {
-            log("debug", `Cache: failed to fetch a file: ${String(result.reason)}`);
+  /** Fetches all markdown notes from the vault in batches. */
+  private async fetchAllNotes(): Promise<Map<string, CachedNote>> {
+    const { files } = await this.client.listFilesInVault();
+    const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+    log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
+
+    const freshNotes = new Map<string, CachedNote>();
+    const batchSize = 20;
+    for (let i = 0; i < mdFiles.length; i += batchSize) {
+      const batch = mdFiles.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (filePath) => {
+          const result = await this.client.getFileContents(filePath, "json");
+          if (typeof result === "string" || !("content" in result)) {
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
           }
+          const links = parseLinks(result.content, filePath);
+          freshNotes.set(filePath, {
+            path: filePath,
+            content: result.content,
+            frontmatter: result.frontmatter,
+            tags: result.tags,
+            stat: result.stat,
+            links,
+            cachedAt: Date.now(),
+          });
+        }),
+      );
+      for (const r of results) {
+        if (r.status === "rejected") {
+          log("debug", `Cache: failed to fetch a file: ${String(r.reason)}`);
         }
       }
-
-      // Discard if invalidateAll() was called while we were building
-      if (this.generation !== buildGeneration) {
-        log("debug", "Cache build discarded: vault was invalidated during build — scheduling re-init");
-        // Signal waitForInitialization to keep waiting across the setTimeout gap
-        this.pendingRebuild = true;
-        // Schedule re-initialize as macrotask — must run after finally clears buildPromise
-        setTimeout(() => { void this.initialize(); }, 0);
-        return;
-      }
-      // Swap atomically: clear old entries and copy fresh ones in
-      this.notes.clear();
-      for (const [key, value] of freshNotes) {
-        this.notes.set(key, value);
-      }
-      this.rebuildIndex();
-      this.recalcLinkCount();
-      const elapsed = Date.now() - startTime;
-      if (this.notes.size > 0 || mdFiles.length === 0) {
-        // Mark initialized if we got some notes, or if the vault is genuinely empty
-        this.isInitialized = true;
-        log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
-      } else {
-        log("warn", `Cache: all ${String(mdFiles.length)} file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      log("warn", `Cache initialization failed: ${message}`);
-      throw err;
     }
+    return freshNotes;
+  }
+
+  /** Atomically swaps the cache contents with a fresh snapshot. */
+  private applySnapshot(freshNotes: Map<string, CachedNote>): void {
+    this.notes.clear();
+    for (const [key, value] of freshNotes) {
+      this.notes.set(key, value);
+    }
+    this.rebuildIndex();
+    this.recalcLinkCount();
   }
 
   /**
@@ -480,7 +486,7 @@ export class VaultCache implements VaultCacheInterface {
    * Waits for the cache to finish initializing, with a timeout.
    * Returns true if initialized within the timeout, false otherwise.
    * If already initialized, resolves immediately. If no build is in
-   * progress (isBuilding, isRefreshing, and pendingRebuild are all false), returns
+   * progress (isBuilding and isRefreshing are both false), returns
    * false immediately — this covers the case where invalidateAll()
    * cleared the cache without triggering a rebuild. The next scheduled
    * auto-refresh (startAutoRefresh timer) will rebuild the cache;
@@ -488,7 +494,7 @@ export class VaultCache implements VaultCacheInterface {
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
-    if (!this.isBuilding && !this.isRefreshing && !this.pendingRebuild) return false;
+    if (!this.isBuilding && !this.isRefreshing) return false;
 
     const deadline = Date.now() + timeoutMs;
 
@@ -504,8 +510,7 @@ export class VaultCache implements VaultCacheInterface {
       ]);
       if (this.isInitialized) return true;
       // Don't return false — fall through to polling loop with remaining budget.
-      // pendingRebuild may have been set during the build, and the
-      // polling loop will correctly detect and wait for the rebuild.
+      // A refresh may still be in progress (isRefreshing=true).
     }
 
     // Fallback: poll for refresh/rebuild completion using remaining time budget
@@ -515,7 +520,7 @@ export class VaultCache implements VaultCacheInterface {
       const wait = Math.min(pollInterval, Math.max(remaining, 0));
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
       if (this.isInitialized) return true;
-      if (!this.isBuilding && !this.isRefreshing && !this.pendingRebuild) return false;
+      if (!this.isBuilding && !this.isRefreshing) return false;
     }
     return false;
   }

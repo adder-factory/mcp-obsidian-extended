@@ -180,7 +180,11 @@ function isHeadingNotFoundError(body: string): boolean {
     }
   } catch { /* use raw body */ }
   // Match "heading" followed by words then "not found" or "does not exist"
-  return /heading[^"]*(?:not found|does not exist)/i.test(message);
+  const matched = /heading[^"]*(?:not found|does not exist)/i.test(message);
+  if (!matched && message.toLowerCase().includes("heading")) {
+    log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
+  }
+  return matched;
 }
 
 // --- Accept Header Mapping ---
@@ -1008,6 +1012,10 @@ export class ObsidianClient {
         return;
       }
 
+      // Note: if the user switches the active file in Obsidian between the
+      // initial PATCH and the retry, getActiveFile("map") reads the new file's
+      // headings. findClosestHeading will typically find no match and return false,
+      // falling through to the original error. A false-positive match is unlikely.
       if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getActiveFile("map"),

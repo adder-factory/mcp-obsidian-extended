@@ -863,8 +863,8 @@ export class ObsidianClient {
           content, options, filePath,
         );
         if (corrected !== false) {
-          this.cacheRef?.invalidate(sanitizeFilePath(filePath));
           log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in ${filePath}`);
+          this.cacheRef?.invalidate(sanitizeFilePath(filePath));
           return;
         }
       }
@@ -1007,8 +1007,8 @@ export class ObsidianClient {
           content, options, "(active file)",
         );
         if (corrected !== false) {
-          this.cacheRef?.invalidateAll();
           log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (active file)`);
+          this.cacheRef?.invalidateAll();
           return;
         }
       }
@@ -1190,8 +1190,8 @@ export class ObsidianClient {
           content, options, `(periodic: ${period})`,
         );
         if (corrected !== false) {
-          this.cacheRef?.invalidateAll();
           log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period})`);
+          this.cacheRef?.invalidateAll();
           return;
         }
       }
@@ -1296,8 +1296,8 @@ export class ObsidianClient {
           content, options, `(periodic: ${period} date)`,
         );
         if (corrected !== false) {
-          this.cacheRef?.invalidateAll();
           log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period} date)`);
+          this.cacheRef?.invalidateAll();
           return;
         }
       }

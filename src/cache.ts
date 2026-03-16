@@ -524,6 +524,9 @@ export class VaultCache implements VaultCacheInterface {
       const remaining = deadline - Date.now();
       const wait = Math.min(pollInterval, Math.max(remaining, 0));
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
+      // Check isInitialized first: a build can complete (setting isInitialized=true)
+      // and then invalidateAll can clear it within a single poll interval. Checking
+      // isInitialized before the building flags ensures we catch the success case.
       if (this.isInitialized) return true;
       if (!this.isBuilding && !this.isRefreshing) return false;
     }

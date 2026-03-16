@@ -297,13 +297,10 @@ export class VaultCache implements VaultCacheInterface {
       } catch (err: unknown) {
         const result = this.handleBuildAttemptError(err, attempt);
         lastError = err;
-        if (!result.isDiscard) {
-          hadNonDiscardError = true;
-          if (firstRealError === undefined) firstRealError = err;
-        }
-        if (result.shouldBackoff) {
-          const delay = result.isDiscard ? VaultCache.DISCARD_BACKOFF_MS : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
-          await new Promise<void>((resolve) => { setTimeout(resolve, delay); });
+        if (!result.isDiscard) { hadNonDiscardError = true; }
+        if (firstRealError === undefined && !result.isDiscard) { firstRealError = err; }
+        if (result.backoffMs > 0) {
+          await new Promise<void>((resolve) => { setTimeout(resolve, result.backoffMs); });
         }
       }
     }
@@ -311,7 +308,7 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Classifies a build attempt error and logs it. Rethrows non-transient errors. */
-  private handleBuildAttemptError(err: unknown, attempt: number): { isDiscard: boolean; shouldBackoff: boolean } {
+  private handleBuildAttemptError(err: unknown, attempt: number): { isDiscard: boolean; backoffMs: number } {
     if (err instanceof ObsidianAuthError) {
       log("warn", `Cache initialization failed (non-transient): ${err.message}`);
       throw err;
@@ -320,9 +317,10 @@ export class VaultCache implements VaultCacheInterface {
     const isDiscard = err instanceof CacheBuildDiscardedError;
     const msg = err instanceof Error ? err.message : String(err);
     log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
-    // Always backoff between retries: shorter for discards (100ms), longer for network errors
-    // No backoff on final attempt — error is thrown immediately after loop
-    return { isDiscard, shouldBackoff: attempt < VaultCache.INIT_MAX_ATTEMPTS - 1 };
+    // No backoff on final attempt; shorter for discards, longer for network errors
+    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1) return { isDiscard, backoffMs: 0 };
+    const backoffMs = isDiscard ? VaultCache.DISCARD_BACKOFF_MS : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
+    return { isDiscard, backoffMs };
   }
 
   /** Throws the appropriate error after exhausting all retry attempts. */

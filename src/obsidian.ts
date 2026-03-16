@@ -129,13 +129,11 @@ function findClosestHeading(
   const safeDelimiter = delimiter.trim().length > 0 ? delimiter : "::";
   const delimiterLower = safeDelimiter.toLowerCase();
 
-  // No matches and no hierarchy — suffix/leaf stages can't help
-  if (caseMatches.length === 0 && !targetLower.includes(delimiterLower)) return undefined;
-
   const segments = targetLower.split(delimiterLower);
 
   // 3. Progressive suffix match — try dropping leading segments one at a time
   //    For "A::B::C", tries matching "B::C" exactly or "...::B::C" as suffix, then "C"
+  //    Skipped for single-segment targets (segments.length === 1) — no segments to drop
   for (let i = 1; i < segments.length; i++) {
     const tail = segments.slice(i).join(delimiterLower);
     if (tail.length === 0) continue; // Skip empty tail from trailing delimiter

@@ -881,6 +881,27 @@ describe("ObsidianClient — patchContent", () => {
     expect(retryHeaders?.["Target"]).toBe("NewParent::Tasks");
   });
 
+  it("retries via leaf match when flat heading gains a parent", async () => {
+    const { client, mockRequest } = createMockedClient();
+    // Target "Tasks" (flat) was restructured to "New Section::Tasks" (hierarchical)
+    // Stage 4 leaf match should find it
+    const docMap = { headings: ["New Section::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryHeaders = (mockRequest.mock.calls[2]?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("New Section::Tasks");
+  });
+
   it("does not retry when leaf match is ambiguous", async () => {
     const { client, mockRequest } = createMockedClient();
     const docMap = { headings: ["Project A::Tasks", "Project B::Tasks"], blocks: [], frontmatterFields: [] };

@@ -256,6 +256,7 @@ export class VaultCache implements VaultCacheInterface {
       await this.buildPromise;
     } finally {
       this.buildPromise = undefined;
+      this.isBuilding = false;
     }
   }
 
@@ -326,8 +327,6 @@ export class VaultCache implements VaultCacheInterface {
       const message = err instanceof Error ? err.message : String(err);
       log("warn", `Cache initialization failed: ${message}`);
       throw err;
-    } finally {
-      this.isBuilding = false;
     }
   }
 
@@ -497,6 +496,17 @@ export class VaultCache implements VaultCacheInterface {
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing) return false;
+
+    // If a build promise exists, race it against a timeout for immediate response
+    if (this.buildPromise) {
+      await Promise.race([
+        this.buildPromise.then(() => undefined, () => undefined),
+        new Promise<void>((resolve) => { setTimeout(resolve, timeoutMs); }),
+      ]);
+      return this.isInitialized;
+    }
+
+    // Fallback: poll for refresh completion (no shared promise available)
     const pollInterval = 200;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -504,7 +514,6 @@ export class VaultCache implements VaultCacheInterface {
       const wait = Math.min(pollInterval, Math.max(remaining, 0));
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
       if (this.isInitialized) return true;
-      // Stop polling if the build/refresh completed without success (e.g. threw)
       if (!this.isBuilding && !this.isRefreshing) return false;
     }
     return false;

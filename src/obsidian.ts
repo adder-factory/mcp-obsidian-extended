@@ -866,7 +866,11 @@ export class ObsidianClient {
   ): Promise<boolean> {
     try {
       const mapResult = await readMap();
-      if (typeof mapResult === "string" || !("headings" in mapResult)) return false;
+      if (
+        typeof mapResult === "string" ||
+        !("headings" in mapResult) ||
+        !Array.isArray(mapResult.headings)
+      ) return false;
 
       const match = findClosestHeading(options.target, mapResult.headings, options.targetDelimiter ?? "::");
       if (!match) return false;

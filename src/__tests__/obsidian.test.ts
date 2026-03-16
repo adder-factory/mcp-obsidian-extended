@@ -403,6 +403,11 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(targetHeader("50%C3%BC off")).toBe("50%25C3%25BC off");
   });
 
+  it("handles % and non-ASCII combined in the same heading", () => {
+    // Both encoding steps interact: % → %25, then ü → %C3%BC
+    expect(targetHeader("50% über")).toBe("50%25 %C3%BCber");
+  });
+
   it("uses application/json when contentType is json", () => {
     const headers = buildHeaders({
       operation: "replace",
@@ -428,9 +433,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("omits optional headers when not provided", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "Test",

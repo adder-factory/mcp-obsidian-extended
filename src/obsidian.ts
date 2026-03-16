@@ -108,23 +108,22 @@ function acceptHeaderForFormat(format: FileFormat): string {
 /**
  * Encodes a PATCH Target header value for the Obsidian REST API.
  *
- * Obsidian decodes ALL %HH sequences in the Target header — both ASCII
- * (%2B→+, %3A%3A→::, %20→space) and non-ASCII (%C3%9C→Ü). Full
- * `encodeURIComponent` would technically work, but selective encoding
- * is simpler and avoids unnecessary transformation of readable ASCII.
+ * The Obsidian REST API source code applies `decodeURIComponent(req.get("Target"))`
+ * to the Target header (see: obsidian-local-rest-api V3 PATCH implementation).
+ * This means ALL %HH sequences are decoded before heading matching — both ASCII
+ * (%2B→+, %3A%3A→::) and non-ASCII (%C3%9C→Ü). This is documented behavior,
+ * not an assumption.
  *
- * Encoding strategy (each step validated against live Obsidian v3.4.6):
+ * Encoding strategy (validated against live Obsidian v3.4.6):
  * 1. Escape `%` → `%25`: required so headings with literal `%` round-trip
- *    correctly. (Live-tested: `Root::100%25 Complete` matched `## 100% Complete`.)
+ *    correctly via `decodeURIComponent`. (Live-tested: `100%25 Complete` → `100% Complete`.)
  * 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
- *    via encodeURIComponent: Node.js rejects raw non-ASCII bytes in HTTP
- *    headers. (Live-tested: `%C3%9C` decoded to `Ü`; raw `Ü` rejected.)
+ *    via encodeURIComponent: Node.js rejects raw non-ASCII bytes in HTTP headers.
  * 3. Printable ASCII sent as-is: simpler, no transformation needed.
- *    (Live-tested: plain `+`, `%2B`, `::`, `%3A%3A` all match correctly.)
  *
- * Full stress test: 40/40 cases pass (scripts/stress-test-patch.ts) covering
- * ASCII specials, 7 unicode scripts, emoji variants, CJK, RTL, literal %,
- * concurrent PATCH, and rapid cycling.
+ * @see https://deepwiki.com/coddingtonbear/obsidian-local-rest-api/6.1-patch-operations
+ *
+ * Full stress test: 40/40 cases pass (scripts/stress-test-patch.ts).
  */
 function encodeTargetHeader(target: string): string {
   const escaped = target.replaceAll("%", "%25");

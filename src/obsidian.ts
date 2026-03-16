@@ -179,7 +179,7 @@ function isHeadingNotFoundError(body: string): boolean {
     }
   } catch { /* use raw body */ }
   const lower = message.toLowerCase();
-  return lower.includes("heading") && (lower.includes("not found") || lower.includes("no match"));
+  return lower.includes("heading") && lower.includes("not found");
 }
 
 // --- Accept Header Mapping ---

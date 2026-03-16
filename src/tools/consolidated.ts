@@ -307,18 +307,18 @@ async function handleVaultAnalysisAction(
   switch (action) {
     case "backlinks": {
       if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
       if (notReady) return notReady;
       return jsonResult(cache.getBacklinks(path));
     }
     case "connections": {
       if (!path) return errorResult("[vault_analysis] path is required for connections");
-      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
       if (notReady) return notReady;
       return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
     }
     case "structure": {
-      const notReady = await ensureCacheReady(cache, "vault_analysis", config.enableCache);
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
       if (notReady) return notReady;
       return buildVaultStructure(cache, limit);
     }

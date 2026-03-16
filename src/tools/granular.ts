@@ -876,7 +876,7 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          const notReady = await ensureCacheReady(cache, "get_backlinks", config.enableCache);
+          const notReady = await ensureCacheReady({ cache, tool: "get_backlinks", enableCache: config.enableCache });
           if (notReady) return notReady;
           return jsonResult(cache.getBacklinks(filePath));
         } catch (err: unknown) {
@@ -897,7 +897,7 @@ function registerSystemAndAnalysisTools(
       },
       async ({ limit }) => {
         try {
-          const notReady = await ensureCacheReady(cache, "get_vault_structure", config.enableCache);
+          const notReady = await ensureCacheReady({ cache, tool: "get_vault_structure", enableCache: config.enableCache });
           if (notReady) return notReady;
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
@@ -918,7 +918,7 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          const notReady = await ensureCacheReady(cache, "get_note_connections", config.enableCache);
+          const notReady = await ensureCacheReady({ cache, tool: "get_note_connections", enableCache: config.enableCache });
           if (notReady) return notReady;
           return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
         } catch (err: unknown) {

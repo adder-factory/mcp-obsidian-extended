@@ -11,19 +11,22 @@ interface CacheReadyCheckable {
   waitForInitialization(timeoutMs: number): Promise<boolean>;
 }
 
+/** Options for the ensureCacheReady helper. */
+interface EnsureCacheReadyOptions {
+  readonly cache: CacheReadyCheckable;
+  readonly tool: string;
+  readonly enableCache: boolean;
+}
+
 /**
  * Shared helper: ensures the cache is initialized before running a graph query.
  * Returns an error ToolResult if the cache is disabled or not yet available,
  * or undefined if the cache is ready.
- * @param cache - Any object implementing getIsInitialized and waitForInitialization.
- * @param tool - The tool name for error messages.
- * @param enableCache - Whether caching is enabled in config.
+ * @param options - Cache instance, tool name, and enableCache flag.
  * @returns An error result if cache is unavailable, undefined if ready.
  */
 export async function ensureCacheReady(
-  cache: CacheReadyCheckable,
-  tool: string,
-  enableCache: boolean,
+  { cache, tool, enableCache }: EnsureCacheReadyOptions,
 ): Promise<ToolResult | undefined> {
   if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
   if (cache.getIsInitialized()) return undefined;
@@ -233,6 +236,8 @@ export class VaultCache implements VaultCacheInterface {
   private isRefreshing = false;
   /** Set to true during initialize() to signal that an initial build is in flight. */
   private isBuilding = false;
+  /** Set to true when a rebuild is scheduled via setTimeout after generation mismatch. */
+  private pendingRebuild = false;
   /** In-flight initialize() promise — concurrent callers await the same build. */
   private buildPromise: Promise<void> | undefined;
   /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
@@ -272,6 +277,7 @@ export class VaultCache implements VaultCacheInterface {
 
   /** Internal build logic — separated to allow promise sharing across concurrent callers. */
   private async doInitialize(): Promise<void> {
+    this.pendingRebuild = false;
     const startTime = Date.now();
     const buildGeneration = this.generation;
     try {
@@ -316,6 +322,8 @@ export class VaultCache implements VaultCacheInterface {
       // Discard if invalidateAll() was called while we were building
       if (this.generation !== buildGeneration) {
         log("debug", "Cache build discarded: vault was invalidated during build — scheduling re-init");
+        // Signal waitForInitialization to keep waiting across the setTimeout gap
+        this.pendingRebuild = true;
         // Schedule re-initialize as macrotask — must run after finally clears buildPromise
         setTimeout(() => { void this.initialize(); }, 0);
         return;
@@ -499,7 +507,7 @@ export class VaultCache implements VaultCacheInterface {
    * Waits for the cache to finish initializing, with a timeout.
    * Returns true if initialized within the timeout, false otherwise.
    * If already initialized, resolves immediately. If no build is in
-   * progress (isBuilding and isRefreshing are both false), returns
+   * progress (isBuilding, isRefreshing, and pendingRebuild are all false), returns
    * false immediately — this covers the case where invalidateAll()
    * cleared the cache without triggering a rebuild. The next scheduled
    * auto-refresh (startAutoRefresh timer) will rebuild the cache;
@@ -507,7 +515,7 @@ export class VaultCache implements VaultCacheInterface {
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
-    if (!this.isBuilding && !this.isRefreshing) return false;
+    if (!this.isBuilding && !this.isRefreshing && !this.pendingRebuild) return false;
 
     // If a build promise exists, race it against a timeout for immediate response
     if (this.buildPromise) {
@@ -530,7 +538,7 @@ export class VaultCache implements VaultCacheInterface {
       const wait = Math.min(pollInterval, Math.max(remaining, 0));
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
       if (this.isInitialized) return true;
-      if (!this.isBuilding && !this.isRefreshing) return false;
+      if (!this.isBuilding && !this.isRefreshing && !this.pendingRebuild) return false;
     }
     return false;
   }

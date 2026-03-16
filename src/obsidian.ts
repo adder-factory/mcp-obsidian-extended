@@ -118,7 +118,7 @@ function findClosestHeading(
 ): string | undefined {
   // 1. Exact match (sanity check)
   const exact = headings.find((h) => h === target);
-  if (exact) return exact;
+  if (exact !== undefined) return exact;
 
   // 2. Case-insensitive match — only if unique
   const targetLower = target.toLowerCase();

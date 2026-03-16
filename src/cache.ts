@@ -232,8 +232,7 @@ export class VaultCache implements VaultCacheInterface {
    * Builds into a fresh snapshot then swaps atomically. Discards results if
    * invalidateAll() was called during the build (generation mismatch).
    * @throws {ObsidianConnectionError} On network failure or after exhausting retry attempts.
-   * @throws {ObsidianAuthError} On authentication failure (not retried).
-   * @throws {ObsidianApiError} On API errors (5xx are retried, 4xx propagated via ObsidianAuthError path).
+   * @throws {ObsidianAuthError} On authentication failure (401/403, not retried).
    *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
@@ -286,7 +285,8 @@ export class VaultCache implements VaultCacheInterface {
         lastError = err;
         if (!result.isDiscard) hadNonDiscardError = true;
         if (result.shouldBackoff) {
-          await new Promise<void>((resolve) => { setTimeout(resolve, 500 * (attempt + 1)); });
+          const delay = result.isDiscard ? 100 : 500 * (attempt + 1);
+          await new Promise<void>((resolve) => { setTimeout(resolve, delay); });
         }
       }
     }
@@ -302,7 +302,8 @@ export class VaultCache implements VaultCacheInterface {
     const isDiscard = err instanceof CacheBuildDiscardedError;
     const msg = err instanceof Error ? err.message : String(err);
     log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
-    return { isDiscard, shouldBackoff: !isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1 };
+    // Always backoff between retries: shorter for discards (100ms), longer for network errors
+    return { isDiscard, shouldBackoff: attempt < VaultCache.INIT_MAX_ATTEMPTS - 1 };
   }
 
   /** Throws the appropriate error after exhausting all retry attempts. */

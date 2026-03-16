@@ -164,13 +164,9 @@ function findClosestHeading(
 
 /**
  * Checks if a 400 response body indicates a heading-not-found error.
- * Only these errors should trigger the heading retry logic.
- * Other 400 errors (malformed request, invalid operation, etc.) should not retry.
- */
-/**
- * Checks if a 400 response body indicates a heading-not-found error.
  * Known Obsidian REST API phrasing: "heading not found" (v1.7+).
- * Uses regex to tolerate minor phrasing variations while staying specific.
+ * Uses regex to tolerate minor variations while staying specific.
+ * Only these errors should trigger the heading retry logic.
  */
 function isHeadingNotFoundError(body: string): boolean {
   let message = body;

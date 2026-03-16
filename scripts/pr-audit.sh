@@ -121,6 +121,7 @@ import subprocess, json, sys
 
 owner, name, pr = '$OWNER', '$NAME', $PR
 all_threads = []
+result = type('Result', (), {'returncode': 0})()
 cursor = None
 
 while True:

@@ -233,7 +233,7 @@ export class VaultCache implements VaultCacheInterface {
    * invalidateAll() was called during the build (generation mismatch).
    * @throws {ObsidianConnectionError} On network failure or after exhausting retry attempts.
    * @throws {ObsidianAuthError} On authentication failure (not retried).
-   * @throws {ObsidianApiError} On unexpected API response format (not retried).
+   * @throws {ObsidianApiError} On API errors (5xx are retried, 4xx propagated via ObsidianAuthError path).
    *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
@@ -281,8 +281,8 @@ export class VaultCache implements VaultCacheInterface {
         await this.executeBuildAttempt(attempt, VaultCache.INIT_MAX_ATTEMPTS);
         return;
       } catch (err: unknown) {
-        // Don't retry non-transient errors (auth, unexpected format)
-        if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) {
+        // Don't retry non-transient errors (auth failure is permanent)
+        if (err instanceof ObsidianAuthError) {
           log("warn", `Cache initialization failed (non-transient): ${err.message}`);
           throw err;
         }
@@ -296,8 +296,11 @@ export class VaultCache implements VaultCacheInterface {
         }
       }
     }
+    const isAllDiscards = lastError instanceof CacheBuildDiscardedError;
     throw new ObsidianConnectionError(
-      `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`,
+      isAllDiscards
+        ? `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`
+        : `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`,
       { cause: lastError instanceof Error ? lastError : undefined },
     );
   }
@@ -338,7 +341,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`, 0);
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
           }
           const links = parseLinks(result.content, filePath);
           freshNotes.set(filePath, {
@@ -441,7 +444,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new ObsidianApiError(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`, 0);
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
           }
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {

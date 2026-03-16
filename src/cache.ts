@@ -2,6 +2,11 @@ import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
 import { ObsidianConnectionError, ObsidianAuthError, ObsidianApiError } from "./errors.js";
 import { log } from "./config.js";
 
+/** Sentinel error for generation-mismatch discards — retried immediately without backoff. */
+class CacheBuildDiscardedError extends Error {
+  constructor(message: string) { super(message); this.name = "CacheBuildDiscardedError"; }
+}
+
 // --- Types ---
 
 /** A parsed link extracted from note content, with resolved target and context. */
@@ -285,7 +290,7 @@ export class VaultCache implements VaultCacheInterface {
         const msg = err instanceof Error ? err.message : String(err);
         log("warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
         // Backoff only for transient network errors, not generation-mismatch discards
-        const isDiscard = err instanceof Error && err.message.startsWith("Cache build discarded");
+        const isDiscard = err instanceof CacheBuildDiscardedError;
         if (!isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
         }
@@ -304,17 +309,17 @@ export class VaultCache implements VaultCacheInterface {
     const { notes: freshNotes, totalFiles } = await this.fetchAllNotes(buildGeneration);
 
     if (this.generation !== buildGeneration) {
-      throw new Error(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
+      throw new CacheBuildDiscardedError(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
     }
 
-    this.applySnapshot(freshNotes);
     const elapsed = Date.now() - startTime;
-    if (this.notes.size > 0 || totalFiles === 0) {
-      this.isInitialized = true;
-      log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
-    } else {
+    // Check before swapping to preserve any existing cache state during retries
+    if (freshNotes.size === 0 && totalFiles > 0) {
       throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
     }
+    this.applySnapshot(freshNotes);
+    this.isInitialized = true;
+    log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
   }
 
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */

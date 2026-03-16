@@ -1079,6 +1079,22 @@ describe("ObsidianClient — active file", () => {
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/active/", expect.any(Object));
   });
 
+  it("patchActiveFile retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["My Heading"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchActiveFile("text", { operation: "append", targetType: "heading", target: "my heading" });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("My Heading");
+  });
+
   it("deleteActiveFile deletes", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());
@@ -1344,6 +1360,24 @@ describe("ObsidianClient — periodic notes (current)", () => {
       target: "Summary",
     });
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/", expect.any(Object));
+  });
+
+  it("patchPeriodicNote retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Summary"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNote("monthly", "text", {
+      operation: "append", targetType: "heading", target: "summary",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("Summary");
   });
 
   it("deletePeriodicNote deletes", async () => {

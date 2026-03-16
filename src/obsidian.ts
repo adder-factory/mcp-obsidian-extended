@@ -94,13 +94,17 @@ export function sanitizeFilePath(filePath: string): string {
 /**
  * Finds the closest matching heading in a document map for PATCH retry.
  * Handles the case where concurrent writes shifted the heading hierarchy
- * (e.g. "## Tasks" became "### Tasks" or "## Tasks (2)").
- * Uses the delimiter to split the target into segments and matches by:
- * 1. Exact match (shouldn't happen — we already failed)
- * 2. Case-insensitive match (unique only)
- * 3. Suffix match (unique only — avoids ambiguity like "A::Tasks" vs "B::Tasks")
- * 4. Leaf-name match (unique only — last segment, case-insensitive)
- * Returns the match only when unambiguous, undefined otherwise.
+ * (e.g. "## Tasks" became "### Tasks" or "Parent::Tasks" → "NewParent::Tasks").
+ *
+ * Matching stages (first unique match wins):
+ * 1. Exact match
+ * 2. Case-insensitive exact match
+ * 3. Progressive suffix match — for multi-segment targets, tries dropping
+ *    leading segments one at a time (longest suffix first). This catches
+ *    renamed parent headings: "Section::Tasks" matches "NewSection::Tasks".
+ * 4. Leaf-name match — compares only the final segment
+ *
+ * All fuzzy stages (2-4) require a unique match to avoid patching the wrong section.
  */
 function findClosestHeading(
   target: string,
@@ -116,13 +120,19 @@ function findClosestHeading(
   const caseMatches = headings.filter((h) => h.toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0];
 
-  // 3. Suffix match — use full target as suffix, only if unique
   const delimiterLower = delimiter.toLowerCase();
-  const suffixMatches = headings.filter((h) => h.toLowerCase().endsWith(delimiterLower + targetLower));
-  if (suffixMatches.length === 1) return suffixMatches[0];
+  const segments = targetLower.split(delimiterLower);
+
+  // 3. Progressive suffix match — try dropping leading segments one at a time
+  //    For "A::B::C", tries matching suffix "::B::C" first, then "::C"
+  for (let i = 1; i < segments.length; i++) {
+    const suffix = delimiterLower + segments.slice(i).join(delimiterLower);
+    const matches = headings.filter((h) => h.toLowerCase().endsWith(suffix));
+    if (matches.length === 1) return matches[0];
+  }
 
   // 4. Leaf-name match — compare only the final segment, only if unique
-  const targetLeaf = targetLower.split(delimiterLower).pop() ?? targetLower;
+  const targetLeaf = segments[segments.length - 1] ?? targetLower;
   const leafMatches = headings.filter((h) => {
     const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
     return hLeaf === targetLeaf;

@@ -266,8 +266,10 @@ export class VaultCache implements VaultCacheInterface {
     try {
       await this.buildPromise;
     } finally {
-      // Order is load-bearing: clear buildPromise first so waitForInitialization
-      // poll exits correctly (it checks !isBuilding && !isRefreshing).
+      // Order is load-bearing: clear buildPromise first so concurrent
+      // waitForInitialization callers see buildPromise=undefined before
+      // isBuilding=false, preventing them from entering the race block
+      // with a stale promise.
       this.buildPromise = undefined;
       this.isBuilding = false;
     }
@@ -309,6 +311,7 @@ export class VaultCache implements VaultCacheInterface {
       log("warn", `Cache initialization failed (non-transient): ${err.message}`);
       throw err;
     }
+    // ObsidianApiError (including 4xx) is retried — max 3 attempts limits exposure
     const isDiscard = err instanceof CacheBuildDiscardedError;
     const msg = err instanceof Error ? err.message : String(err);
     log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);

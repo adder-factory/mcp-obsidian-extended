@@ -882,13 +882,13 @@ describe("ObsidianClient — patchContent", () => {
       .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
       .mockResolvedValueOnce({ statusCode: 500, headers: {}, body: '{"message":"internal error"}' });
 
-    await expect(
-      client.patchContent("note.md", "text", {
-        operation: "append",
-        targetType: "heading",
-        target: "tasks",
-      }),
-    ).rejects.toThrow(ObsidianApiError);
+    const err = await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ObsidianApiError);
+    expect((err as { statusCode: number }).statusCode).toBe(400);
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     // Cache should NOT be invalidated since retry failed

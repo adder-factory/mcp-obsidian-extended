@@ -323,6 +323,7 @@ async function handleVaultAnalysisAction(
       return buildVaultStructure(cache, limit);
     }
     case "refresh":
+      // refresh bypasses ensureCacheReady since it doesn't need the cache to be initialized
       if (!config.enableCache) return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
       await cache.refresh();
       if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");

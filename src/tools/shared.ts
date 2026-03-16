@@ -6,6 +6,40 @@ import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
 
+// --- Cache readiness ---
+
+/** Minimal interface for cache readiness checks — decoupled from concrete VaultCache. */
+interface CacheReadyCheckable {
+  getIsInitialized(): boolean;
+  waitForInitialization(timeoutMs: number): Promise<boolean>;
+}
+
+/** Options for the ensureCacheReady helper. */
+interface EnsureCacheReadyOptions {
+  readonly cache: CacheReadyCheckable;
+  readonly tool: string;
+  readonly enableCache: boolean;
+}
+
+/** Maximum time (ms) graph tools will wait for a cache build to complete. */
+const CACHE_INIT_TIMEOUT_MS = 5000;
+
+/**
+ * Ensures the cache is initialized before running a graph query.
+ * Returns an error ToolResult if the cache is disabled or not yet available,
+ * or undefined if the cache is ready.
+ * @param options - Cache instance, tool name, and enableCache flag.
+ * @returns An error result if cache is unavailable, undefined if ready.
+ */
+export async function ensureCacheReady(
+  { cache, tool, enableCache }: EnsureCacheReadyOptions,
+): Promise<ToolResult | undefined> {
+  if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
+  if (cache.getIsInitialized()) return undefined;
+  if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
+  return errorResult(`[${tool}] Cache not available. Try again shortly or use refresh_cache to rebuild.`);
+}
+
 // --- File content formatting ---
 
 /**

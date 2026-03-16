@@ -1,38 +1,10 @@
-import type { ObsidianClient, VaultCacheInterface, ToolResult } from "./obsidian.js";
-import { errorResult } from "./obsidian.js";
+import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
 import { log } from "./config.js";
 
 /** Maximum time (ms) graph tools will wait for a cache build to complete. */
 const CACHE_INIT_TIMEOUT_MS = 5000;
 
-/** Minimal interface for cache readiness checks — decoupled from concrete VaultCache. */
-interface CacheReadyCheckable {
-  getIsInitialized(): boolean;
-  waitForInitialization(timeoutMs: number): Promise<boolean>;
-}
 
-/** Options for the ensureCacheReady helper. */
-interface EnsureCacheReadyOptions {
-  readonly cache: CacheReadyCheckable;
-  readonly tool: string;
-  readonly enableCache: boolean;
-}
-
-/**
- * Shared helper: ensures the cache is initialized before running a graph query.
- * Returns an error ToolResult if the cache is disabled or not yet available,
- * or undefined if the cache is ready.
- * @param options - Cache instance, tool name, and enableCache flag.
- * @returns An error result if cache is unavailable, undefined if ready.
- */
-export async function ensureCacheReady(
-  { cache, tool, enableCache }: EnsureCacheReadyOptions,
-): Promise<ToolResult | undefined> {
-  if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
-  if (cache.getIsInitialized()) return undefined;
-  if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
-  return errorResult(`[${tool}] Cache not available. Try again shortly or use refresh_cache to rebuild.`);
-}
 
 // --- Types ---
 
@@ -262,7 +234,10 @@ export class VaultCache implements VaultCacheInterface {
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
-      await this.buildPromise; // Concurrent callers see the same result/error
+      // Concurrent callers see the same result/error. Note: cache may still
+      // be uninitialized if the build was discarded (generation mismatch).
+      // Callers should check getIsInitialized() or use ensureCacheReady().
+      await this.buildPromise;
       return;
     }
     this.isBuilding = true;
@@ -527,7 +502,7 @@ export class VaultCache implements VaultCacheInterface {
           () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
           () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
         ),
-        new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, timeoutMs); }),
+        new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now())); }),
       ]);
       if (this.isInitialized) return true;
       // Don't return false — fall through to polling loop with remaining budget.

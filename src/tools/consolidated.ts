@@ -4,7 +4,6 @@ import { z } from "zod";
 import type { ObsidianClient, ToolResult, PatchOptions } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
-import { ensureCacheReady } from "../cache.js";
 import type { Config } from "../config.js";
 import { buildErrorMessage } from "../errors.js";
 import {
@@ -24,6 +23,7 @@ import {
   handleRecentChanges,
   handleRecentPeriodicNotes,
   batchGetFiles,
+  ensureCacheReady,
 } from "./shared.js";
 
 // --- Preset action restrictions for consolidated mode ---

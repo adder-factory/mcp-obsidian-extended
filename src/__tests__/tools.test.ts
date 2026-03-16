@@ -2161,6 +2161,18 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("vault_analysis — connections", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "connections", path: "x.md", limit: 10 });
+      expect(result.isError).toBeUndefined();
+    });
+
     it("returns backlinks and forward links", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
@@ -2184,6 +2196,20 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("vault_analysis — structure", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getFileList).mockReturnValue([]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      expect(result.isError).toBeFalsy();
+    });
+
     it("returns vault structure stats", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();

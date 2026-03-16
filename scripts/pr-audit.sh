@@ -936,7 +936,8 @@ for t in threads:
             'outdated': t.get('isOutdated', False),
             'reply_count': t.get('comments',{}).get('totalCount',1) - 1,
         })
-json.dump(details, open('$DETAILS_FILE', 'w'))
+with open('$DETAILS_FILE', 'w') as f:
+    json.dump(details, f)
 " 2>/dev/null || echo "[]" > "$DETAILS_FILE"
 
   python3 -c "

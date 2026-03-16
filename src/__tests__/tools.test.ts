@@ -1230,6 +1230,20 @@ describe("granular tools — registration and basic behavior", () => {
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
     });
 
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getFileList).mockReturnValue([]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      expect(result.isError).toBeFalsy();
+    });
+
     it("returns errorResult when cache disabled", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
@@ -1254,6 +1268,18 @@ describe("granular tools — registration and basic behavior", () => {
   // get_note_connections (cache-dependent)
   // -------------------------------------------------------------------------
   describe("get_note_connections", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
+      expect(result.isError).toBeFalsy();
+    });
+
     it("returns backlinks and forward links from cache", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();

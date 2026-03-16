@@ -874,7 +874,7 @@ export class ObsidianClient {
         !Array.isArray(mapResult.headings)
       ) return false;
 
-      const match = findClosestHeading(options.target, mapResult.headings, options.targetDelimiter ?? "::");
+      const match = findClosestHeading(options.target.trim(), mapResult.headings, options.targetDelimiter ?? "::");
       if (!match) return false;
 
       log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);

@@ -506,7 +506,10 @@ export class VaultCache implements VaultCacheInterface {
       await Promise.race([
         this.buildPromise.then(
           () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
-          () => { if (timeoutId !== undefined) clearTimeout(timeoutId); },
+          (err: unknown) => {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
+            log("debug", `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`);
+          },
         ),
         new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now())); }),
       ]);

@@ -201,6 +201,10 @@ function resolveRelativePath(target: string, currentDir: string): string {
 export class VaultCache implements VaultCacheInterface {
   /** Maximum number of retry attempts for cache initialization. */
   private static readonly INIT_MAX_ATTEMPTS = 3;
+  /** Backoff delay (ms) after a generation-mismatch discard. */
+  private static readonly DISCARD_BACKOFF_MS = 100;
+  /** Base backoff delay (ms) for network/API errors, multiplied by (attempt + 1). */
+  private static readonly NETWORK_BACKOFF_BASE_MS = 500;
 
   private readonly notes = new Map<string, CachedNote>();
   private readonly client: ObsidianClient;
@@ -279,6 +283,7 @@ export class VaultCache implements VaultCacheInterface {
    * Internal build logic with retry on generation mismatch.
    * Retries up to 3 times within the same promise if invalidateAll() discards a build,
    * so concurrent callers awaiting buildPromise see the final result.
+   * Callers share buildPromise; see initialize() finally block for ordering invariants.
    */
   private async doInitialize(): Promise<void> {
     // Initialized as undefined; always set by at least one catch iteration
@@ -297,7 +302,7 @@ export class VaultCache implements VaultCacheInterface {
           if (firstRealError === undefined) firstRealError = err;
         }
         if (result.shouldBackoff) {
-          const delay = result.isDiscard ? 100 : 500 * (attempt + 1);
+          const delay = result.isDiscard ? VaultCache.DISCARD_BACKOFF_MS : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
           await new Promise<void>((resolve) => { setTimeout(resolve, delay); });
         }
       }

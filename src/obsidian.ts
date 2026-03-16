@@ -183,7 +183,7 @@ function isHeadingNotFoundError(body: string): boolean {
   } catch { /* use raw body */ }
   // Known Obsidian patterns: "heading not found", "heading X does not exist"
   // Intentionally broad within the heading namespace to catch API version changes.
-  const matched = /heading.*?(?:not found|does not exist)/i.test(message);
+  const matched = /heading.*(?:not found|does not exist)/i.test(message);
   if (!matched) {
     log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
   }
@@ -920,6 +920,7 @@ export class ObsidianClient {
       const retryHeaders = this.buildPatchHeaders(retryOptions);
       // The corrected heading was confirmed present in the document map;
       // strip Create-Target-If-Missing so the retry doesn't create a stale heading.
+      // TypeScript Record allows delete — this is safe
       delete retryHeaders["Create-Target-If-Missing"];
       const retryRes = await this.request("PATCH", patchPath, {
         body: content,

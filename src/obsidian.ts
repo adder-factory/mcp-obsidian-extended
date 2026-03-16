@@ -172,7 +172,7 @@ function isHeadingNotFoundError(body: string): boolean {
   // This avoids false-positive retries on errors like "heading delimiter required"
   // or "malformed heading syntax" which are not heading-not-found scenarios.
   const lower = body.toLowerCase();
-  return lower.includes("heading") && (lower.includes("not found") || lower.includes("no match") || lower.includes("missing"));
+  return lower.includes("heading") && (lower.includes("not found") || lower.includes("no match"));
 }
 
 // --- Accept Header Mapping ---

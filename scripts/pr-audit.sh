@@ -174,7 +174,10 @@ while True:
     if not pr_data:
         result = subprocess.CompletedProcess([], 1)
         break
-    rt = pr_data['reviewThreads']
+    rt = pr_data.get('reviewThreads')
+    if not rt:
+        result = subprocess.CompletedProcess([], 1)
+        break
     all_threads.extend(rt['nodes'])
 
     if not rt['pageInfo']['hasNextPage']:

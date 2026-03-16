@@ -1081,6 +1081,8 @@ describe("ObsidianClient — active file", () => {
 
   it("patchActiveFile retries with corrected heading on 400", async () => {
     const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
     const docMap = { headings: ["My Heading"], blocks: [], frontmatterFields: [] };
     mockRequest
       .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
@@ -1093,6 +1095,7 @@ describe("ObsidianClient — active file", () => {
     const retryCall = mockRequest.mock.calls[2];
     const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
     expect(retryHeaders?.["Target"]).toBe("My Heading");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
   it("deleteActiveFile deletes", async () => {
@@ -1364,6 +1367,8 @@ describe("ObsidianClient — periodic notes (current)", () => {
 
   it("patchPeriodicNote retries with corrected heading on 400", async () => {
     const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
     const docMap = { headings: ["Summary"], blocks: [], frontmatterFields: [] };
     mockRequest
       .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
@@ -1378,6 +1383,7 @@ describe("ObsidianClient — periodic notes (current)", () => {
     const retryCall = mockRequest.mock.calls[2];
     const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
     expect(retryHeaders?.["Target"]).toBe("Summary");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
   it("deletePeriodicNote deletes", async () => {
@@ -1519,6 +1525,8 @@ describe("ObsidianClient — periodic notes (by date)", () => {
 
   it("patchPeriodicNoteForDate retries with corrected heading on 400", async () => {
     const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
       .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
@@ -1533,6 +1541,7 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     const retryCall = mockRequest.mock.calls[2];
     const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
     expect(retryHeaders?.["Target"]).toBe("Tasks");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
   it("deletePeriodicNoteForDate deletes", async () => {

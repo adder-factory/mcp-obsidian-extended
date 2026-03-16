@@ -105,6 +105,11 @@ export function sanitizeFilePath(filePath: string): string {
  * 4. Leaf-name match — compares only the final segment
  *
  * All fuzzy stages (2-4) require a unique match to avoid patching the wrong section.
+ *
+ * @param target - The heading target from the original PATCH options.
+ * @param headings - The current headings from the document map.
+ * @param delimiter - The heading hierarchy delimiter (default "::").
+ * @returns The best unique match, or undefined if no unambiguous match exists.
  */
 function findClosestHeading(
   target: string,
@@ -120,7 +125,9 @@ function findClosestHeading(
   const caseMatches = headings.filter((h) => h.toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0];
 
-  const delimiterLower = delimiter.toLowerCase();
+  // Guard against empty/whitespace delimiter — fall back to "::"
+  const safeDelimiter = delimiter.trim().length > 0 ? delimiter : "::";
+  const delimiterLower = safeDelimiter.toLowerCase();
   const segments = targetLower.split(delimiterLower);
 
   // 3. Progressive suffix match — try dropping leading segments one at a time
@@ -836,8 +843,11 @@ export class ObsidianClient {
    * for a failed PATCH. Returns true if the retry succeeded.
    * @param readMap - Fetches the current document map for heading lookup.
    * @param patchPath - The API path to retry the PATCH against.
+   * @param content - The markdown/JSON content body for the PATCH.
+   * @param options - The original PATCH options (target will be corrected).
    * @param label - Human-readable label for debug logging.
    * @param stripHeaders - Header names to remove from the retry request (e.g. Create-Target-If-Missing for active file).
+   * @returns true if the retry succeeded, false otherwise.
    */
   private async retryPatchWithMapLookup(
     readMap: () => Promise<FileContentsResult>,

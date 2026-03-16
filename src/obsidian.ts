@@ -168,10 +168,17 @@ function findClosestHeading(
  * Other 400 errors (malformed request, invalid operation, etc.) should not retry.
  */
 function isHeadingNotFoundError(body: string): boolean {
-  // Only retry when the error mentions both "heading" and an absence indicator.
-  // This avoids false-positive retries on errors like "heading delimiter required"
-  // or "malformed heading syntax" which are not heading-not-found scenarios.
-  const lower = body.toLowerCase();
+  // Parse the message from the JSON response body to avoid false matches
+  // against JSON keys or other structural elements in the raw string.
+  let message = body;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const msg = (parsed as Record<string, unknown>)["message"];
+      if (typeof msg === "string") message = msg;
+    }
+  } catch { /* use raw body */ }
+  const lower = message.toLowerCase();
   return lower.includes("heading") && (lower.includes("not found") || lower.includes("no match"));
 }
 

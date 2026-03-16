@@ -910,8 +910,7 @@ export class ObsidianClient {
       if (
         typeof mapResult === "string" ||
         !("headings" in mapResult) ||
-        !Array.isArray(mapResult.headings) ||
-        !mapResult.headings.every((h) => typeof h === "string")
+        !Array.isArray(mapResult.headings)
       ) return false;
 
       const match = findClosestHeading(options.target.trim(), mapResult.headings, options.targetDelimiter ?? "::");

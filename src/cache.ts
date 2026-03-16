@@ -605,7 +605,9 @@ export class VaultCache implements VaultCacheInterface {
       // handled by ensureCacheReady's final getIsInitialized() guard.
     }
 
-    // Fallback: poll for refresh/rebuild completion using remaining time budget
+    // Fallback: poll for refresh/rebuild completion using remaining time budget.
+    // Common path after a failed build: isBuilding is already false, so the first
+    // iteration's guard exits immediately with false (zero-iteration loop).
     const pollInterval = 200;
     while (Date.now() < deadline) {
       // Check state before sleeping to avoid unnecessary 200ms delay.

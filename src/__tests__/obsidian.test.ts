@@ -1517,6 +1517,24 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/2026/06/15/", expect.any(Object));
   });
 
+  it("patchPeriodicNoteForDate retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", {
+      operation: "append", targetType: "heading", target: "tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("Tasks");
+  });
+
   it("deletePeriodicNoteForDate deletes", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());

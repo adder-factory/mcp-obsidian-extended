@@ -132,7 +132,7 @@ function findClosestHeading(
   }
 
   // 4. Leaf-name match — compare only the final segment, only if unique
-  const targetLeaf = segments[segments.length - 1] ?? targetLower;
+  const targetLeaf = segments.at(-1) ?? targetLower;
   const leafMatches = headings.filter((h) => {
     const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
     return hLeaf === targetLeaf;

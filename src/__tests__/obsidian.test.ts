@@ -348,10 +348,20 @@ describe("ObsidianClient — encodePath", () => {
 // ObsidianClient — buildPatchHeaders
 // ---------------------------------------------------------------------------
 describe("ObsidianClient — buildPatchHeaders", () => {
-  it("sets required headers", () => {
+  /** Helper: calls buildPatchHeaders with the given options and returns the full headers record. */
+  function buildHeaders(opts: Record<string, unknown>): Record<string, string> {
     const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const build = (client as unknown as Record<string, (o: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    return build.call(client, opts);
+  }
+
+  /** Helper: builds patch headers for a given target and returns the Target header value. */
+  function targetHeader(target: string): string {
+    return buildHeaders({ operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
+  }
+
+  it("sets required headers", () => {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "My Heading",
@@ -359,14 +369,58 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     });
     expect(headers["Operation"]).toBe("append");
     expect(headers["Target-Type"]).toBe("heading");
-    expect(headers["Target"]).toBe(encodeURIComponent("My Heading"));
+    expect(headers["Target"]).toBe("My Heading");
     expect(headers["Content-Type"]).toBe("text/markdown");
   });
 
+  it("preserves + and & in Target header", () => {
+    expect(targetHeader("Q&A + Notes")).toBe("Q&A + Notes");
+  });
+
+  it("preserves :: delimiter in Target header", () => {
+    expect(targetHeader("Parent::Child")).toBe("Parent::Child");
+  });
+
+  it("encodes non-ASCII unicode in Target header for HTTP safety", () => {
+    expect(targetHeader("Notizen über Bücher")).toBe("Notizen %C3%BCber B%C3%BCcher");
+  });
+
+  it("encodes emoji in Target header for HTTP safety", () => {
+    expect(targetHeader("📝 Notes")).toBe("%F0%9F%93%9D Notes");
+  });
+
+  it("preserves spaces in Target header", () => {
+    expect(targetHeader("My Long Heading")).toBe("My Long Heading");
+  });
+
+  it("encodes fully non-ASCII heading (CJK)", () => {
+    expect(targetHeader("日本語の見出し")).toBe("%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%81%AE%E8%A6%8B%E5%87%BA%E3%81%97");
+  });
+
+  it("escapes literal % so Obsidian does not decode %HH sequences", () => {
+    // A heading literally containing "%C3%BC" must have % escaped to %25
+    // so Obsidian decodes %25→% and preserves the literal string.
+    expect(targetHeader("50%C3%BC off")).toBe("50%25C3%25BC off");
+  });
+
+  it("handles % and non-ASCII combined in the same heading", () => {
+    // Both encoding steps interact: % → %25, then ü → %C3%BC
+    expect(targetHeader("50% über")).toBe("50%25 %C3%BCber");
+  });
+
+  it("escapes literal % in simple heading names", () => {
+    // "100% Complete" → "100%25 Complete" — Obsidian decodes %25→%
+    expect(targetHeader("100% Complete")).toBe("100%25 Complete");
+  });
+
+  it("handles unpaired surrogates without throwing", () => {
+    // Unpaired surrogate \uD800 would crash encodeURIComponent — should be stripped
+    expect(() => targetHeader("test\uD800heading")).not.toThrow();
+    expect(targetHeader("test\uD800heading")).toBe("testheading");
+  });
+
   it("uses application/json when contentType is json", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "replace",
       targetType: "frontmatter",
       target: "tags",
@@ -376,9 +430,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("includes optional headers when provided", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "Test",
@@ -392,9 +444,7 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("omits optional headers when not provided", () => {
-    const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (opts: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
-    const headers = build.call(client, {
+    const headers = buildHeaders({
       operation: "append",
       targetType: "heading",
       target: "Test",

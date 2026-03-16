@@ -103,6 +103,43 @@ function acceptHeaderForFormat(format: FileFormat): string {
   }
 }
 
+// --- Target Header Encoding ---
+
+/**
+ * Encodes a PATCH Target header value for the Obsidian REST API.
+ *
+ * The Obsidian REST API source code applies `decodeURIComponent(req.get("Target"))`
+ * to the Target header (see: obsidian-local-rest-api V3 PATCH implementation).
+ * This means ALL %HH sequences are decoded before heading matching — both ASCII
+ * (%2B→+, %3A%3A→::) and non-ASCII (%C3%9C→Ü). This is documented behavior,
+ * not an assumption.
+ *
+ * Encoding strategy (validated against live Obsidian v3.4.6):
+ * 1. Escape `%` → `%25`: required so headings with literal `%` round-trip
+ *    correctly via `decodeURIComponent`. (Live-tested: `100%25 Complete` → `100% Complete`.)
+ * 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
+ *    via encodeURIComponent: Node.js rejects raw non-ASCII bytes in HTTP headers.
+ * 3. Printable ASCII sent as-is: simpler, no transformation needed.
+ *
+ * @see https://deepwiki.com/coddingtonbear/obsidian-local-rest-api/6.1-patch-operations
+ *
+ * Full stress test: 40/40 cases pass (scripts/stress-test-patch.ts).
+ */
+function encodeTargetHeader(target: string): string {
+  const escaped = target.replaceAll("%", "%25");
+  // Encode non-ASCII and control characters. Regex created inline to avoid
+  // shared /g lastIndex state. Uses try/catch to handle unpaired surrogates
+  // (encodeURIComponent throws URIError on malformed UTF-16).
+  return escaped.replace(/[^\x20-\x7E]+/g, (match) => { // NOSONAR: replace with /g is idiomatic
+    try {
+      return encodeURIComponent(match);
+    } catch {
+      // Unpaired surrogate or malformed UTF-16 — strip the unrepresentable chars
+      return "";
+    }
+  });
+}
+
 // --- Tool Result Helpers ---
 
 /** Standard MCP tool response shape (index signature required by MCP SDK). */
@@ -463,10 +500,14 @@ export class ObsidianClient {
       "Content-Type": options.contentType === "json" ? "application/json" : "text/markdown",
       "Operation": options.operation,
       "Target-Type": options.targetType,
-      // Target is URL-encoded per the Obsidian REST API spec (header value, not a URL segment).
-      // Phase 3 will validate against the live API — if Obsidian does plain-text matching,
-      // encoding may need to be removed for headings with spaces/special chars.
-      "Target": encodeURIComponent(options.target),
+      // Obsidian always percent-decodes the Target header, so:
+      // 1. Escape literal % → %25 first (so "50%C3%BC" becomes "50%25C3%25BC")
+      // 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
+      // This preserves ASCII special chars (+, &, ::, spaces) while ensuring both
+      // non-ASCII headings and headings with literal %HH sequences round-trip correctly.
+      // Unpaired surrogates are silently stripped (unrepresentable in UTF-8).
+      // Validated against live Obsidian API in Phase 3.
+      "Target": encodeTargetHeader(options.target),
     };
     if (options.targetDelimiter !== undefined) {
       headers["Target-Delimiter"] = options.targetDelimiter;

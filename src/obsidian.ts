@@ -147,9 +147,9 @@ function findClosestHeading(
   }
 
   // 4. Leaf-name match — compare only the final segment, only if unique.
-  //    Only reachable for single-segment targets (no delimiter) where stage 3
-  //    doesn't execute. For multi-segment targets, stage 3's last iteration
-  //    checks the same condition, making this unreachable in that case.
+  //    Primary fallback for single-segment targets where stage 3 doesn't execute.
+  //    For multi-segment targets, equivalent to stage 3's last iteration —
+  //    reachable only if all stage 3 iterations were ambiguous (0 or 2+ matches).
   // split() always returns at least one element, so .at(-1) and .pop() are never undefined
   const targetLeaf = segments.at(-1)!;
   if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf

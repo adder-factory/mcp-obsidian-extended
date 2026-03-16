@@ -263,6 +263,8 @@ export class VaultCache implements VaultCacheInterface {
     try {
       await this.buildPromise;
     } finally {
+      // Order is load-bearing: clear buildPromise first so waitForInitialization
+      // poll exits correctly (it checks !isBuilding && !isRefreshing).
       this.buildPromise = undefined;
       this.isBuilding = false;
     }

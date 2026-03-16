@@ -869,6 +869,7 @@ describe("ObsidianClient — patchContent", () => {
     expect(err).toBeInstanceOf(ObsidianApiError);
     expect((err as ObsidianApiError).statusCode).toBe(400);
     expect((err as ObsidianApiError).message).toContain("heading not found");
+    expect(mockRequest).toHaveBeenCalledTimes(2); // original PATCH + GET for document map
   });
 
   it("retries with progressive suffix match when parent heading was renamed", async () => {

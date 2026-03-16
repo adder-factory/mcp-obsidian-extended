@@ -134,7 +134,8 @@ function findClosestHeading(
 
   // 3. Progressive suffix match — try dropping leading segments one at a time
   //    For "A::B::C", tries matching "B::C" exactly or "...::B::C" as suffix, then "C"
-  //    Skipped for single-segment targets (segments.length === 1) — no segments to drop
+  //    Skipped for single-segment targets (segments.length === 1) — no segments to drop.
+  //    Note: may match the original heading as a suffix candidate if Stage 2 was ambiguous.
   for (let i = 1; i < segments.length; i++) {
     const tail = segments.slice(i).join(delimiterLower);
     if (tail.length === 0) continue; // Skip empty tail from trailing delimiter

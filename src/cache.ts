@@ -464,6 +464,8 @@ export class VaultCache implements VaultCacheInterface {
       await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
       elapsed += wait;
       if (this.isInitialized) return true;
+      // Stop polling if the build/refresh completed without success (e.g. threw)
+      if (!this.isBuilding && !this.isRefreshing) return false;
     }
     return false;
   }

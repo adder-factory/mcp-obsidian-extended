@@ -854,6 +854,26 @@ describe("ObsidianClient — patchContent", () => {
     ).rejects.toThrow(ObsidianApiError);
   });
 
+  it("retries with progressive suffix match when parent heading was renamed", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["NewParent::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Parent::Tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("NewParent::Tasks");
+  });
+
   it("does not retry when leaf match is ambiguous", async () => {
     const { client, mockRequest } = createMockedClient();
     const docMap = { headings: ["Project A::Tasks", "Project B::Tasks"], blocks: [], frontmatterFields: [] };

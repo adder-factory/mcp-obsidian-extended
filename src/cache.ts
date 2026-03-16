@@ -3,7 +3,7 @@ import { errorResult } from "./obsidian.js";
 import { log } from "./config.js";
 
 /** Maximum time (ms) graph tools will wait for a cache build to complete. */
-export const CACHE_INIT_TIMEOUT_MS = 5000;
+const CACHE_INIT_TIMEOUT_MS = 5000;
 
 /** Minimal interface for cache readiness checks — decoupled from concrete VaultCache. */
 interface CacheReadyCheckable {

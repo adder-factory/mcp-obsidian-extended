@@ -227,6 +227,8 @@ export class VaultCache implements VaultCacheInterface {
   private isRefreshing = false;
   /** Set to true during initialize() to signal that an initial build is in flight. */
   private isBuilding = false;
+  /** In-flight initialize() promise — concurrent callers await the same build. */
+  private buildPromise: Promise<void> | undefined;
   /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
   private generation = 0;
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
@@ -247,8 +249,18 @@ export class VaultCache implements VaultCacheInterface {
    * @throws {Error} On network failure or when the vault listing cannot be retrieved.
    */
   async initialize(): Promise<void> {
-    if (this.isBuilding) return; // Guard against concurrent invocations
+    if (this.buildPromise) return this.buildPromise; // Concurrent callers await the same build
     this.isBuilding = true;
+    this.buildPromise = this.doInitialize();
+    try {
+      await this.buildPromise;
+    } finally {
+      this.buildPromise = undefined;
+    }
+  }
+
+  /** Internal build logic — separated to allow promise sharing across concurrent callers. */
+  private async doInitialize(): Promise<void> {
     const startTime = Date.now();
     const buildGeneration = this.generation;
     try {

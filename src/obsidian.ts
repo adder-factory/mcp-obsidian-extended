@@ -142,7 +142,10 @@ function findClosestHeading(
     if (matches.length === 1) return matches[0];
   }
 
-  // 4. Leaf-name match — compare only the final segment, only if unique
+  // 4. Leaf-name match — compare only the final segment, only if unique.
+  //    For multi-segment targets this is equivalent to the last stage 3 iteration,
+  //    but for single-segment targets (no delimiter) stage 3 doesn't execute,
+  //    making this the primary fuzzy fallback.
   const targetLeaf = segments.at(-1) ?? targetLower;
   if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf
   const leafMatches = headings.filter((h) => {
@@ -852,7 +855,6 @@ export class ObsidianClient {
    * @param content - The markdown/JSON content body for the PATCH.
    * @param options - The original PATCH options (target will be corrected).
    * @param label - Human-readable label for debug logging.
-   * @param stripHeaders - Header names to remove from the retry request (e.g. Create-Target-If-Missing for active file).
    * @returns true if the retry succeeded, false otherwise.
    */
   private async retryPatchWithMapLookup(
@@ -861,7 +863,6 @@ export class ObsidianClient {
     content: string,
     options: PatchOptions | Omit<PatchOptions, "createIfMissing">,
     label: string,
-    stripHeaders?: readonly string[],
   ): Promise<boolean> {
     try {
       const mapResult = await readMap();
@@ -872,15 +873,9 @@ export class ObsidianClient {
 
       log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
       const retryOptions = { ...options, target: match };
-      const retryHeaders = this.buildPatchHeaders(retryOptions);
-      if (stripHeaders) {
-        for (const h of stripHeaders) {
-          delete retryHeaders[h];
-        }
-      }
       const retryRes = await this.request("PATCH", patchPath, {
         body: content,
-        headers: retryHeaders,
+        headers: this.buildPatchHeaders(retryOptions),
       });
 
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
@@ -975,7 +970,6 @@ export class ObsidianClient {
       }
 
       if (res.statusCode === 400 && options.targetType === "heading") {
-        // No stripHeaders needed — createIfMissing is absent from Omit<PatchOptions, "createIfMissing">
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getActiveFile("map"),
           "/active/",

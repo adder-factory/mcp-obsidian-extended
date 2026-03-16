@@ -863,7 +863,9 @@ export class ObsidianClient {
         return;
       }
 
-      // On 400 with heading target, retry with re-read of document map
+      // On 400 with heading target, retry with re-read of document map.
+      // isHeadingNotFoundError logs at debug level when pattern is not matched,
+      // so non-heading 400s fall through to handleErrorResponse below.
       if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getFileContents(filePath, "map"),

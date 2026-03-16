@@ -37,7 +37,7 @@ export async function ensureCacheReady(
   if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
   if (cache.getIsInitialized()) return undefined;
   if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) {
-    return undefined; // waitForInitialization returned true — isInitialized is guaranteed
+    return undefined; // Cache was initialized at time of check
   }
   // Guard against narrow timing window where cache became ready after wait returned false
   if (cache.getIsInitialized()) return undefined;

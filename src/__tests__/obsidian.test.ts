@@ -413,6 +413,12 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(targetHeader("100% Complete")).toBe("100%25 Complete");
   });
 
+  it("handles unpaired surrogates without throwing", () => {
+    // Unpaired surrogate \uD800 would crash encodeURIComponent — should be stripped
+    expect(() => targetHeader("test\uD800heading")).not.toThrow();
+    expect(targetHeader("test\uD800heading")).toBe("testheading");
+  });
+
   it("uses application/json when contentType is json", () => {
     const headers = buildHeaders({
       operation: "replace",

@@ -116,9 +116,9 @@ function acceptHeaderForFormat(format: FileFormat): string {
  * Encoding strategy (each step validated against live Obsidian v3.4.6):
  * 1. Escape `%` → `%25`: required so headings with literal `%` round-trip
  *    correctly. (Live-tested: `Root::100%25 Complete` matched `## 100% Complete`.)
- * 2. Encode non-printable-ASCII (unicode, emoji) via encodeURIComponent:
- *    Node.js rejects raw UTF-8 in HTTP headers. (Live-tested: `%C3%9C`
- *    decoded to `Ü`; raw `Ü` in header rejected with `invalid-target`.)
+ * 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
+ *    via encodeURIComponent: Node.js rejects raw non-ASCII bytes in HTTP
+ *    headers. (Live-tested: `%C3%9C` decoded to `Ü`; raw `Ü` rejected.)
  * 3. Printable ASCII sent as-is: simpler, no transformation needed.
  *    (Live-tested: plain `+`, `%2B`, `::`, `%3A%3A` all match correctly.)
  *
@@ -128,10 +128,17 @@ function acceptHeaderForFormat(format: FileFormat): string {
  */
 function encodeTargetHeader(target: string): string {
   const escaped = target.replaceAll("%", "%25");
-  // Encode non-printable-ASCII runs. Regex is created inline to avoid shared
-  // /g state (a module-level /g regex carries lastIndex risk if reused with
-  // .test() or .exec() by future code).
-  return escaped.replace(/[^\x20-\x7E]+/g, (match) => encodeURIComponent(match)); // NOSONAR: replace with /g is idiomatic
+  // Encode non-ASCII and control characters. Regex created inline to avoid
+  // shared /g lastIndex state. Uses try/catch to handle unpaired surrogates
+  // (encodeURIComponent throws URIError on malformed UTF-16).
+  return escaped.replace(/[^\x20-\x7E]+/g, (match) => { // NOSONAR: replace with /g is idiomatic
+    try {
+      return encodeURIComponent(match);
+    } catch {
+      // Unpaired surrogate or malformed UTF-16 — strip the unrepresentable chars
+      return "";
+    }
+  });
 }
 
 // --- Tool Result Helpers ---

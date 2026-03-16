@@ -160,6 +160,18 @@ function findClosestHeading(
   return undefined;
 }
 
+// --- Heading Error Detection ---
+
+/**
+ * Checks if a 400 response body indicates a heading-not-found error.
+ * Only these errors should trigger the heading retry logic.
+ * Other 400 errors (malformed request, invalid operation, etc.) should not retry.
+ */
+function isHeadingNotFoundError(body: string): boolean {
+  const lower = body.toLowerCase();
+  return lower.includes("heading") || lower.includes("target") || lower.includes("not found");
+}
+
 // --- Accept Header Mapping ---
 
 /** Maps a file format to the corresponding Accept header value for the Obsidian REST API. */
@@ -834,7 +846,7 @@ export class ObsidianClient {
       }
 
       // On 400 with heading target, retry with re-read of document map
-      if (res.statusCode === 400 && options.targetType === "heading") {
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getFileContents(filePath, "map"),
           `/vault/${encoded}`,
@@ -976,7 +988,7 @@ export class ObsidianClient {
         return;
       }
 
-      if (res.statusCode === 400 && options.targetType === "heading") {
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getActiveFile("map"),
           "/active/",
@@ -1158,7 +1170,7 @@ export class ObsidianClient {
         return;
       }
 
-      if (res.statusCode === 400 && options.targetType === "heading") {
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getPeriodicNote(period, "map"),
           periodicPath,
@@ -1263,7 +1275,7 @@ export class ObsidianClient {
         return;
       }
 
-      if (res.statusCode === 400 && options.targetType === "heading") {
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
         const corrected = await this.retryPatchWithMapLookup(
           () => this.getPeriodicNoteForDate(period, year, month, day, "map"),
           datePath,

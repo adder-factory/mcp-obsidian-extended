@@ -21,7 +21,7 @@ interface EnsureCacheReadyOptions {
   readonly enableCache: boolean;
 }
 
-/** Maximum time (ms) graph tools will wait for a cache build to complete. */
+/** Maximum time (ms) graph tools will wait for a cache build to complete. TODO: make configurable via env var in v2. */
 const CACHE_INIT_TIMEOUT_MS = 5000;
 
 /**

@@ -1194,6 +1194,19 @@ describe("granular tools — registration and basic behavior", () => {
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("still building");
     });
+
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      // getIsInitialized returns false, but waitForInitialization returns true (simulates becoming ready)
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      expect(result.isError).toBeUndefined();
+      expect(getText(result)).toContain("ref.md");
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -2132,6 +2145,18 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("still building");
+    });
+
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
+      expect(result.isError).toBeUndefined();
+      expect(getText(result)).toContain("ref.md");
     });
   });
 

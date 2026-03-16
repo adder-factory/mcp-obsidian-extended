@@ -813,6 +813,81 @@ describe("ObsidianClient — patchContent", () => {
     });
     expect(mockCache.invalidate).toHaveBeenCalledWith("note.md");
   });
+
+  it("retries with corrected heading on 400 for heading target", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Introduction", "Tasks List", "Conclusion"], blocks: [], frontmatterFields: [] };
+    // First PATCH returns 400 (heading not found), then GET returns doc map, then retry PATCH returns 204
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "new text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks list",  // case mismatch — should match "Tasks List"
+    });
+
+    // Verify 3 requests: original PATCH, GET for map, retry PATCH
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    // Retry PATCH should use the corrected heading
+    const retryCall = mockRequest.mock.calls[2];
+    expect(retryCall?.[0]).toBe("PATCH");
+    const retryHeaders = (retryCall?.[2] as Record<string, unknown>)?.["headers"] as Record<string, string> | undefined;
+    expect(retryHeaders?.["Target"]).toBe("Tasks List");
+  });
+
+  it("throws original error when retry finds no matching heading", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Introduction", "Conclusion"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Nonexistent Heading",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+  });
+
+  it("does not retry on 400 for non-heading targets", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "replace",
+        targetType: "block",
+        target: "block-id",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Should only have made 1 request (no retry)
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates cache after successful retry", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    expect(mockCache.invalidate).toHaveBeenCalledWith("note.md");
+  });
 });
 
 // ---------------------------------------------------------------------------

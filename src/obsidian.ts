@@ -117,13 +117,14 @@ function findClosestHeading(
   if (caseMatch) return caseMatch;
 
   // 3. Suffix match — the heading's path may have changed at an ancestor level
-  const suffixMatch = headings.find((h) => h.toLowerCase().endsWith(delimiter.toLowerCase() + targetLower.split(delimiter).pop()));
+  const delimiterLower = delimiter.toLowerCase();
+  const suffixMatch = headings.find((h) => h.toLowerCase().endsWith(delimiterLower + targetLower.split(delimiterLower).pop()));
   if (suffixMatch) return suffixMatch;
 
   // 4. Leaf-name match — compare only the final segment
-  const targetLeaf = targetLower.split(delimiter).pop() ?? targetLower;
+  const targetLeaf = targetLower.split(delimiterLower).pop() ?? targetLower;
   const leafMatch = headings.find((h) => {
-    const hLeaf = h.toLowerCase().split(delimiter).pop() ?? h.toLowerCase();
+    const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
     return hLeaf === targetLeaf;
   });
   if (leafMatch) return leafMatch;

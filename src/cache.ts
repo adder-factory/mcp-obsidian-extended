@@ -452,8 +452,9 @@ export class VaultCache implements VaultCacheInterface {
     const pollInterval = 200;
     let elapsed = 0;
     while (elapsed < timeoutMs) {
-      await new Promise<void>((resolve) => { setTimeout(resolve, pollInterval); });
-      elapsed += pollInterval;
+      const wait = Math.min(pollInterval, timeoutMs - elapsed);
+      await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
+      elapsed += wait;
       if (this.isInitialized) return true;
     }
     return false;

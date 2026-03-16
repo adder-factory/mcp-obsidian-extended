@@ -865,7 +865,7 @@ export class ObsidianClient {
     readMap: () => Promise<FileContentsResult>,
     patchPath: string,
     content: string,
-    options: PatchOptions | Omit<PatchOptions, "createIfMissing">,
+    options: PatchOptions,
     label: string,
   ): Promise<boolean> {
     try {

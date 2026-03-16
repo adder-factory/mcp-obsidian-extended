@@ -5,17 +5,23 @@ import { log } from "./config.js";
 /** Maximum time (ms) graph tools will wait for a cache build to complete. */
 export const CACHE_INIT_TIMEOUT_MS = 5000;
 
+/** Minimal interface for cache readiness checks — decoupled from concrete VaultCache. */
+interface CacheReadyCheckable {
+  getIsInitialized(): boolean;
+  waitForInitialization(timeoutMs: number): Promise<boolean>;
+}
+
 /**
  * Shared helper: ensures the cache is initialized before running a graph query.
  * Returns an error ToolResult if the cache is disabled or not yet available,
  * or undefined if the cache is ready.
- * @param cache - The vault cache instance.
+ * @param cache - Any object implementing getIsInitialized and waitForInitialization.
  * @param tool - The tool name for error messages.
  * @param enableCache - Whether caching is enabled in config.
  * @returns An error result if cache is unavailable, undefined if ready.
  */
 export async function ensureCacheReady(
-  cache: VaultCache,
+  cache: CacheReadyCheckable,
   tool: string,
   enableCache: boolean,
 ): Promise<ToolResult | undefined> {
@@ -249,7 +255,10 @@ export class VaultCache implements VaultCacheInterface {
    * @throws {Error} On network failure or when the vault listing cannot be retrieved.
    */
   async initialize(): Promise<void> {
-    if (this.buildPromise) return this.buildPromise; // Concurrent callers await the same build
+    if (this.buildPromise) {
+      await this.buildPromise; // Concurrent callers await the same build, symmetric rejection
+      return;
+    }
     this.isBuilding = true;
     this.buildPromise = this.doInitialize();
     try {

@@ -22,7 +22,7 @@ interface EnsureCacheReadyOptions {
 }
 
 /** Maximum time (ms) graph tools will wait for a cache build to complete. */
-const CACHE_INIT_TIMEOUT_MS = 5000;
+export const CACHE_INIT_TIMEOUT_MS = 5000;
 
 /**
  * Ensures the cache is initialized before running a graph query.

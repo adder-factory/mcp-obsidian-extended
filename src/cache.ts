@@ -194,6 +194,9 @@ function resolveRelativePath(target: string, currentDir: string): string {
  * Provides backlink resolution, orphan detection, and connectivity analysis.
  */
 export class VaultCache implements VaultCacheInterface {
+  /** Maximum number of retry attempts for cache initialization. */
+  private static readonly INIT_MAX_ATTEMPTS = 3;
+
   private readonly notes = new Map<string, CachedNote>();
   private readonly client: ObsidianClient;
   private readonly cacheTtl: number;
@@ -233,6 +236,11 @@ export class VaultCache implements VaultCacheInterface {
     if (this.buildPromise) {
       // Concurrent callers await the same build. Wrap any rejection
       // in ObsidianConnectionError for consistent error typing.
+      // Note: invalidateAll() resets isInitialized to false and increments the
+      // generation counter, so even if this build succeeds the caller may find
+      // the cache immediately invalidated. The generation check inside
+      // executeBuildAttempt() handles this — the build will be discarded and
+      // retried (up to INIT_MAX_ATTEMPTS times) within the same promise.
       try {
         await this.buildPromise;
       } catch (err: unknown) {
@@ -262,26 +270,28 @@ export class VaultCache implements VaultCacheInterface {
    * so concurrent callers awaiting buildPromise see the final result.
    */
   private async doInitialize(): Promise<void> {
-    const maxAttempts = 3;
     let lastError: unknown;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {
       try {
-        await this.executeBuildAttempt(attempt, maxAttempts);
+        await this.executeBuildAttempt(attempt, VaultCache.INIT_MAX_ATTEMPTS);
         return;
       } catch (err: unknown) {
         // Don't retry non-transient errors (auth, unexpected format)
-        if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) throw err;
+        if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) {
+          log("warn", `Cache initialization failed (non-transient): ${err.message}`);
+          throw err;
+        }
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
-        log("warn", `Cache init attempt ${String(attempt + 1)}/${String(maxAttempts)} failed: ${msg}`);
+        log("warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
         // Exponential backoff: 1s, 2s between retries
-        if (attempt < maxAttempts - 1) {
+        if (attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
         }
       }
     }
     throw new ObsidianConnectionError(
-      `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
+      `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`,
       { cause: lastError instanceof Error ? lastError : undefined },
     );
   }
@@ -541,7 +551,7 @@ export class VaultCache implements VaultCacheInterface {
         }),
         timeoutPromise,
       ]);
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
       if (this.isInitialized) return true;
       // Fall through to polling with remaining budget
     }

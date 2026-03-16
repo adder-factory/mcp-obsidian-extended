@@ -41,6 +41,7 @@ import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import { ObsidianApiError, ObsidianConnectionError, ObsidianAuthError } from "../errors.js";
+import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 // ---------------------------------------------------------------------------
 // Suppress stderr
@@ -1206,7 +1207,7 @@ describe("granular tools — registration and basic behavior", () => {
       const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns error when cache build fails", async () => {
@@ -1217,7 +1218,7 @@ describe("granular tools — registration and basic behavior", () => {
       const result = await getTool("get_backlinks").handler({ filePath: "x.md" });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache not available");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
   });
 
@@ -1254,7 +1255,7 @@ describe("granular tools — registration and basic behavior", () => {
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_vault_structure").handler({ limit: 10 });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns errorResult when cache disabled", async () => {
@@ -1291,7 +1292,7 @@ describe("granular tools — registration and basic behavior", () => {
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns backlinks and forward links from cache", async () => {
@@ -2197,7 +2198,7 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
   });
 
@@ -2212,7 +2213,7 @@ describe("consolidated tools — registration and behavior", () => {
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "connections", path: "x.md", limit: 10 });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns backlinks and forward links", async () => {
@@ -2250,7 +2251,7 @@ describe("consolidated tools — registration and behavior", () => {
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(5000);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns vault structure stats", async () => {

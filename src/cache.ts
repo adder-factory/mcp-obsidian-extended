@@ -279,6 +279,7 @@ export class VaultCache implements VaultCacheInterface {
    */
   private async doInitialize(): Promise<void> {
     let lastError: unknown;
+    let firstRealError: unknown; // First non-discard error for root cause diagnostics
     let hadNonDiscardError = false;
     for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {
       try {
@@ -287,14 +288,17 @@ export class VaultCache implements VaultCacheInterface {
       } catch (err: unknown) {
         const result = this.handleBuildAttemptError(err, attempt);
         lastError = err;
-        if (!result.isDiscard) hadNonDiscardError = true;
+        if (!result.isDiscard) {
+          hadNonDiscardError = true;
+          if (!firstRealError) firstRealError = err;
+        }
         if (result.shouldBackoff) {
           const delay = result.isDiscard ? 100 : 500 * (attempt + 1);
           await new Promise<void>((resolve) => { setTimeout(resolve, delay); });
         }
       }
     }
-    this.throwExhaustedError(hadNonDiscardError, lastError);
+    this.throwExhaustedError(hadNonDiscardError, firstRealError ?? lastError);
   }
 
   /** Classifies a build attempt error and logs it. Rethrows non-transient errors. */

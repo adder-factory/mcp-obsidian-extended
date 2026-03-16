@@ -282,30 +282,35 @@ export class VaultCache implements VaultCacheInterface {
         await this.executeBuildAttempt(attempt, VaultCache.INIT_MAX_ATTEMPTS);
         return;
       } catch (err: unknown) {
-        // Don't retry non-transient errors (auth failure is permanent)
-        if (err instanceof ObsidianAuthError) {
-          log("warn", `Cache initialization failed (non-transient): ${err.message}`);
-          throw err;
-        }
+        const result = this.handleBuildAttemptError(err, attempt);
         lastError = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        const isDiscard = err instanceof CacheBuildDiscardedError;
-        const logLevel = isDiscard ? "debug" : "warn";
-        log(logLevel, `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
-        // Backoff only for transient network errors, not generation-mismatch discards
-        if (!isDiscard) hadNonDiscardError = true;
-        if (!isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
+        if (!result.isDiscard) hadNonDiscardError = true;
+        if (result.shouldBackoff) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
         }
       }
     }
-    const isAllDiscards = !hadNonDiscardError;
-    throw new ObsidianConnectionError(
-      isAllDiscards
-        ? `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`
-        : `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`,
-      { cause: lastError instanceof Error ? lastError : undefined },
-    );
+    this.throwExhaustedError(hadNonDiscardError, lastError);
+  }
+
+  /** Classifies a build attempt error and logs it. Rethrows non-transient errors. */
+  private handleBuildAttemptError(err: unknown, attempt: number): { isDiscard: boolean; shouldBackoff: boolean } {
+    if (err instanceof ObsidianAuthError) {
+      log("warn", `Cache initialization failed (non-transient): ${err.message}`);
+      throw err;
+    }
+    const isDiscard = err instanceof CacheBuildDiscardedError;
+    const msg = err instanceof Error ? err.message : String(err);
+    log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
+    return { isDiscard, shouldBackoff: !isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1 };
+  }
+
+  /** Throws the appropriate error after exhausting all retry attempts. */
+  private throwExhaustedError(hadNonDiscardError: boolean, lastError: unknown): never {
+    const msg = hadNonDiscardError
+      ? `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`
+      : `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`;
+    throw new ObsidianConnectionError(msg, { cause: lastError instanceof Error ? lastError : undefined });
   }
 
   /** Executes a single build attempt. Throws on generation mismatch or failure. */

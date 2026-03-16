@@ -1204,7 +1204,7 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
     });
   });
@@ -2155,7 +2155,7 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
     });
   });
@@ -2170,7 +2170,7 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "connections", path: "x.md", limit: 10 });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBeFalsy();
     });
 
     it("returns backlinks and forward links", async () => {

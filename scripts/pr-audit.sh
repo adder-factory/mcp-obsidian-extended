@@ -161,7 +161,7 @@ while True:
 
     try:
         data = json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
         result = subprocess.CompletedProcess([], 1)
         break
     repo = data.get('data', {}).get('repository')

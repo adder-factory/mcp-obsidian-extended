@@ -313,7 +313,12 @@ export class VaultCache implements VaultCacheInterface {
     const msg = hadNonDiscardError
       ? `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`
       : `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`;
-    throw new ObsidianConnectionError(msg, { cause: lastError instanceof Error ? lastError : undefined });
+    // Don't expose internal CacheBuildDiscardedError as cause — it's a sentinel
+    let cause: Error | undefined;
+    if (lastError instanceof Error && !(lastError instanceof CacheBuildDiscardedError)) {
+      cause = lastError;
+    }
+    throw new ObsidianConnectionError(msg, { cause });
   }
 
   /** Executes a single build attempt. Throws on generation mismatch or failure. */
@@ -557,6 +562,10 @@ export class VaultCache implements VaultCacheInterface {
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing) return false;
+    // If no build is pending and isRefreshing is the only flag, a partial refresh
+    // is running (not a full init). Polling would spin for the full timeout with
+    // no chance of isInitialized becoming true. Return false immediately.
+    if (!this.buildPromise && !this.isBuilding) return false;
 
     const deadline = Date.now() + timeoutMs;
 

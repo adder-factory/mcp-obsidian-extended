@@ -231,9 +231,17 @@ export class VaultCache implements VaultCacheInterface {
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
-      // Concurrent callers see the same result/error. If the build fails,
-      // the rejection propagates to this caller too.
-      await this.buildPromise;
+      // Concurrent callers await the same build. Wrap any rejection
+      // in ObsidianConnectionError for consistent error typing.
+      try {
+        await this.buildPromise;
+      } catch (err: unknown) {
+        if (err instanceof ObsidianConnectionError || err instanceof ObsidianAuthError || err instanceof ObsidianApiError) throw err;
+        throw new ObsidianConnectionError(
+          "Cache initialization failed. Try refresh_cache later.",
+          { cause: err instanceof Error ? err : undefined },
+        );
+      }
       return;
     }
     // Both assignments are synchronous — no microtask gap between them.
@@ -266,6 +274,10 @@ export class VaultCache implements VaultCacheInterface {
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
         log("warn", `Cache init attempt ${String(attempt + 1)}/${String(maxAttempts)} failed: ${msg}`);
+        // Exponential backoff: 1s, 2s between retries
+        if (attempt < maxAttempts - 1) {
+          await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
+        }
       }
     }
     throw new ObsidianConnectionError(

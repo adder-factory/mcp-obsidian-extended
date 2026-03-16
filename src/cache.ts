@@ -254,7 +254,9 @@ export class VaultCache implements VaultCacheInterface {
           { cause: err instanceof Error ? err : undefined },
         );
       }
-      return;
+      // Re-check: invalidateAll() may have fired between build completion and here.
+      // If cache is no longer initialized, fall through to start a new build.
+      if (this.isInitialized) return;
     }
     // Both assignments are synchronous — no microtask gap between them.
     // waitForInitialization can safely rely on buildPromise being set when isBuilding is true.

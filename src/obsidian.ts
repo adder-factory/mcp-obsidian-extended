@@ -116,6 +116,7 @@ function findClosestHeading(
   headings: readonly string[],
   delimiter: string,
 ): string | undefined {
+  target = target.trim();
   // 1. Exact match (sanity check)
   const exact = headings.find((h) => h.trim() === target);
   if (exact !== undefined) return exact.trim();

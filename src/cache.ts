@@ -286,7 +286,7 @@ export class VaultCache implements VaultCacheInterface {
         lastError = err;
         if (!result.isDiscard) hadNonDiscardError = true;
         if (result.shouldBackoff) {
-          await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
+          await new Promise<void>((resolve) => { setTimeout(resolve, 500 * (attempt + 1)); });
         }
       }
     }

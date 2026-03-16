@@ -180,7 +180,7 @@ function isHeadingNotFoundError(body: string): boolean {
     }
   } catch { /* use raw body */ }
   // Match "heading" followed by words then "not found" or "does not exist"
-  const matched = /heading[^"]*(?:not found|does not exist)/i.test(message);
+  const matched = /heading.*?(?:not found|does not exist)/i.test(message);
   if (!matched && message.toLowerCase().includes("heading")) {
     log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
   }

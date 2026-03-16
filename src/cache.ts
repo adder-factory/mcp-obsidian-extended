@@ -254,42 +254,42 @@ export class VaultCache implements VaultCacheInterface {
   private async doInitialize(): Promise<void> {
     const maxAttempts = 3;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const startTime = Date.now();
-      const buildGeneration = this.generation;
       try {
-        const { notes: freshNotes, totalFiles } = await this.fetchAllNotes();
-
-        if (this.generation !== buildGeneration) {
-          log("debug", `Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
-          continue; // Retry within the same promise
-        }
-
-        this.applySnapshot(freshNotes);
-        const elapsed = Date.now() - startTime;
-        if (this.notes.size > 0 || totalFiles === 0) {
-          // Mark ready if we cached some notes, or if the vault genuinely has no .md files
-          this.isInitialized = true;
-          log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
-        } else {
-          // All fetches failed — treat as a retriable error
-          throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
-        }
-        return;
+        await this.executeBuildAttempt(attempt, maxAttempts);
+        return; // Success
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (attempt < maxAttempts - 1) {
-          log("warn", `Cache initialization failed (attempt ${String(attempt + 1)}/${String(maxAttempts)}): ${message} — retrying`);
-          continue; // Retry on network errors too
+        if (attempt >= maxAttempts - 1) {
+          const message = err instanceof Error ? err.message : String(err);
+          log("warn", `Cache initialization failed after ${String(maxAttempts)} attempts: ${message}`);
+          throw new ObsidianConnectionError(
+            `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
+            { cause: err instanceof Error ? err : new Error(String(err)) },
+          );
         }
-        log("warn", `Cache initialization failed after ${String(maxAttempts)} attempts: ${message}`);
-        throw new ObsidianConnectionError(
-          `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
-          { cause: err instanceof Error ? err : new Error(String(err)) },
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        log("warn", `Cache initialization failed (attempt ${String(attempt + 1)}/${String(maxAttempts)}): ${message} — retrying`);
       }
     }
-    log("warn", `Cache: exhausted ${String(maxAttempts)} build attempts`);
-    throw new ObsidianConnectionError(`Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`);
+  }
+
+  /** Executes a single build attempt. Throws on generation mismatch or failure. */
+  private async executeBuildAttempt(attempt: number, maxAttempts: number): Promise<void> {
+    const startTime = Date.now();
+    const buildGeneration = this.generation;
+    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes();
+
+    if (this.generation !== buildGeneration) {
+      throw new Error(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
+    }
+
+    this.applySnapshot(freshNotes);
+    const elapsed = Date.now() - startTime;
+    if (this.notes.size > 0 || totalFiles === 0) {
+      this.isInitialized = true;
+      log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+    } else {
+      throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
+    }
   }
 
   /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */

@@ -276,6 +276,7 @@ export class VaultCache implements VaultCacheInterface {
    */
   private async doInitialize(): Promise<void> {
     let lastError: unknown;
+    let hadNonDiscardError = false;
     for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {
       try {
         await this.executeBuildAttempt(attempt, VaultCache.INIT_MAX_ATTEMPTS);
@@ -291,12 +292,13 @@ export class VaultCache implements VaultCacheInterface {
         log("warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
         // Backoff only for transient network errors, not generation-mismatch discards
         const isDiscard = err instanceof CacheBuildDiscardedError;
+        if (!isDiscard) hadNonDiscardError = true;
         if (!isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
         }
       }
     }
-    const isAllDiscards = lastError instanceof CacheBuildDiscardedError;
+    const isAllDiscards = !hadNonDiscardError;
     throw new ObsidianConnectionError(
       isAllDiscards
         ? `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`

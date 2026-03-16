@@ -803,7 +803,11 @@ export class ObsidianClient {
 
       // On 400 with heading target, retry with re-read of document map
       if (res.statusCode === 400 && options.targetType === "heading") {
-        const corrected = await this.retryPatchWithMapLookup(filePath, encoded, content, options);
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getFileContents(filePath, "map"),
+          `/vault/${encoded}`,
+          content, options, filePath,
+        );
         if (corrected) {
           this.cacheRef?.invalidate(sanitizeFilePath(filePath));
           return;
@@ -817,23 +821,27 @@ export class ObsidianClient {
   /**
    * Re-reads the document map and attempts to find the closest matching heading
    * for a failed PATCH. Returns true if the retry succeeded.
+   * @param readMap - Fetches the current document map for heading lookup.
+   * @param patchPath - The API path to retry the PATCH against.
+   * @param label - Human-readable label for debug logging.
    */
   private async retryPatchWithMapLookup(
-    filePath: string,
-    encodedPath: string,
+    readMap: () => Promise<FileContentsResult>,
+    patchPath: string,
     content: string,
-    options: PatchOptions,
+    options: PatchOptions | Omit<PatchOptions, "createIfMissing">,
+    label: string,
   ): Promise<boolean> {
     try {
-      const mapResult = await this.getFileContents(filePath, "map");
+      const mapResult = await readMap();
       if (typeof mapResult === "string" || !("headings" in mapResult)) return false;
 
       const match = findClosestHeading(options.target, mapResult.headings, options.targetDelimiter ?? "::");
       if (!match) return false;
 
-      log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${filePath}`);
-      const retryOptions: PatchOptions = { ...options, target: match };
-      const retryRes = await this.request("PATCH", `/vault/${encodedPath}`, {
+      log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
+      const retryOptions = { ...options, target: match };
+      const retryRes = await this.request("PATCH", patchPath, {
         body: content,
         headers: this.buildPatchHeaders(retryOptions),
       });
@@ -841,11 +849,11 @@ export class ObsidianClient {
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
         return true;
       }
-      log("debug", `PATCH retry failed for ${filePath}: status ${String(retryRes.statusCode)}`);
+      log("debug", `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
       return false;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      log("debug", `PATCH retry lookup failed for ${filePath}: ${message}`);
+      log("debug", `PATCH retry lookup failed for ${label}: ${message}`);
       return false;
     }
   }
@@ -924,10 +932,24 @@ export class ObsidianClient {
         headers,
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      if (res.statusCode === 400 && options.targetType === "heading") {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getActiveFile("map"),
+          "/active/",
+          content, options, "(active file)",
+        );
+        if (corrected) {
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     });
   }
 
@@ -1086,15 +1108,30 @@ export class ObsidianClient {
   /** Patches the current periodic note at a specific target (not idempotent). Serialized per period type. */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
+      const periodicPath = `/periodic/${encodeURIComponent(period)}/`;
+      const res = await this.request("PATCH", periodicPath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      if (res.statusCode === 400 && options.targetType === "heading") {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getPeriodicNote(period, "map"),
+          periodicPath,
+          content, options, `(periodic: ${period})`,
+        );
+        if (corrected) {
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     });
   }
 
@@ -1176,16 +1213,30 @@ export class ObsidianClient {
     // Use the same lock key as current-period mutations — the API may resolve
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const path = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("PATCH", path, {
+      const datePath = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("PATCH", datePath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      if (res.statusCode === 400 && options.targetType === "heading") {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getPeriodicNoteForDate(period, year, month, day, "map"),
+          datePath,
+          content, options, `(periodic: ${period} date)`,
+        );
+        if (corrected) {
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     });
   }
 

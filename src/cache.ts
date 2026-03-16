@@ -1,5 +1,5 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
-import { ObsidianConnectionError } from "./errors.js";
+import { ObsidianConnectionError, ObsidianAuthError } from "./errors.js";
 import { log } from "./config.js";
 
 // --- Types ---
@@ -253,30 +253,30 @@ export class VaultCache implements VaultCacheInterface {
    */
   private async doInitialize(): Promise<void> {
     const maxAttempts = 3;
+    let lastError: unknown;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         await this.executeBuildAttempt(attempt, maxAttempts);
-        return; // Success
+        return;
       } catch (err: unknown) {
-        if (attempt >= maxAttempts - 1) {
-          const message = err instanceof Error ? err.message : String(err);
-          log("warn", `Cache initialization failed after ${String(maxAttempts)} attempts: ${message}`);
-          throw new ObsidianConnectionError(
-            `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
-            { cause: err instanceof Error ? err : new Error(String(err)) },
-          );
-        }
-        const message = err instanceof Error ? err.message : String(err);
-        log("warn", `Cache initialization failed (attempt ${String(attempt + 1)}/${String(maxAttempts)}): ${message} — retrying`);
+        // Don't retry non-transient errors (auth, unexpected format)
+        if (err instanceof ObsidianAuthError) throw err;
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        log("warn", `Cache init attempt ${String(attempt + 1)}/${String(maxAttempts)} failed: ${msg}`);
       }
     }
+    throw new ObsidianConnectionError(
+      `Cache initialization failed after ${String(maxAttempts)} attempts. Try refresh_cache later.`,
+      { cause: lastError instanceof Error ? lastError : undefined },
+    );
   }
 
   /** Executes a single build attempt. Throws on generation mismatch or failure. */
   private async executeBuildAttempt(attempt: number, maxAttempts: number): Promise<void> {
     const startTime = Date.now();
     const buildGeneration = this.generation;
-    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes();
+    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes(buildGeneration);
 
     if (this.generation !== buildGeneration) {
       throw new Error(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
@@ -293,7 +293,8 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Fetches all markdown notes from the vault in batches. Returns notes and total file count. */
-  private async fetchAllNotes(): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
+  /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
+  private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
     const { files } = await this.client.listFilesInVault();
     const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
@@ -301,6 +302,8 @@ export class VaultCache implements VaultCacheInterface {
     const freshNotes = new Map<string, CachedNote>();
     const batchSize = 20;
     for (let i = 0; i < mdFiles.length; i += batchSize) {
+      // Abort early if vault was invalidated during batch processing
+      if (this.generation !== buildGeneration) break;
       const batch = mdFiles.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (filePath) => {

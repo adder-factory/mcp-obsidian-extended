@@ -126,7 +126,7 @@ function findClosestHeading(
   if (caseMatches.length === 1) return caseMatches[0];
 
   // Guard against empty/whitespace delimiter — fall back to "::"
-  const safeDelimiter = delimiter.trim().length > 0 ? delimiter : "::";
+  const safeDelimiter = delimiter.trim() || "::";
   const delimiterLower = safeDelimiter.toLowerCase();
 
   const segments = targetLower.split(delimiterLower);
@@ -169,7 +169,7 @@ function findClosestHeading(
  */
 function isHeadingNotFoundError(body: string): boolean {
   const lower = body.toLowerCase();
-  return lower.includes("heading") || lower.includes("target") || lower.includes("not found");
+  return lower.includes("heading") || lower.includes("not found");
 }
 
 // --- Accept Header Mapping ---

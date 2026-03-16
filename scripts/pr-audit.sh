@@ -159,7 +159,11 @@ while True:
     if result.returncode != 0:
         break
 
-    data = json.loads(result.stdout)
+    try:
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, ValueError):
+        result = subprocess.CompletedProcess([], 1)
+        break
     repo = data.get('data', {}).get('repository')
     if not repo:
         # GraphQL-level error (auth, missing repo, rate limit) — treat as failure

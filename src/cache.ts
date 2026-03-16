@@ -571,7 +571,10 @@ export class VaultCache implements VaultCacheInterface {
       ]);
       clearTimeout(timeoutId);
       if (this.isInitialized) return true;
-      // Fall through to polling with remaining budget
+      // Fall through to polling with remaining budget.
+      // Note: a concurrent invalidateAll() between here and the first poll
+      // iteration may cause the poll to return false immediately. This is
+      // handled by ensureCacheReady's final getIsInitialized() guard.
     }
 
     // Fallback: poll for refresh/rebuild completion using remaining time budget

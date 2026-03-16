@@ -118,12 +118,12 @@ function findClosestHeading(
 ): string | undefined {
   // 1. Exact match (sanity check)
   const exact = headings.find((h) => h.trim() === target);
-  if (exact !== undefined) return exact;
+  if (exact !== undefined) return exact.trim();
 
   // 2. Case-insensitive match — only if unique
   const targetLower = target.toLowerCase();
   const caseMatches = headings.filter((h) => h.trim().toLowerCase() === targetLower);
-  if (caseMatches.length === 1) return caseMatches[0];
+  if (caseMatches.length === 1) return caseMatches[0]!.trim();
 
   // Guard against empty/whitespace delimiter — fall back to "::"
   const safeDelimiter = delimiter.trim() || "::";
@@ -141,7 +141,7 @@ function findClosestHeading(
       const hLower = h.trim().toLowerCase();
       return hLower === tail || hLower.endsWith(delimiterLower + tail);
     });
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) return matches[0]!.trim();
   }
 
   // 4. Leaf-name match — compare only the final segment, only if unique.
@@ -155,7 +155,7 @@ function findClosestHeading(
     const hLeaf = h.trim().toLowerCase().split(delimiterLower).pop()!;
     return hLeaf === targetLeaf;
   });
-  if (leafMatches.length === 1) return leafMatches[0];
+  if (leafMatches.length === 1) return leafMatches[0]!.trim();
 
   return undefined;
 }

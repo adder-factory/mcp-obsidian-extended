@@ -117,12 +117,12 @@ function findClosestHeading(
   delimiter: string,
 ): string | undefined {
   // 1. Exact match (sanity check)
-  const exact = headings.find((h) => h === target);
+  const exact = headings.find((h) => h.trim() === target);
   if (exact !== undefined) return exact;
 
   // 2. Case-insensitive match — only if unique
   const targetLower = target.toLowerCase();
-  const caseMatches = headings.filter((h) => h.toLowerCase() === targetLower);
+  const caseMatches = headings.filter((h) => h.trim().toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0];
 
   // Guard against empty/whitespace delimiter — fall back to "::"
@@ -138,7 +138,7 @@ function findClosestHeading(
     const tail = segments.slice(i).join(delimiterLower);
     if (tail.length === 0) continue; // Skip empty tail from trailing delimiter
     const matches = headings.filter((h) => {
-      const hLower = h.toLowerCase();
+      const hLower = h.trim().toLowerCase();
       return hLower === tail || hLower.endsWith(delimiterLower + tail);
     });
     if (matches.length === 1) return matches[0];
@@ -152,7 +152,7 @@ function findClosestHeading(
   const targetLeaf = segments.at(-1)!;
   if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf
   const leafMatches = headings.filter((h) => {
-    const hLeaf = h.toLowerCase().split(delimiterLower).pop()!;
+    const hLeaf = h.trim().toLowerCase().split(delimiterLower).pop()!;
     return hLeaf === targetLeaf;
   });
   if (leafMatches.length === 1) return leafMatches[0];
@@ -181,7 +181,7 @@ function isHeadingNotFoundError(body: string): boolean {
   } catch { /* use raw body */ }
   // Match "heading" followed by words then "not found" or "does not exist"
   const matched = /heading.*?(?:not found|does not exist)/i.test(message);
-  if (!matched && message.toLowerCase().includes("heading")) {
+  if (!matched) {
     log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
   }
   return matched;

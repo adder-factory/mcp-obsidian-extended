@@ -289,9 +289,10 @@ export class VaultCache implements VaultCacheInterface {
         }
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
-        log("warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
-        // Backoff only for transient network errors, not generation-mismatch discards
         const isDiscard = err instanceof CacheBuildDiscardedError;
+        const logLevel = isDiscard ? "debug" : "warn";
+        log(logLevel, `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
+        // Backoff only for transient network errors, not generation-mismatch discards
         if (!isDiscard) hadNonDiscardError = true;
         if (!isDiscard && attempt < VaultCache.INIT_MAX_ATTEMPTS - 1) {
           await new Promise<void>((resolve) => { setTimeout(resolve, 1000 * (attempt + 1)); });
@@ -543,6 +544,7 @@ export class VaultCache implements VaultCacheInterface {
    * before a new refresh/rebuild sets isRefreshing/isBuilding, this may
    * return false even though a rebuild is imminent. Callers getting false
    * should check getIsInitialized() and retry if needed.
+   * For latency-sensitive paths, a brief retry (e.g. 100ms) can bridge this gap.
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;

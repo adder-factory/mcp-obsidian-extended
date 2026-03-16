@@ -279,6 +279,7 @@ export class VaultCache implements VaultCacheInterface {
    * so concurrent callers awaiting buildPromise see the final result.
    */
   private async doInitialize(): Promise<void> {
+    // Initialized as undefined; always set by at least one catch iteration
     let lastError: unknown;
     let firstRealError: unknown; // First non-discard error for root cause diagnostics
     let hadNonDiscardError = false;
@@ -312,6 +313,7 @@ export class VaultCache implements VaultCacheInterface {
     const msg = err instanceof Error ? err.message : String(err);
     log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
     // Always backoff between retries: shorter for discards (100ms), longer for network errors
+    // No backoff on final attempt — error is thrown immediately after loop
     return { isDiscard, shouldBackoff: attempt < VaultCache.INIT_MAX_ATTEMPTS - 1 };
   }
 

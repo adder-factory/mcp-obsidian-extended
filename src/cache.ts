@@ -201,6 +201,8 @@ export class VaultCache implements VaultCacheInterface {
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
   private isRefreshing = false;
+  /** Set to true during initialize() to signal that an initial build is in flight. */
+  private isBuilding = false;
   /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
   private generation = 0;
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
@@ -221,6 +223,7 @@ export class VaultCache implements VaultCacheInterface {
    * @throws {Error} On network failure or when the vault listing cannot be retrieved.
    */
   async initialize(): Promise<void> {
+    this.isBuilding = true;
     const startTime = Date.now();
     const buildGeneration = this.generation;
     try {
@@ -286,6 +289,8 @@ export class VaultCache implements VaultCacheInterface {
       const message = err instanceof Error ? err.message : String(err);
       log("warn", `Cache initialization failed: ${message}`);
       throw err;
+    } finally {
+      this.isBuilding = false;
     }
   }
 
@@ -445,10 +450,13 @@ export class VaultCache implements VaultCacheInterface {
   /**
    * Waits for the cache to finish initializing, with a timeout.
    * Returns true if initialized within the timeout, false otherwise.
-   * If already initialized, resolves immediately.
+   * If already initialized, resolves immediately. If no build is in
+   * progress (isRefreshing is false), returns false immediately to
+   * avoid a pointless 5s wait after invalidateAll().
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
+    if (!this.isBuilding && !this.isRefreshing) return false;
     const pollInterval = 200;
     let elapsed = 0;
     while (elapsed < timeoutMs) {

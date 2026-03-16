@@ -97,10 +97,10 @@ export function sanitizeFilePath(filePath: string): string {
  * (e.g. "## Tasks" became "### Tasks" or "## Tasks (2)").
  * Uses the delimiter to split the target into segments and matches by:
  * 1. Exact match (shouldn't happen — we already failed)
- * 2. Case-insensitive match
- * 3. Suffix match (handles re-nested headings like "Parent::Child" → "NewParent::Child")
- * 4. Leaf-name match (last segment, case-insensitive)
- * Returns the best match or undefined if no reasonable match found.
+ * 2. Case-insensitive match (unique only)
+ * 3. Suffix match (unique only — avoids ambiguity like "A::Tasks" vs "B::Tasks")
+ * 4. Leaf-name match (unique only — last segment, case-insensitive)
+ * Returns the match only when unambiguous, undefined otherwise.
  */
 function findClosestHeading(
   target: string,
@@ -111,23 +111,23 @@ function findClosestHeading(
   const exact = headings.find((h) => h === target);
   if (exact) return exact;
 
-  // 2. Case-insensitive match
+  // 2. Case-insensitive match — only if unique
   const targetLower = target.toLowerCase();
-  const caseMatch = headings.find((h) => h.toLowerCase() === targetLower);
-  if (caseMatch) return caseMatch;
+  const caseMatches = headings.filter((h) => h.toLowerCase() === targetLower);
+  if (caseMatches.length === 1) return caseMatches[0];
 
-  // 3. Suffix match — the heading's path may have changed at an ancestor level
+  // 3. Suffix match — only if unique (avoids "Project A::Tasks" vs "Project B::Tasks")
   const delimiterLower = delimiter.toLowerCase();
-  const suffixMatch = headings.find((h) => h.toLowerCase().endsWith(delimiterLower + targetLower.split(delimiterLower).pop()));
-  if (suffixMatch) return suffixMatch;
+  const targetTail = targetLower.split(delimiterLower).pop() ?? targetLower;
+  const suffixMatches = headings.filter((h) => h.toLowerCase().endsWith(delimiterLower + targetTail));
+  if (suffixMatches.length === 1) return suffixMatches[0];
 
-  // 4. Leaf-name match — compare only the final segment
-  const targetLeaf = targetLower.split(delimiterLower).pop() ?? targetLower;
-  const leafMatch = headings.find((h) => {
+  // 4. Leaf-name match — only if unique
+  const leafMatches = headings.filter((h) => {
     const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
-    return hLeaf === targetLeaf;
+    return hLeaf === targetTail;
   });
-  if (leafMatch) return leafMatch;
+  if (leafMatches.length === 1) return leafMatches[0];
 
   return undefined;
 }
@@ -839,7 +839,9 @@ export class ObsidianClient {
       });
 
       return retryRes.statusCode === 204 || retryRes.statusCode === 200;
-    } catch {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log("debug", `PATCH retry lookup failed for ${filePath}: ${message}`);
       return false;
     }
   }

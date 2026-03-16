@@ -854,6 +854,25 @@ describe("ObsidianClient — patchContent", () => {
     ).rejects.toThrow(ObsidianApiError);
   });
 
+  it("does not retry when leaf match is ambiguous", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Project A::Tasks", "Project B::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Only 2 requests: original PATCH + GET for map (no retry PATCH due to ambiguity)
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry on 400 for non-heading targets", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });

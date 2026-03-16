@@ -184,7 +184,8 @@ function isHeadingNotFoundError(body: string): boolean {
   } catch { /* use raw body */ }
   // Known Obsidian patterns: "heading not found", "heading X does not exist"
   // Intentionally broad within the heading namespace to catch API version changes.
-  const matched = /heading.*(?:not found|does not exist)/i.test(message);
+  // Require "heading" and the absence indicator to be within 60 chars of each other
+  const matched = /\bheading\b[^.!?]{0,60}(?:not found|does not exist)/i.test(message);
   if (!matched) {
     log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
   }

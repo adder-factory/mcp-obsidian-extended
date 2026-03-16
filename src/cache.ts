@@ -227,10 +227,9 @@ export class VaultCache implements VaultCacheInterface {
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
-      // Concurrent callers await the same build. Catch errors defensively —
-      // the primary caller handles the error; concurrent callers should check
-      // getIsInitialized() or use ensureCacheReady() for the result.
-      try { await this.buildPromise; } catch { /* primary caller handles */ }
+      // Concurrent callers see the same result/error. If the build fails,
+      // the rejection propagates to this caller too.
+      await this.buildPromise;
       return;
     }
     this.isBuilding = true;

@@ -181,7 +181,8 @@ function isHeadingNotFoundError(body: string): boolean {
       if (typeof msg === "string") message = msg;
     }
   } catch { /* use raw body */ }
-  // Match "heading" followed by words then "not found" or "does not exist"
+  // Known Obsidian patterns: "heading not found", "heading X does not exist"
+  // Intentionally broad within the heading namespace to catch API version changes.
   const matched = /heading.*?(?:not found|does not exist)/i.test(message);
   if (!matched) {
     log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);

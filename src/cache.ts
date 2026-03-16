@@ -291,7 +291,7 @@ export class VaultCache implements VaultCacheInterface {
         lastError = err;
         if (!result.isDiscard) {
           hadNonDiscardError = true;
-          if (!firstRealError) firstRealError = err;
+          if (firstRealError === undefined) firstRealError = err;
         }
         if (result.shouldBackoff) {
           const delay = result.isDiscard ? 100 : 500 * (attempt + 1);
@@ -569,9 +569,12 @@ export class VaultCache implements VaultCacheInterface {
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing) return false;
-    // If no build is pending (buildPromise absent) and isRefreshing is the only flag,
-    // a partial refresh is running (not a full init). Return false immediately — the
-    // next auto-refresh tick will trigger initialize() if needed.
+    // If no build is pending (buildPromise absent, isBuilding false) and only
+    // isRefreshing is true, a partial incremental refresh is running — not a full
+    // init build. Return false immediately. Note: initialize()'s finally block
+    // clears buildPromise before isBuilding (load-bearing order), so between those
+    // two assignments this guard may briefly see !buildPromise && isBuilding — which
+    // correctly falls through to the build-promise race below.
     if (!this.buildPromise && !this.isBuilding) return false;
 
     const deadline = Date.now() + timeoutMs;

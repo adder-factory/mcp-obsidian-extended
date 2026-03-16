@@ -232,6 +232,8 @@ export class VaultCache implements VaultCacheInterface {
       await this.buildPromise;
       return;
     }
+    // Both assignments are synchronous — no microtask gap between them.
+    // waitForInitialization can safely rely on buildPromise being set when isBuilding is true.
     this.isBuilding = true;
     this.buildPromise = this.doInitialize();
     try {

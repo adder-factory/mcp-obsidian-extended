@@ -148,10 +148,11 @@ function findClosestHeading(
   //    For multi-segment targets this is equivalent to the last stage 3 iteration,
   //    but for single-segment targets (no delimiter) stage 3 doesn't execute,
   //    making this the primary fuzzy fallback.
-  const targetLeaf = segments.at(-1) ?? targetLower;
+  // split() always returns at least one element, so .at(-1) and .pop() are never undefined
+  const targetLeaf = segments.at(-1)!;
   if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf
   const leafMatches = headings.filter((h) => {
-    const hLeaf = h.toLowerCase().split(delimiterLower).pop() ?? h.toLowerCase();
+    const hLeaf = h.toLowerCase().split(delimiterLower).pop()!;
     return hLeaf === targetLeaf;
   });
   if (leafMatches.length === 1) return leafMatches[0];

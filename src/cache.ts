@@ -230,10 +230,10 @@ export class VaultCache implements VaultCacheInterface {
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
-      // Concurrent callers see the same result/error. Note: cache may still
-      // be uninitialized if the build was discarded (generation mismatch).
-      // Callers should check getIsInitialized() or use ensureCacheReady().
-      await this.buildPromise;
+      // Concurrent callers await the same build. Catch errors defensively —
+      // the primary caller handles the error; concurrent callers should check
+      // getIsInitialized() or use ensureCacheReady() for the result.
+      try { await this.buildPromise; } catch { /* primary caller handles */ }
       return;
     }
     this.isBuilding = true;
@@ -493,6 +493,11 @@ export class VaultCache implements VaultCacheInterface {
    * cleared the cache without triggering a rebuild. The next scheduled
    * auto-refresh (startAutoRefresh timer) will rebuild the cache;
    * callers should not block indefinitely waiting for that.
+   *
+   * Note: in a narrow sub-millisecond window after a build completes but
+   * before a new refresh/rebuild sets isRefreshing/isBuilding, this may
+   * return false even though a rebuild is imminent. Callers getting false
+   * should check getIsInitialized() and retry if needed.
    */
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;

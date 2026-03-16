@@ -175,7 +175,7 @@ json.dump(all_threads, open('$THREADS_FILE', 'w'))
 
 ALL_THREADS=$(cat "$THREADS_FILE" 2>/dev/null || echo "[]")
 # Fail closed: if thread fetch returned empty/invalid JSON, block merge
-if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$THREADS_FILE" 2>/dev/null; then
+if ! python3 -c "import json,sys; v=json.load(open(sys.argv[1])); assert isinstance(v, list)" "$THREADS_FILE" 2>/dev/null; then
   api_failed "review threads (GraphQL)"
 fi
 

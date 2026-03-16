@@ -912,7 +912,7 @@ export class ObsidianClient {
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
         return match;
       }
-      log("debug", `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
+      log("warn", `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
       return false;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

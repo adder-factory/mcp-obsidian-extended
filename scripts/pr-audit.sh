@@ -178,11 +178,12 @@ while True:
     if rt is None:
         result = subprocess.CompletedProcess([], 1)
         break
-    all_threads.extend(rt['nodes'])
+    all_threads.extend(rt.get('nodes', []))
 
-    if not rt['pageInfo']['hasNextPage']:
+    page_info = rt.get('pageInfo', {})
+    if not page_info.get('hasNextPage'):
         break
-    cursor = rt['pageInfo']['endCursor']
+    cursor = page_info.get('endCursor')
 
 with open('$THREADS_FILE', 'w') as f:
     json.dump(all_threads, f)

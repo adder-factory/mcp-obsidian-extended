@@ -872,6 +872,29 @@ describe("ObsidianClient — patchContent", () => {
     expect(mockRequest).toHaveBeenCalledTimes(2); // original PATCH + GET for document map
   });
 
+  it("surfaces original error when retry PATCH fails with 500", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({ statusCode: 500, headers: {}, body: '{"message":"internal error"}' });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    // Cache should NOT be invalidated since retry failed
+    expect(mockCache.invalidate).not.toHaveBeenCalled();
+  });
+
   it("retries with progressive suffix match when parent heading was renamed", async () => {
     const { client, mockRequest } = createMockedClient();
     const docMap = { headings: ["NewParent::Tasks"], blocks: [], frontmatterFields: [] };

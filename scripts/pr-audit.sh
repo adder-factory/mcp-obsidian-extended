@@ -170,7 +170,11 @@ while True:
         result = subprocess.CompletedProcess([], 1)
         break
 
-    rt = repo['pullRequest']['reviewThreads']
+    pr_data = repo.get('pullRequest')
+    if not pr_data:
+        result = subprocess.CompletedProcess([], 1)
+        break
+    rt = pr_data['reviewThreads']
     all_threads.extend(rt['nodes'])
 
     if not rt['pageInfo']['hasNextPage']:

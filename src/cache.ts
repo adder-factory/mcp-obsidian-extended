@@ -569,9 +569,9 @@ export class VaultCache implements VaultCacheInterface {
   async waitForInitialization(timeoutMs: number): Promise<boolean> {
     if (this.isInitialized) return true;
     if (!this.isBuilding && !this.isRefreshing) return false;
-    // If no build is pending and isRefreshing is the only flag, a partial refresh
-    // is running (not a full init). Polling would spin for the full timeout with
-    // no chance of isInitialized becoming true. Return false immediately.
+    // If no build is pending (buildPromise absent) and isRefreshing is the only flag,
+    // a partial refresh is running (not a full init). Return false immediately — the
+    // next auto-refresh tick will trigger initialize() if needed.
     if (!this.buildPromise && !this.isBuilding) return false;
 
     const deadline = Date.now() + timeoutMs;

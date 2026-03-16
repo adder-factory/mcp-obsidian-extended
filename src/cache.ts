@@ -262,7 +262,9 @@ export class VaultCache implements VaultCacheInterface {
   async initialize(): Promise<void> {
     if (this.isInitialized) return; // Already built — no-op
     if (this.buildPromise) {
-      await this.buildPromise; // Concurrent callers await the same build, symmetric rejection
+      // Concurrent callers await the same build. Catch rejections so they
+      // don't surface as unhandled — the original caller handles the error.
+      try { await this.buildPromise; } catch { /* handled by originating caller */ }
       return;
     }
     this.isBuilding = true;
@@ -527,7 +529,10 @@ export class VaultCache implements VaultCacheInterface {
         ),
         new Promise<void>((resolve) => { timeoutId = setTimeout(resolve, timeoutMs); }),
       ]);
-      return this.isInitialized;
+      if (this.isInitialized) return true;
+      // Don't return false — fall through to polling loop.
+      // pendingRebuild may have been set during the build, and the
+      // polling loop will correctly detect and wait for the rebuild.
     }
 
     // Fallback: poll for refresh completion (no shared promise available)

@@ -28,7 +28,7 @@ export async function ensureCacheReady(
   if (!enableCache) return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
   if (cache.getIsInitialized()) return undefined;
   if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) return undefined;
-  return errorResult(`[${tool}] Cache not available. It may still be building or the build may have failed.`);
+  return errorResult(`[${tool}] Cache not available. Try again shortly or use refresh_cache to rebuild.`);
 }
 
 // --- Types ---
@@ -316,8 +316,8 @@ export class VaultCache implements VaultCacheInterface {
       // Discard if invalidateAll() was called while we were building
       if (this.generation !== buildGeneration) {
         log("debug", "Cache build discarded: vault was invalidated during build — scheduling re-init");
-        // Schedule immediate re-initialize so waitForInitialization callers aren't stranded
-        void this.initialize();
+        // Schedule re-initialize as macrotask — must run after finally clears buildPromise
+        setTimeout(() => { void this.initialize(); }, 0);
         return;
       }
       // Swap atomically: clear old entries and copy fresh ones in

@@ -503,9 +503,10 @@ export class ObsidianClient {
       "Target-Type": options.targetType,
       // Obsidian always percent-decodes the Target header, so:
       // 1. Escape literal % → %25 first (so "50%C3%BC" becomes "50%25C3%25BC")
-      // 2. Encode non-printable-ASCII (control chars, unicode, emoji) via encodeURIComponent
+      // 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
       // This preserves ASCII special chars (+, &, ::, spaces) while ensuring both
       // non-ASCII headings and headings with literal %HH sequences round-trip correctly.
+      // Unpaired surrogates are silently stripped (unrepresentable in UTF-8).
       // Validated against live Obsidian API in Phase 3.
       "Target": encodeTargetHeader(options.target),
     };

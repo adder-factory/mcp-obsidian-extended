@@ -442,6 +442,23 @@ export class VaultCache implements VaultCacheInterface {
     return this.isInitialized;
   }
 
+  /**
+   * Waits for the cache to finish initializing, with a timeout.
+   * Returns true if initialized within the timeout, false otherwise.
+   * If already initialized, resolves immediately.
+   */
+  async waitForInitialization(timeoutMs: number): Promise<boolean> {
+    if (this.isInitialized) return true;
+    const pollInterval = 200;
+    let elapsed = 0;
+    while (elapsed < timeoutMs) {
+      await new Promise<void>((resolve) => { setTimeout(resolve, pollInterval); });
+      elapsed += pollInterval;
+      if (this.isInitialized) return true;
+    }
+    return false;
+  }
+
   // --- Invalidation ---
 
   /** Tracks paths invalidated during an in-flight refresh to prevent stale re-insertion. */

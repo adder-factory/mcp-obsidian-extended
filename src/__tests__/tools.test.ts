@@ -147,6 +147,7 @@ function makeMockClient(): ObsidianClient {
 function makeMockCache(initialized = true): VaultCache {
   return {
     getIsInitialized: vi.fn().mockReturnValue(initialized),
+    waitForInitialization: vi.fn().mockResolvedValue(initialized),
     getAllNotes: vi.fn().mockReturnValue([]),
     getFileList: vi.fn().mockReturnValue([]),
     noteCount: 0,

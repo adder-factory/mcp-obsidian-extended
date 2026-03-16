@@ -309,14 +309,20 @@ async function handleVaultAnalysisAction(
   switch (action) {
     case "backlinks":
       if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      }
       return jsonResult(cache.getBacklinks(path));
     case "connections":
       if (!path) return errorResult("[vault_analysis] path is required for connections");
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      }
       return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
     case "structure":
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+        return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      }
       return buildVaultStructure(cache, limit);
     case "refresh":
       await cache.refresh();

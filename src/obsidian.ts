@@ -89,6 +89,48 @@ export function sanitizeFilePath(filePath: string): string {
   return canonical;
 }
 
+// --- Heading Matching ---
+
+/**
+ * Finds the closest matching heading in a document map for PATCH retry.
+ * Handles the case where concurrent writes shifted the heading hierarchy
+ * (e.g. "## Tasks" became "### Tasks" or "## Tasks (2)").
+ * Uses the delimiter to split the target into segments and matches by:
+ * 1. Exact match (shouldn't happen — we already failed)
+ * 2. Case-insensitive match
+ * 3. Suffix match (handles re-nested headings like "Parent::Child" → "NewParent::Child")
+ * 4. Leaf-name match (last segment, case-insensitive)
+ * Returns the best match or undefined if no reasonable match found.
+ */
+function findClosestHeading(
+  target: string,
+  headings: readonly string[],
+  delimiter: string,
+): string | undefined {
+  // 1. Exact match (sanity check)
+  const exact = headings.find((h) => h === target);
+  if (exact) return exact;
+
+  // 2. Case-insensitive match
+  const targetLower = target.toLowerCase();
+  const caseMatch = headings.find((h) => h.toLowerCase() === targetLower);
+  if (caseMatch) return caseMatch;
+
+  // 3. Suffix match — the heading's path may have changed at an ancestor level
+  const suffixMatch = headings.find((h) => h.toLowerCase().endsWith(delimiter.toLowerCase() + targetLower.split(delimiter).pop()));
+  if (suffixMatch) return suffixMatch;
+
+  // 4. Leaf-name match — compare only the final segment
+  const targetLeaf = targetLower.split(delimiter).pop() ?? targetLower;
+  const leafMatch = headings.find((h) => {
+    const hLeaf = h.toLowerCase().split(delimiter).pop() ?? h.toLowerCase();
+    return hLeaf === targetLeaf;
+  });
+  if (leafMatch) return leafMatch;
+
+  return undefined;
+}
+
 // --- Accept Header Mapping ---
 
 /** Maps a file format to the corresponding Accept header value for the Obsidian REST API. */
@@ -739,7 +781,12 @@ export class ObsidianClient {
     });
   }
 
-  /** Patches a vault file at a specific heading, block, or frontmatter target (not idempotent). */
+  /**
+   * Patches a vault file at a specific heading, block, or frontmatter target (not idempotent).
+   * On 400 failure with a heading target, retries once after re-reading the document map
+   * and finding the closest matching heading. This mitigates the ~5% failure rate when
+   * concurrent writes change the heading structure between read and patch.
+   */
   async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
@@ -748,12 +795,52 @@ export class ObsidianClient {
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, filePath);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+        return;
       }
 
-      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+      // On 400 with heading target, retry with re-read of document map
+      if (res.statusCode === 400 && options.targetType === "heading") {
+        const corrected = await this.retryPatchWithMapLookup(filePath, encoded, content, options);
+        if (corrected) {
+          this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, filePath);
     });
+  }
+
+  /**
+   * Re-reads the document map and attempts to find the closest matching heading
+   * for a failed PATCH. Returns true if the retry succeeded.
+   */
+  private async retryPatchWithMapLookup(
+    filePath: string,
+    encodedPath: string,
+    content: string,
+    options: PatchOptions,
+  ): Promise<boolean> {
+    try {
+      const mapResult = await this.getFileContents(filePath, "map");
+      if (typeof mapResult === "string" || !("headings" in mapResult)) return false;
+
+      const match = findClosestHeading(options.target, mapResult.headings, options.targetDelimiter ?? "::");
+      if (!match) return false;
+
+      log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${filePath}`);
+      const retryOptions: PatchOptions = { ...options, target: match };
+      const retryRes = await this.request("PATCH", `/vault/${encodedPath}`, {
+        body: content,
+        headers: this.buildPatchHeaders(retryOptions),
+      });
+
+      return retryRes.statusCode === 204 || retryRes.statusCode === 200;
+    } catch {
+      return false;
+    }
   }
 
   /** Deletes a vault file to Obsidian trash (idempotent, 404 is silently ignored). */

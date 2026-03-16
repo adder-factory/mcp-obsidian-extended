@@ -876,7 +876,9 @@ function registerSystemAndAnalysisTools(
       async ({ filePath }) => {
         try {
           if (!config.enableCache) return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+            return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
+          }
           return jsonResult(cache.getBacklinks(filePath));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path: filePath }));
@@ -897,7 +899,9 @@ function registerSystemAndAnalysisTools(
       async ({ limit }) => {
         try {
           if (!config.enableCache) return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+            return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
+          }
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
@@ -918,7 +922,9 @@ function registerSystemAndAnalysisTools(
       async ({ filePath }) => {
         try {
           if (!config.enableCache) return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
+          if (!cache.getIsInitialized() && !(await cache.waitForInitialization(5000))) {
+            return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
+          }
           return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path: filePath }));

@@ -360,44 +360,61 @@ export class VaultCache implements VaultCacheInterface {
   private async collectAllMarkdownFiles(): Promise<string[]> {
     const allFiles: string[] = [];
     const visited = new Set<string>();
-
-    const traverse = async (dirPath: string): Promise<void> => {
-      const normalized = VaultCache.normalizePath(dirPath);
-      if (normalized === undefined) {
-        log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
-        return;
-      }
-      if (visited.has(normalized)) {
-        log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
-        return;
-      }
-      visited.add(normalized);
-
-      const { files } = normalized === ""
-        ? await this.client.listFilesInVault()
-        : await this.client.listFilesInDir(normalized);
-
-      for (const file of files) {
-        if (file.toLowerCase().endsWith(".md")) {
-          const safe = VaultCache.normalizePath(file);
-          if (safe === undefined) {
-            log("warn", `Cache: skipping unsafe file path "${file}"`);
-          } else {
-            allFiles.push(safe);
-          }
-        } else if (file.endsWith("/")) {
-          try {
-            await traverse(file.slice(0, -1));
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            log("debug", `Cache: skipping inaccessible directory "${file}": ${msg}`);
-          }
-        }
-      }
-    };
-
-    await traverse("");
+    await this.traverseDirectory("", allFiles, visited);
     return allFiles;
+  }
+
+  /** Recursively lists files in a directory, collecting `.md` paths and recursing into subdirectories. */
+  private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>): Promise<void> {
+    const normalized = VaultCache.normalizePath(dirPath);
+    if (normalized === undefined) {
+      log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
+      return;
+    }
+    if (visited.has(normalized)) {
+      log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
+      return;
+    }
+    visited.add(normalized);
+
+    const { files } = await this.listDirectory(normalized);
+
+    for (const file of files) {
+      this.collectFileEntry(file, allFiles);
+    }
+    // Process subdirectories after collecting files (separate pass avoids nesting)
+    for (const file of files) {
+      if (!file.endsWith("/")) continue;
+      await this.traverseSubdirectory(file, allFiles, visited);
+    }
+  }
+
+  /** Lists files in a directory, dispatching to vault root or subdirectory listing. */
+  private async listDirectory(normalized: string): Promise<{ files: string[] }> {
+    return normalized === ""
+      ? this.client.listFilesInVault()
+      : this.client.listFilesInDir(normalized);
+  }
+
+  /** Adds a `.md` file entry to the collection if its path is safe. */
+  private collectFileEntry(file: string, allFiles: string[]): void {
+    if (!file.toLowerCase().endsWith(".md")) return;
+    const safe = VaultCache.normalizePath(file);
+    if (safe === undefined) {
+      log("warn", `Cache: skipping unsafe file path "${file}"`);
+      return;
+    }
+    allFiles.push(safe);
+  }
+
+  /** Recurses into a subdirectory entry, catching and logging failures. */
+  private async traverseSubdirectory(file: string, allFiles: string[], visited: Set<string>): Promise<void> {
+    try {
+      await this.traverseDirectory(file.slice(0, -1), allFiles, visited);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("debug", `Cache: skipping inaccessible directory "${file}": ${msg}`);
+    }
   }
 
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */

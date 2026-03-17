@@ -388,7 +388,7 @@ export class VaultCache implements VaultCacheInterface {
 
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
   private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
-    const mdFiles = await this.collectAllMarkdownFiles();
+    const mdFiles = [...new Set(await this.collectAllMarkdownFiles())];
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
     const freshNotes = new Map<string, CachedNote>();

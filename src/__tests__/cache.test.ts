@@ -362,6 +362,22 @@ describe("VaultCache — initialize", () => {
     await expect(cache.initialize()).rejects.toThrow(ObsidianAuthError);
   });
 
+  it("rethrows ObsidianConnectionError from subdirectory traversal", async () => {
+    const { ObsidianConnectionError } = await import("../errors.js");
+    const client = createMockClient(
+      ["sub/", "note.md"],
+      {
+        "note.md": makeNoteJson("note.md", "content"),
+      },
+    );
+    vi.mocked(client.listFilesInDir).mockRejectedValue(
+      new ObsidianConnectionError("Connection refused"),
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow(ObsidianConnectionError);
+  });
+
   it("skips directory entries with path traversal segments", async () => {
     const client = {
       listFilesInVault: vi.fn(async () => ({ files: ["../escape/", "note.md"] })),

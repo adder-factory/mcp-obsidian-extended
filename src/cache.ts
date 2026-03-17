@@ -352,12 +352,13 @@ export class VaultCache implements VaultCacheInterface {
     const visited = new Set<string>();
 
     const traverse = async (dirPath: string): Promise<void> => {
-      const normalized = dirPath.replaceAll("\\", "/").replace(/\/+$/, "");
+      let normalized = dirPath.replaceAll("\\", "/");
+      while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
       if (visited.has(normalized)) {
         log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
         return;
       }
-      if (normalized.split("/").some((s) => s === "..") || normalized.startsWith("/")) {
+      if (normalized.split("/").includes("..") || normalized.startsWith("/")) {
         log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
         return;
       }

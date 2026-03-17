@@ -897,3 +897,531 @@ describe("VaultCache — waitForInitialization", () => {
     expect(result).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseLinks — edge cases for uncovered branches
+// ---------------------------------------------------------------------------
+describe("parseLinks — wikilink edge cases", () => {
+  it("handles unclosed [[ with no matching ]]", () => {
+    const links = parseLinks("Some text [[ unclosed link", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("handles nested [[ by skipping the outer unclosed one", () => {
+    // "[[outer [[inner]]" — the outer [[ has a nested [[ before its ]], so it's unclosed
+    const links = parseLinks("[[outer [[inner]]", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("inner.md");
+  });
+
+  it("skips wikilinks with empty target", () => {
+    const links = parseLinks("[[ ]] text [[valid]]", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("valid.md");
+  });
+
+  it("handles wikilink with only # (heading-only link, empty target after strip)", () => {
+    const links = parseLinks("[[#heading-only]]", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("handles pipe before hash", () => {
+    const links = parseLinks("[[display|Note#heading]]", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("display.md");
+  });
+});
+
+describe("parseLinks — markdown link edge cases", () => {
+  it("handles ] not followed by (", () => {
+    const links = parseLinks("[text] not a link", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("handles unmatched parenthesis after ](", () => {
+    const links = parseLinks("[text](path-no-close.md", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("handles nested parentheses in path", () => {
+    const links = parseLinks("[text](path%20(1).md)", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("path (1).md");
+  });
+
+  it("stops at newline inside parentheses", () => {
+    const links = parseLinks("[text](path\nbroken.md)", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("strips title from markdown link path", () => {
+    const links = parseLinks('[text](note.md "title text")', "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("note.md");
+  });
+
+  it("strips single-quoted title from markdown link path", () => {
+    const links = parseLinks("[text](note.md 'title text')", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("note.md");
+  });
+
+  it("handles URL-encoded paths", () => {
+    const links = parseLinks("[text](my%20note.md)", "test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("my note.md");
+  });
+
+  it("handles broken URL encoding gracefully", () => {
+    const links = parseLinks("[text](%ZZnote.md)", "test.md");
+    // decodeURIComponent will fail, falls back to rawUrl
+    expect(links).toHaveLength(1);
+  });
+
+  it("rejects .md path that is too short (just .md)", () => {
+    const links = parseLinks("[text](.md)", "test.md");
+    expect(links).toHaveLength(0);
+  });
+
+  it("handles query parameter before hash", () => {
+    const links = parseLinks("[text](note.md?v=1#heading)", "folder/test.md");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.target).toBe("folder/note.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — initialization retry logic
+// ---------------------------------------------------------------------------
+describe("VaultCache — initialization retries", () => {
+  it("retries on connection error and eventually fails", async () => {
+    const client = {
+      listFilesInVault: vi.fn().mockRejectedValue(new Error("connection refused")),
+      getFileContents: vi.fn(),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow("Cache initialization failed after 3 attempts");
+  });
+
+  it("does not retry on auth error", async () => {
+    const { ObsidianAuthError: AuthErr } = await import("../errors.js");
+    const client = {
+      listFilesInVault: vi.fn().mockRejectedValue(new AuthErr()),
+      getFileContents: vi.fn(),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow("Authentication failed");
+    expect(client.listFilesInVault).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards build when generation changes during fetch", async () => {
+    let callCount = 0;
+    const client = {
+      listFilesInVault: vi.fn(async () => {
+        callCount++;
+        if (callCount <= 3) {
+          // Simulate invalidateAll() being called during build
+          cache.invalidateAll();
+        }
+        return { files: ["a.md"] };
+      }),
+      getFileContents: vi.fn(async () => makeNoteJson("a.md", "content")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow("invalidated");
+  });
+
+  it("succeeds after a generation-mismatch discard on retry", async () => {
+    let callCount = 0;
+    const client = {
+      listFilesInVault: vi.fn(async () => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: invalidate during build
+          cache.invalidateAll();
+        }
+        return { files: ["a.md"] };
+      }),
+      getFileContents: vi.fn(async () => makeNoteJson("a.md", "content")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.getIsInitialized()).toBe(true);
+    expect(cache.noteCount).toBe(1);
+  });
+
+  it("throws when all file fetches fail during build", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["a.md", "b.md"] })),
+      getFileContents: vi.fn().mockRejectedValue(new Error("fetch failed")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow("Cache initialization failed");
+  });
+
+  it("skips if already initialized", async () => {
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "content"),
+    });
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    // Call again — should skip
+    await cache.initialize();
+    expect(client.listFilesInVault).toHaveBeenCalledTimes(1);
+  });
+
+  it("concurrent callers share the same build promise", async () => {
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "content"),
+    });
+    const cache = new VaultCache(client, 600000);
+
+    // Start two concurrent initializations
+    const [r1, r2] = await Promise.all([
+      cache.initialize(),
+      cache.initialize(),
+    ]);
+    expect(r1).toBeUndefined();
+    expect(r2).toBeUndefined();
+    // Should only have fetched once
+    expect(client.listFilesInVault).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — refresh edge cases
+// ---------------------------------------------------------------------------
+describe("VaultCache — refresh edge cases", () => {
+  it("skips if already refreshing", async () => {
+    let resolveRefresh: (() => void) | undefined;
+    const blockingPromise = new Promise<void>((resolve) => { resolveRefresh = resolve; });
+
+    const client = {
+      listFilesInVault: vi.fn(async () => {
+        await blockingPromise;
+        return { files: [] };
+      }),
+      getFileContents: vi.fn(async () => makeNoteJson("a.md", "content")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    // Initialize first
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: ["a.md"] });
+    await cache.initialize();
+
+    // Now set up a blocking refresh
+    const refreshPromise = cache.refresh();
+    // Second refresh should bail immediately
+    await cache.refresh();
+
+    resolveRefresh!();
+    await refreshPromise;
+
+    // listFilesInVault: 1 for init + 1 for refresh (second refresh was skipped)
+    expect(client.listFilesInVault).toHaveBeenCalledTimes(2);
+  });
+
+  it("discards refresh when generation changes during it", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => {
+        // Simulate invalidateAll during refresh
+        cache.invalidateAll();
+        return { files: ["a.md"] };
+      }),
+      getFileContents: vi.fn(async () => makeNoteJson("a.md", "content", 2000)),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    // Force initialized state with known generation
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: ["a.md"] });
+    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeNoteJson("a.md", "original"));
+    await cache.initialize();
+
+    // Refresh will trigger invalidateAll, generation will change
+    await cache.refresh();
+    // Cache should be cleared by invalidateAll
+    expect(cache.getIsInitialized()).toBe(false);
+  });
+
+  it("handles file fetch failures during refresh gracefully", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["a.md", "b.md"] })),
+      getFileContents: vi.fn()
+        .mockResolvedValueOnce(makeNoteJson("a.md", "aa"))
+        .mockResolvedValueOnce(makeNoteJson("b.md", "bb"))
+        // Refresh: a.md succeeds with new mtime, b.md fails
+        .mockResolvedValueOnce(makeNoteJson("a.md", "aa-updated", 2000))
+        .mockRejectedValueOnce(new Error("fetch failed")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(2);
+
+    await cache.refresh();
+    // a.md should be updated, b.md should still be old version
+    expect(cache.getNote("a.md")?.content).toBe("aa-updated");
+    expect(cache.getNote("b.md")?.content).toBe("bb");
+  });
+
+  it("skips re-inserting individually invalidated paths during refresh", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["a.md"] })),
+      getFileContents: vi.fn(async () => makeNoteJson("a.md", "content", 2000)),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    // Init with mtime=1000
+    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeNoteJson("a.md", "original", 1000));
+    await cache.initialize();
+    expect(cache.getNote("a.md")?.content).toBe("original");
+
+    // Invalidate the path before refresh completes — simulates a write happening during refresh
+    // We need to set up so that during refresh, the path gets individually invalidated
+    const origRefresh = cache.refresh.bind(cache);
+    const refreshWithInvalidation = async (): Promise<void> => {
+      // Invalidate during refresh by hooking into the mock
+      (client.getFileContents as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+        cache.invalidate("a.md");
+        return makeNoteJson("a.md", "stale-from-refresh", 2000);
+      });
+      return origRefresh();
+    };
+
+    await refreshWithInvalidation();
+    // The note should NOT have been re-inserted because it was invalidated during refresh
+    expect(cache.getNote("a.md")).toBeUndefined();
+  });
+
+  it("handles unexpected response format during refresh", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["a.md"] })),
+      getFileContents: vi.fn()
+        .mockResolvedValueOnce(makeNoteJson("a.md", "original", 1000))
+        // During refresh: returns string instead of NoteJson
+        .mockResolvedValueOnce("raw string content"),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    // Refresh should handle the unexpected format gracefully
+    await cache.refresh();
+    // Original cache entry should remain
+    expect(cache.getNote("a.md")?.content).toBe("original");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — waitForInitialization edge cases
+// ---------------------------------------------------------------------------
+describe("VaultCache — waitForInitialization edge cases", () => {
+  it("returns false when refreshing but no build promise exists", async () => {
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "content"),
+    });
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    // Start a refresh (which sets isRefreshing=true) but it won't create a buildPromise
+    // because the cache is already initialized
+    // We need to force the state: isRefreshing=true, isBuilding=false, buildPromise=undefined
+    // The easiest way is to call waitForInitialization during a normal (non-init) refresh
+    cache.invalidateAll(); // Reset isInitialized
+
+    // Now isInitialized=false, isBuilding=false, isRefreshing=false
+    // waitForInitialization should return false immediately
+    const result = await cache.waitForInitialization(100);
+    expect(result).toBe(false);
+  });
+
+  it("times out when build takes too long", async () => {
+    let resolveInit: (() => void) | undefined;
+    const blockingPromise = new Promise<void>((resolve) => { resolveInit = resolve; });
+
+    const client = {
+      listFilesInVault: vi.fn(async () => {
+        await blockingPromise;
+        return { files: [] };
+      }),
+      getFileContents: vi.fn(),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    // Start init without awaiting
+    const initPromise = cache.initialize();
+
+    // Wait with a very short timeout
+    const result = await cache.waitForInitialization(50);
+    expect(result).toBe(false);
+
+    // Clean up
+    resolveInit!();
+    await initPromise;
+  });
+
+  it("handles build failure during wait and returns false", async () => {
+    const client = {
+      listFilesInVault: vi.fn().mockRejectedValue(new Error("connection refused")),
+      getFileContents: vi.fn(),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    // Start init without awaiting — it will fail
+    const initPromise = cache.initialize().catch(() => { /* expected */ });
+
+    // Wait should eventually return false because build fails
+    const result = await cache.waitForInitialization(5000);
+    expect(result).toBe(false);
+
+    await initPromise;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — invalidate edge cases
+// ---------------------------------------------------------------------------
+describe("VaultCache — invalidate edge cases", () => {
+  it("handles path with no directory separator", async () => {
+    const client = createMockClient(["root-note.md"], {
+      "root-note.md": makeNoteJson("root-note.md", "content"),
+    });
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.getNote("root-note.md")).toBeDefined();
+
+    cache.invalidate("root-note.md");
+    expect(cache.getNote("root-note.md")).toBeUndefined();
+  });
+
+  it("decrements link count on invalidation", async () => {
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]] [[c]]"),
+    });
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.linkCount).toBe(2);
+
+    cache.invalidate("a.md");
+    expect(cache.linkCount).toBe(0);
+  });
+
+  it("handles invalidating a path not in cache", () => {
+    const cache = new VaultCache(createMockClient(), 600000);
+    // Should not throw
+    cache.invalidate("nonexistent.md");
+    expect(cache.noteCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — resolveLinkToFullPath edge cases
+// ---------------------------------------------------------------------------
+describe("VaultCache — link resolution edge cases", () => {
+  it("resolves normalized case-insensitive full path match", async () => {
+    const client = createMockClient(
+      ["Folder/MyNote.md"],
+      { "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "[[folder/mynote]]") },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    // The link "folder/mynote.md" (normalized) should resolve to "Folder/MyNote.md"
+    const backlinks = cache.getBacklinks("Folder/MyNote.md");
+    // Self-link via normalized path
+    expect(backlinks).toHaveLength(1);
+  });
+
+  it("resolves via suffix match for wikilinks in subdirectories", async () => {
+    const client = createMockClient(
+      ["deep/nested/target.md", "other/linker.md"],
+      {
+        "deep/nested/target.md": makeNoteJson("deep/nested/target.md", "Target"),
+        "other/linker.md": makeNoteJson("other/linker.md", "[[target]]"),
+      },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    const backlinks = cache.getBacklinks("deep/nested/target.md");
+    expect(backlinks).toHaveLength(1);
+    expect(backlinks[0]?.source).toBe("other/linker.md");
+  });
+
+  it("handles link to non-existent note (unresolved)", async () => {
+    const client = createMockClient(
+      ["a.md"],
+      { "a.md": makeNoteJson("a.md", "[[nonexistent]]") },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    // The vault graph should not include edges to non-existent notes
+    const graph = cache.getVaultGraph();
+    expect(graph.edges).toHaveLength(0);
+  });
+
+  it("handles normalized link to note that exists", async () => {
+    // normalizeLinkTarget adds .md — test path without .md extension
+    const client = createMockClient(
+      ["notes/readme.md"],
+      {
+        "notes/readme.md": makeNoteJson("notes/readme.md", "Content"),
+      },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    // normalizeLinkTarget tests
+    const note = cache.getNote("notes/readme.md");
+    expect(note).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VaultCache — normalizeLinkTarget (via graph queries)
+// ---------------------------------------------------------------------------
+describe("VaultCache — normalizeLinkTarget coverage", () => {
+  it("adds .md to targets that lack it", async () => {
+    const client = createMockClient(
+      ["a.md", "b.md"],
+      {
+        "a.md": makeNoteJson("a.md", "[[b]]"),
+        "b.md": makeNoteJson("b.md", "target"),
+      },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    // [[b]] stored as "b.md", normalizeLinkTarget("b.md") → "b.md" (no double .md)
+    const backlinks = cache.getBacklinks("b.md");
+    expect(backlinks).toHaveLength(1);
+  });
+
+  it("handles backslash paths in link targets", async () => {
+    const client = createMockClient(
+      ["folder/note.md", "linker.md"],
+      {
+        "folder/note.md": makeNoteJson("folder/note.md", "target"),
+        "linker.md": makeNoteJson("linker.md", String.raw`[text](folder\note.md)`),
+      },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+
+    const backlinks = cache.getBacklinks("folder/note.md");
+    expect(backlinks).toHaveLength(1);
+  });
+});

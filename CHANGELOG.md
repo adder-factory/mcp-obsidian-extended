@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 (2026-03-17)
+
+### Fixed
+- Vault cache now recursively discovers all `.md` files in subdirectories — previously only root-level files were indexed, making graph analysis, backlinks, and vault structure incomplete for vaults with folders
+- Obsidian REST API returns relative paths from `listFilesInDir` — cache now correctly prepends the parent directory prefix
+- Added cycle detection (visited set + max depth 20) to prevent infinite recursion from symlinked directories
+- Path sanitization: reject `..` traversal, absolute paths, normalize `.` and empty segments from consecutive slashes
+- `ObsidianAuthError` and `ObsidianConnectionError` are now rethrown from subdirectory traversal instead of being silently swallowed
+
 ## 1.0.0 (2026-03-15)
 
 Initial release — TypeScript rewrite of mcp-obsidian with full API coverage.

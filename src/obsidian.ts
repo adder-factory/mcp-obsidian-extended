@@ -285,7 +285,7 @@ export class ObsidianClient {
   private readonly maxResponseChars: number;
   private readonly fileLocks = new Map<string, Promise<unknown>>();
 
-  private isConnected = false;
+  private readonly isConnected = false;
 
   // Cache reference (set after construction)
   private cacheRef: VaultCacheInterface | undefined;

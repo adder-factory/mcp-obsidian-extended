@@ -89,6 +89,109 @@ export function sanitizeFilePath(filePath: string): string {
   return canonical;
 }
 
+// --- Heading Matching ---
+
+/**
+ * Finds the closest matching heading in a document map for PATCH retry.
+ * Handles the case where concurrent writes shifted the heading hierarchy
+ * (e.g. "## Tasks" became "### Tasks" or "Parent::Tasks" → "NewParent::Tasks").
+ *
+ * Matching stages (first unique match wins):
+ * 1. Exact match
+ * 2. Case-insensitive exact match
+ * 3. Progressive suffix match — for multi-segment targets, tries dropping
+ *    leading segments one at a time (longest suffix first). This catches
+ *    renamed parent headings: "Section::Tasks" matches "NewSection::Tasks".
+ * 4. Leaf-name match — compares only the final segment
+ *
+ * All fuzzy stages (2-4) require a unique match to avoid patching the wrong section.
+ *
+ * @param target - The heading target from the original PATCH options.
+ * @param headings - The current headings from the document map.
+ * @param delimiter - The heading hierarchy delimiter (default "::").
+ * @returns The best unique match, or undefined if no unambiguous match exists.
+ */
+function findClosestHeading(
+  target: string,
+  headings: readonly string[],
+  delimiter: string,
+): string | undefined {
+  target = target.trim();
+  // 1. Exact match (sanity check)
+  const exact = headings.find((h) => h.trim() === target);
+  if (exact !== undefined) return exact.trim();
+
+  // 2. Case-insensitive match — only if unique
+  const targetLower = target.toLowerCase();
+  const caseMatches = headings.filter((h) => h.trim().toLowerCase() === targetLower);
+  if (caseMatches.length === 1) return caseMatches[0]!.trim();
+
+  // Guard against empty/whitespace delimiter — fall back to default "::"
+  const trimmed = delimiter.trim();
+  const safeDelimiter = trimmed.length > 0 ? trimmed : "::";
+  const delimiterLower = safeDelimiter.toLowerCase();
+
+  const segments = targetLower.split(delimiterLower);
+
+  // 3. Progressive suffix match — try dropping leading segments one at a time
+  //    For "A::B::C", tries matching "B::C" exactly or "...::B::C" as suffix, then "C"
+  //    Skipped for single-segment targets (segments.length === 1) — no segments to drop.
+  //    Note: may match the original heading as a suffix candidate if Stage 2 was ambiguous.
+  for (let i = 1; i < segments.length; i++) {
+    const tail = segments.slice(i).join(delimiterLower);
+    if (tail.length === 0) continue; // Skip empty tail from trailing delimiter
+    const matches = headings.filter((h) => {
+      const hLower = h.trim().toLowerCase();
+      return hLower === tail || hLower.endsWith(delimiterLower + tail);
+    });
+    if (matches.length === 1) return matches[0]!.trim();
+  }
+
+  // 4. Leaf-name match — compare only the final segment, only if unique.
+  //    Primary fallback for single-segment targets where stage 3 doesn't execute.
+  //    For multi-segment targets, equivalent to stage 3's last iteration —
+  //    reachable only if all stage 3 iterations were ambiguous (0 or 2+ matches).
+  // split() always returns at least one element, so .at(-1) and .pop() are never undefined
+  const targetLeaf = segments.at(-1)!;
+  if (targetLeaf.length === 0) return undefined; // Trailing delimiter — no valid leaf
+  const leafMatches = headings.filter((h) => {
+    const hLeaf = h.trim().toLowerCase().split(delimiterLower).pop()!;
+    return hLeaf === targetLeaf;
+  });
+  if (leafMatches.length === 1) return leafMatches[0]!.trim();
+
+  return undefined;
+}
+
+// --- Heading Error Detection ---
+
+/**
+ * Checks if a 400 response body indicates a heading-not-found error.
+ * Known Obsidian REST API phrasing: "heading not found" (v1.7+).
+ * Uses regex to tolerate minor variations while staying specific.
+ * Only these errors should trigger the heading retry logic.
+ * @param body - The raw HTTP response body string (may be JSON).
+ * @returns true if the parsed message matches a heading-not-found pattern.
+ */
+function isHeadingNotFoundError(body: string): boolean {
+  let message = body;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const msg = (parsed as Record<string, unknown>)["message"];
+      if (typeof msg === "string") message = msg;
+    }
+  } catch { /* use raw body */ }
+  // Known Obsidian patterns: "heading not found", "heading X does not exist"
+  // Intentionally broad within the heading namespace to catch API version changes.
+  // Require "heading" and the absence indicator to be within 60 chars of each other
+  const matched = /\bheading\b[^.!?]{0,60}(?:not found|does not exist)/i.test(message);
+  if (!matched) {
+    log("debug", `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`);
+  }
+  return matched;
+}
+
 // --- Accept Header Mapping ---
 
 /** Maps a file format to the corresponding Accept header value for the Obsidian REST API. */
@@ -739,7 +842,16 @@ export class ObsidianClient {
     });
   }
 
-  /** Patches a vault file at a specific heading, block, or frontmatter target (not idempotent). */
+  /**
+   * Patches a vault file at a specific heading, block, or frontmatter target (not idempotent).
+   * On 400 failure with a heading target, retries once after re-reading the document map
+   * and finding the closest matching heading. This mitigates the ~5% failure rate when
+   * concurrent writes change the heading structure between read and patch.
+   *
+   * The retry (retryPatchWithMapLookup) runs inside withFileLock intentionally: holding
+   * the lock during re-read+retry prevents other server-initiated writes from changing
+   * the heading structure between the map read and the retry PATCH.
+   */
   async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
@@ -748,12 +860,84 @@ export class ObsidianClient {
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, filePath);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+        return;
       }
 
-      this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+      // On 400 with heading target, retry with re-read of document map.
+      // isHeadingNotFoundError logs at debug level when pattern is not matched,
+      // so non-heading 400s fall through to handleErrorResponse below.
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getFileContents(filePath, "map"),
+          `/vault/${encoded}`,
+          content, options, filePath,
+        );
+        if (corrected !== false) {
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in ${filePath}`);
+          this.cacheRef?.invalidate(sanitizeFilePath(filePath));
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, filePath);
     });
+  }
+
+  /**
+   * Re-reads the document map and attempts to find the closest matching heading
+   * for a failed PATCH. Returns the corrected heading name if the retry succeeded, or false.
+   * @param readMap - Fetches the current document map for heading lookup.
+   * @param patchPath - The API path to retry the PATCH against.
+   * @param content - The markdown/JSON content body for the PATCH.
+   * @param options - The original PATCH options (target will be corrected).
+   * @param label - Human-readable label for debug logging.
+   * @returns The corrected heading name if the retry succeeded, false otherwise.
+   *   All exceptions are caught and logged — this method never throws.
+   *   When it returns false, callers should fall through to handleErrorResponse
+   *   with the original error.
+   */
+  private async retryPatchWithMapLookup(
+    readMap: () => Promise<FileContentsResult>,
+    patchPath: string,
+    content: string,
+    options: PatchOptions,
+    label: string,
+  ): Promise<string | false> {
+    try {
+      const mapResult = await readMap();
+      if (
+        typeof mapResult === "string" ||
+        !("headings" in mapResult) ||
+        !Array.isArray(mapResult.headings)
+      ) return false;
+
+      const match = findClosestHeading(options.target.trim(), mapResult.headings, options.targetDelimiter ?? "::");
+      if (!match) return false;
+
+      log("debug", `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
+      const retryOptions = { ...options, target: match };
+      const retryHeaders = this.buildPatchHeaders(retryOptions);
+      // The corrected heading was confirmed present in the document map;
+      // strip Create-Target-If-Missing so the retry doesn't create a stale heading.
+      // TypeScript Record allows delete — this is safe
+      delete retryHeaders["Create-Target-If-Missing"];
+      const retryRes = await this.request("PATCH", patchPath, {
+        body: content,
+        headers: retryHeaders,
+      });
+
+      if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
+        return match;
+      }
+      log("warn", `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
+      return false;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      log("debug", `PATCH retry lookup failed for ${label}: ${message}`);
+      return false;
+    }
   }
 
   /** Deletes a vault file to Obsidian trash (idempotent, 404 is silently ignored). */
@@ -830,10 +1014,29 @@ export class ObsidianClient {
         headers,
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      // Note: if the user switches the active file in Obsidian between the
+      // initial PATCH and the retry, getActiveFile("map") reads the new file's
+      // headings. findClosestHeading will typically find no match and return false,
+      // falling through to the original error. A false-positive match is unlikely.
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getActiveFile("map"),
+          "/active/",
+          content, options, "(active file)",
+        );
+        if (corrected !== false) {
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (active file)`);
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
     });
   }
 
@@ -992,15 +1195,31 @@ export class ObsidianClient {
   /** Patches the current periodic note at a specific target (not idempotent). Serialized per period type. */
   async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const res = await this.request("PATCH", `/periodic/${encodeURIComponent(period)}/`, {
+      const periodicPath = `/periodic/${encodeURIComponent(period)}/`;
+      const res = await this.request("PATCH", periodicPath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getPeriodicNote(period, "map"),
+          periodicPath,
+          content, options, `(periodic: ${period})`,
+        );
+        if (corrected !== false) {
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period})`);
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
     });
   }
 
@@ -1082,16 +1301,31 @@ export class ObsidianClient {
     // Use the same lock key as current-period mutations — the API may resolve
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const path = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("PATCH", path, {
+      const datePath = this.periodicDatePath(period, year, month, day);
+      const res = await this.request("PATCH", datePath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      if (res.statusCode === 204 || res.statusCode === 200) {
+        this.cacheRef?.invalidateAll();
+        return;
       }
-      this.cacheRef?.invalidateAll();
+
+      if (res.statusCode === 400 && options.targetType === "heading" && isHeadingNotFoundError(res.body)) {
+        const corrected = await this.retryPatchWithMapLookup(
+          () => this.getPeriodicNoteForDate(period, year, month, day, "map"),
+          datePath,
+          content, options, `(periodic: ${period} date)`,
+        );
+        if (corrected !== false) {
+          log("debug", `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period} date)`);
+          this.cacheRef?.invalidateAll();
+          return;
+        }
+      }
+
+      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
     });
   }
 

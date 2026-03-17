@@ -1,5 +1,11 @@
 import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
+import { ObsidianConnectionError, ObsidianAuthError } from "./errors.js";
 import { log } from "./config.js";
+
+/** Sentinel error for generation-mismatch discards — retried immediately without backoff. */
+class CacheBuildDiscardedError extends Error {
+  constructor(message: string) { super(message); this.name = "CacheBuildDiscardedError"; }
+}
 
 // --- Types ---
 
@@ -193,6 +199,13 @@ function resolveRelativePath(target: string, currentDir: string): string {
  * Provides backlink resolution, orphan detection, and connectivity analysis.
  */
 export class VaultCache implements VaultCacheInterface {
+  /** Maximum number of retry attempts for cache initialization. */
+  private static readonly INIT_MAX_ATTEMPTS = 3;
+  /** Backoff delay (ms) after a generation-mismatch discard. */
+  private static readonly DISCARD_BACKOFF_MS = 100;
+  /** Base backoff delay (ms) for network/API errors, multiplied by (attempt + 1). */
+  private static readonly NETWORK_BACKOFF_BASE_MS = 500;
+
   private readonly notes = new Map<string, CachedNote>();
   private readonly client: ObsidianClient;
   private readonly cacheTtl: number;
@@ -201,6 +214,10 @@ export class VaultCache implements VaultCacheInterface {
   private refreshTimer: ReturnType<typeof setInterval> | undefined;
   private isInitialized = false;
   private isRefreshing = false;
+  /** Set to true during initialize() to signal that an initial build is in flight. */
+  private isBuilding = false;
+  /** In-flight initialize() promise — concurrent callers await the same build. */
+  private buildPromise: Promise<void> | undefined;
   /** Generation counter: incremented on invalidateAll(), checked after builds to discard stale results. */
   private generation = 0;
   /** Maps normalised short filename (e.g. "notename.md") → Set of full vault paths. */
@@ -218,75 +235,157 @@ export class VaultCache implements VaultCacheInterface {
    * Performs a full cache build by fetching all markdown files from the vault.
    * Builds into a fresh snapshot then swaps atomically. Discards results if
    * invalidateAll() was called during the build (generation mismatch).
-   * @throws {Error} On network failure or when the vault listing cannot be retrieved.
+   * @throws {ObsidianConnectionError} On network failure or after exhausting retry attempts.
+   * @throws {ObsidianAuthError} On authentication failure (401/403, not retried).
+   *   Callers must catch this — refresh() already does; direct callers should handle gracefully.
    */
   async initialize(): Promise<void> {
-    const startTime = Date.now();
-    const buildGeneration = this.generation;
+    // Join any in-flight build. Loop handles the case where a build finishes
+    // but cache was immediately invalidated, and another caller starts a new build.
+    while (this.buildPromise) {
+      try { await this.buildPromise; } catch { /* primary caller handles errors */ }
+      if (this.isInitialized) return;
+    }
+    if (this.isInitialized) return;
+    // Both assignments are synchronous — no microtask gap between them.
+    // waitForInitialization can safely rely on buildPromise being set when isBuilding is true.
+    this.isBuilding = true;
+    this.buildPromise = this.doInitialize();
     try {
-      const { files } = await this.client.listFilesInVault();
-      const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+      await this.buildPromise;
+    } finally {
+      // Order is load-bearing: clear buildPromise first so concurrent
+      // waitForInitialization callers see buildPromise=undefined before
+      // isBuilding=false, preventing them from entering the race block
+      // with a stale promise.
+      this.buildPromise = undefined;
+      this.isBuilding = false;
+    }
+  }
 
-      log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
-
-      // Build into a temporary map so stale entries from previous runs don't persist
-      const freshNotes = new Map<string, CachedNote>();
-      const batchSize = 20;
-      for (let i = 0; i < mdFiles.length; i += batchSize) {
-        const batch = mdFiles.slice(i, i + batchSize);
-        const results = await Promise.allSettled(
-          batch.map(async (filePath) => {
-            const result = await this.client.getFileContents(filePath, "json");
-            if (typeof result === "string" || !("content" in result)) {
-              throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
-            }
-            const noteJson = result;
-            const links = parseLinks(noteJson.content, filePath);
-            const cached: CachedNote = {
-              path: filePath,
-              content: noteJson.content,
-              frontmatter: noteJson.frontmatter,
-              tags: noteJson.tags,
-              stat: noteJson.stat,
-              links,
-              cachedAt: Date.now(),
-            };
-            freshNotes.set(filePath, cached);
-          }),
-        );
-
-        for (const result of results) {
-          if (result.status === "rejected") {
-            log("debug", `Cache: failed to fetch a file: ${String(result.reason)}`);
-          }
+  /**
+   * Internal build logic with retry on generation mismatch.
+   * Retries up to 3 times within the same promise if invalidateAll() discards a build,
+   * so concurrent callers awaiting buildPromise see the final result.
+   * Callers share buildPromise; see initialize() finally block for ordering invariants.
+   */
+  private async doInitialize(): Promise<void> {
+    let lastError: unknown = new Error("No build attempt was made");
+    let firstRealError: unknown; // First non-discard error for root cause diagnostics
+    let hadNonDiscardError = false;
+    for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {
+      try {
+        await this.executeBuildAttempt(attempt, VaultCache.INIT_MAX_ATTEMPTS);
+        return;
+      } catch (err: unknown) {
+        const result = this.handleBuildAttemptError(err, attempt);
+        lastError = err;
+        if (!result.isDiscard) { hadNonDiscardError = true; }
+        if (firstRealError === undefined && !result.isDiscard) { firstRealError = err; }
+        if (result.backoffMs > 0) {
+          await new Promise<void>((resolve) => { setTimeout(resolve, result.backoffMs); });
         }
       }
+    }
+    this.throwExhaustedError(hadNonDiscardError, firstRealError ?? lastError);
+  }
 
-      // Discard if invalidateAll() was called while we were building
-      if (this.generation !== buildGeneration) {
-        log("debug", "Cache build discarded: vault was invalidated during build");
-        return;
-      }
-      // Swap atomically: clear old entries and copy fresh ones in
-      this.notes.clear();
-      for (const [key, value] of freshNotes) {
-        this.notes.set(key, value);
-      }
-      this.rebuildIndex();
-      this.recalcLinkCount();
-      const elapsed = Date.now() - startTime;
-      if (this.notes.size > 0 || mdFiles.length === 0) {
-        // Mark initialized if we got some notes, or if the vault is genuinely empty
-        this.isInitialized = true;
-        log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
-      } else {
-        log("warn", `Cache: all ${String(mdFiles.length)} file fetches failed (${String(elapsed)}ms). Will retry on next refresh.`);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      log("warn", `Cache initialization failed: ${message}`);
+  /** Classifies a build attempt error and logs it. Rethrows non-transient errors. */
+  private handleBuildAttemptError(err: unknown, attempt: number): { isDiscard: boolean; backoffMs: number } {
+    if (err instanceof ObsidianAuthError) {
+      log("warn", `Cache initialization failed (non-transient): ${err.message}`);
       throw err;
     }
+    // ObsidianApiError (including 4xx) is retried — max 3 attempts limits exposure
+    const isDiscard = err instanceof CacheBuildDiscardedError;
+    const msg = err instanceof Error ? err.message : String(err);
+    log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
+    // No backoff on final attempt; shorter for discards, longer for network errors
+    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1) return { isDiscard, backoffMs: 0 };
+    const backoffMs = isDiscard ? VaultCache.DISCARD_BACKOFF_MS : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
+    return { isDiscard, backoffMs };
+  }
+
+  /** Throws the appropriate error after exhausting all retry attempts. */
+  private throwExhaustedError(hadNonDiscardError: boolean, lastError: unknown): never {
+    const msg = hadNonDiscardError
+      ? `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`
+      : `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`;
+    // Don't expose internal CacheBuildDiscardedError as cause — it's a sentinel
+    let cause: Error | undefined;
+    if (lastError instanceof Error && !(lastError instanceof CacheBuildDiscardedError)) {
+      cause = lastError;
+    }
+    throw new ObsidianConnectionError(msg, { cause });
+  }
+
+  /** Executes a single build attempt. Throws on generation mismatch or failure. */
+  private async executeBuildAttempt(attempt: number, maxAttempts: number): Promise<void> {
+    const startTime = Date.now();
+    const buildGeneration = this.generation;
+    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes(buildGeneration);
+
+    if (this.generation !== buildGeneration) {
+      throw new CacheBuildDiscardedError(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
+    }
+
+    const elapsed = Date.now() - startTime;
+    // Check before swapping to preserve any existing cache state during retries
+    if (freshNotes.size === 0 && totalFiles > 0) {
+      throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
+    }
+    this.applySnapshot(freshNotes);
+    this.isInitialized = true;
+    log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+  }
+
+  /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
+  private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
+    const { files } = await this.client.listFilesInVault();
+    const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+    log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
+
+    const freshNotes = new Map<string, CachedNote>();
+    const batchSize = 20;
+    for (let i = 0; i < mdFiles.length; i += batchSize) {
+      // Abort early if vault was invalidated during batch processing
+      if (this.generation !== buildGeneration) break;
+      const batch = mdFiles.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (filePath) => {
+          const result = await this.client.getFileContents(filePath, "json");
+          if (typeof result === "string" || !("content" in result)) {
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
+          }
+          const links = parseLinks(result.content, filePath);
+          freshNotes.set(filePath, {
+            path: filePath,
+            content: result.content,
+            frontmatter: result.frontmatter,
+            tags: result.tags,
+            stat: result.stat,
+            links,
+            cachedAt: Date.now(),
+          });
+        }),
+      );
+      for (const r of results) {
+        if (r.status === "rejected") {
+          log("debug", `Cache: failed to fetch a file: ${String(r.reason)}`);
+        }
+      }
+    }
+    return { notes: freshNotes, totalFiles: mdFiles.length };
+  }
+
+  /** Atomically swaps the cache contents with a fresh snapshot. */
+  private applySnapshot(freshNotes: Map<string, CachedNote>): void {
+    this.notes.clear();
+    for (const [key, value] of freshNotes) {
+      this.notes.set(key, value);
+    }
+    this.rebuildIndex();
+    this.recalcLinkCount();
   }
 
   /**
@@ -359,7 +458,7 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new Error(`Expected NoteJson for ${filePath}, got unexpected format`);
+            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
           }
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {
@@ -440,6 +539,69 @@ export class VaultCache implements VaultCacheInterface {
   /** Returns whether the cache has completed its initial build. */
   getIsInitialized(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Waits for the cache to finish initializing, with a timeout.
+   * Returns true if initialized within the timeout, false otherwise.
+   * If already initialized, resolves immediately. If no build is in
+   * progress (isBuilding and isRefreshing are both false), returns
+   * false immediately — this covers the case where invalidateAll()
+   * cleared the cache without triggering a rebuild. The next scheduled
+   * auto-refresh (startAutoRefresh timer) will rebuild the cache;
+   * callers should not block indefinitely waiting for that.
+   *
+   * Note: in a narrow sub-millisecond window after a build completes but
+   * before a new refresh/rebuild sets isRefreshing/isBuilding, this may
+   * return false even though a rebuild is imminent. Callers getting false
+   * should check getIsInitialized() and retry if needed.
+   * For latency-sensitive paths, a brief retry (e.g. 100ms) can bridge this gap.
+   */
+  async waitForInitialization(timeoutMs: number): Promise<boolean> {
+    if (this.isInitialized) return true;
+    if (!this.isBuilding && !this.isRefreshing) return false;
+    // This guard is NOT redundant with the preceding check. That check exits when
+    // BOTH isBuilding and isRefreshing are false. This guard exits when isRefreshing
+    // is true but no build is pending — a partial incremental refresh that won't set
+    // isInitialized. Without this, the poll loop below would spin for 5s.
+    if (!this.buildPromise && !this.isBuilding) return false;
+
+    const deadline = Date.now() + timeoutMs;
+
+    // If a build promise exists, race it against the timeout for immediate response
+    if (this.buildPromise) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<void>((resolve) => {
+        timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+      });
+      await Promise.race([
+        this.buildPromise.then(() => undefined, (err: unknown) => {
+          log("debug", `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`);
+        }),
+        timeoutPromise,
+      ]);
+      clearTimeout(timeoutId);
+      if (this.isInitialized) return true;
+      // Fall through to polling with remaining budget.
+      // Note: a concurrent invalidateAll() between here and the first poll
+      // iteration may cause the poll to return false immediately. This is
+      // handled by ensureCacheReady's final getIsInitialized() guard.
+    }
+
+    // Fallback: poll for refresh/rebuild completion using remaining time budget.
+    // Common path after a failed build: isBuilding is already false, so the first
+    // iteration's guard exits immediately with false (zero-iteration loop).
+    const pollInterval = 200;
+    while (Date.now() < deadline) {
+      // Check state before sleeping to avoid unnecessary 200ms delay.
+      // A new initialize() from refresh() will set isBuilding=true, keeping us polling.
+      if (this.isInitialized) return true;
+      if (!this.isBuilding && !this.isRefreshing) return false;
+      const remaining = deadline - Date.now();
+      const wait = Math.min(pollInterval, Math.max(remaining, 0));
+      await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
+    }
+    return false;
   }
 
   // --- Invalidation ---

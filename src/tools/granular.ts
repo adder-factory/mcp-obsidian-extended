@@ -23,6 +23,7 @@ import {
   handleRecentChanges,
   handleRecentPeriodicNotes,
   batchGetFiles,
+  ensureCacheReady,
 } from "./shared.js";
 
 // --- Registration sub-functions (split to keep complexity below 15) ---
@@ -875,8 +876,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_backlinks] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_backlinks] Cache is still building. Try again shortly.");
+          const notReady = await ensureCacheReady({ cache, tool: "get_backlinks", enableCache: config.enableCache });
+          if (notReady) return notReady;
           return jsonResult(cache.getBacklinks(filePath));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path: filePath }));
@@ -896,8 +897,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ limit }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_vault_structure] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_vault_structure] Cache is still building. Try again shortly.");
+          const notReady = await ensureCacheReady({ cache, tool: "get_vault_structure", enableCache: config.enableCache });
+          if (notReady) return notReady;
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
@@ -917,8 +918,8 @@ function registerSystemAndAnalysisTools(
       },
       async ({ filePath }) => {
         try {
-          if (!config.enableCache) return errorResult("[get_note_connections] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-          if (!cache.getIsInitialized()) return errorResult("[get_note_connections] Cache is still building. Try again shortly.");
+          const notReady = await ensureCacheReady({ cache, tool: "get_note_connections", enableCache: config.enableCache });
+          if (notReady) return notReady;
           return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path: filePath }));

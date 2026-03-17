@@ -41,6 +41,7 @@ import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import { ObsidianApiError, ObsidianConnectionError, ObsidianAuthError } from "../errors.js";
+import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 // ---------------------------------------------------------------------------
 // Suppress stderr
@@ -144,9 +145,10 @@ function makeMockClient(): ObsidianClient {
 }
 
 /** Creates a mock VaultCache with configurable initialization state. */
-function makeMockCache(initialized = true): VaultCache {
+function makeMockCache(initialized = true, willInitialize = initialized): VaultCache {
   return {
     getIsInitialized: vi.fn().mockReturnValue(initialized),
+    waitForInitialization: vi.fn().mockResolvedValue(willInitialize),
     getAllNotes: vi.fn().mockReturnValue([]),
     getFileList: vi.fn().mockReturnValue([]),
     noteCount: 0,
@@ -1191,7 +1193,32 @@ describe("granular tools — registration and basic behavior", () => {
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("still building");
+      expect(getText(result)).toContain("Cache not available");
+    });
+
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      // getIsInitialized returns false, but waitForInitialization returns true (simulates becoming ready)
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("ref.md");
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+    });
+
+    it("returns error when cache build fails", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false, false);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_backlinks").handler({ filePath: "x.md" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Cache not available");
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
   });
 
@@ -1214,6 +1241,21 @@ describe("granular tools — registration and basic behavior", () => {
       expect(result.isError).toBeFalsy();
       const parsed: unknown = JSON.parse(getText(result));
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
+    });
+
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getFileList).mockReturnValue([]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      expect(result.isError).toBeFalsy();
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
     it("returns errorResult when cache disabled", async () => {
@@ -1240,6 +1282,19 @@ describe("granular tools — registration and basic behavior", () => {
   // get_note_connections (cache-dependent)
   // -------------------------------------------------------------------------
   describe("get_note_connections", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([]);
+      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
+      expect(result.isError).toBeFalsy();
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+    });
+
     it("returns backlinks and forward links from cache", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
@@ -2130,11 +2185,37 @@ describe("consolidated tools — registration and behavior", () => {
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("still building");
+      expect(getText(result)).toContain("Cache not available");
+    });
+
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("ref.md");
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
   });
 
   describe("vault_analysis — connections", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getBacklinks).mockReturnValue([]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "connections", path: "x.md", limit: 10 });
+      expect(result.isError).toBeFalsy();
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+    });
+
     it("returns backlinks and forward links", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
@@ -2158,6 +2239,21 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("vault_analysis — structure", () => {
+    it("succeeds when cache becomes ready within the wait window", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getFileList).mockReturnValue([]);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      expect(result.isError).toBeFalsy();
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+    });
+
     it("returns vault structure stats", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
@@ -2171,6 +2267,16 @@ describe("consolidated tools — registration and behavior", () => {
       expect(result.isError).toBeFalsy();
       const parsed: unknown = JSON.parse(getText(result));
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
+    });
+
+    it("returns error when cache not initialized and wait times out", async () => {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false, false);
+      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
+      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Cache not available");
     });
 
     it("returns errorResult when cache not initialized", async () => {

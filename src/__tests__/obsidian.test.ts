@@ -509,6 +509,16 @@ describe("ObsidianClient — setCache", () => {
 // ---------------------------------------------------------------------------
 type RequestResult = { statusCode: number; headers: Record<string, string>; body: string };
 
+/** Extracts HTTP headers from a mock request call's third argument. */
+function getCallHeaders(call: unknown[] | undefined): Record<string, string> {
+  if (!call) return {};
+  const opts = call[2];
+  if (opts !== null && typeof opts === "object" && "headers" in opts) {
+    return (opts as { headers: Record<string, string> }).headers;
+  }
+  return {};
+}
+
 function createMockedClient(
   overrides: Partial<Config> = {},
 ): { client: ObsidianClient; mockRequest: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<RequestResult>>> } {
@@ -813,6 +823,209 @@ describe("ObsidianClient — patchContent", () => {
     });
     expect(mockCache.invalidate).toHaveBeenCalledWith("note.md");
   });
+
+  it("retries with corrected heading on 400 for heading target", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Introduction", "Tasks List", "Conclusion"], blocks: [], frontmatterFields: [] };
+    // First PATCH returns 400 (heading not found), then GET returns doc map, then retry PATCH returns 204
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "new text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks list",  // case mismatch — should match "Tasks List"
+    });
+
+    // Verify 3 requests: original PATCH, GET for map, retry PATCH
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    // Step 1: original PATCH
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/vault/note.md");
+    // Step 2: GET for document map
+    expect(mockRequest.mock.calls[1]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[1]?.[1]).toBe("/vault/note.md");
+    // Step 3: retry PATCH with corrected heading
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/vault/note.md");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks List");
+  });
+
+  it("throws original 400 error when retry finds no matching heading", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Introduction", "Conclusion"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    const err = await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Nonexistent Heading",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ObsidianApiError);
+    expect((err as ObsidianApiError).statusCode).toBe(400);
+    expect((err as ObsidianApiError).message).toContain("heading not found");
+    expect(mockRequest).toHaveBeenCalledTimes(2); // original PATCH + GET for document map
+  });
+
+  it("surfaces original error when retry PATCH fails with 500", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({ statusCode: 500, headers: {}, body: '{"message":"internal error"}' });
+
+    const err = await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ObsidianApiError);
+    expect((err as { statusCode: number }).statusCode).toBe(400);
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    // Cache should NOT be invalidated since retry failed
+    expect(mockCache.invalidate).not.toHaveBeenCalled();
+  });
+
+  it("retries with progressive suffix match when parent heading was renamed", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["NewParent::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Parent::Tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("NewParent::Tasks");
+  });
+
+  it("retries via leaf match when flat heading gains a parent", async () => {
+    const { client, mockRequest } = createMockedClient();
+    // Target "Tasks" (flat) was restructured to "New Section::Tasks" (hierarchical)
+    // Stage 4 leaf match should find it
+    const docMap = { headings: ["New Section::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "Tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("New Section::Tasks");
+  });
+
+  it("does not retry when leaf match is ambiguous", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Project A::Tasks", "Project B::Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Only 2 requests: original PATCH + GET for map (no retry PATCH due to ambiguity)
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns error when all matching stages are ambiguous", async () => {
+    const { client, mockRequest } = createMockedClient();
+    // "Tasks" and "TASKS" both match case-insensitively (stage 2 ambiguous)
+    // Both have same leaf (stage 4 ambiguous too) — no unique match possible
+    const docMap = { headings: ["Tasks", "TASKS"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // 2 requests: PATCH + GET map (no retry due to ambiguity)
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry on 400 for non-heading targets", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "replace",
+        targetType: "block",
+        target: "block-id",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Should only have made 1 request (no retry)
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry when 400 body is not a heading-not-found error", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+
+    // Only 1 request — no retry because body doesn't match heading-not-found pattern
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates cache after successful retry", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    expect(mockCache.invalidate).toHaveBeenCalledWith("note.md");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -983,6 +1196,37 @@ describe("ObsidianClient — active file", () => {
       target: "Test",
     });
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/active/", expect.any(Object));
+  });
+
+  it("patchActiveFile retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["My Heading"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchActiveFile("text", { operation: "append", targetType: "heading", target: "my heading" });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("My Heading");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchActiveFile throws original error when retry finds no match", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchActiveFile("text", { operation: "append", targetType: "heading", target: "Missing" }),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("deleteActiveFile deletes", async () => {
@@ -1252,6 +1496,39 @@ describe("ObsidianClient — periodic notes (current)", () => {
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/", expect.any(Object));
   });
 
+  it("patchPeriodicNote retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Summary"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNote("monthly", "text", {
+      operation: "append", targetType: "heading", target: "summary",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("Summary");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchPeriodicNote throws original error when retry finds no match", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchPeriodicNote("daily", "text", { operation: "append", targetType: "heading", target: "Missing" }),
+    ).rejects.toThrow(ObsidianApiError);
+  });
+
   it("deletePeriodicNote deletes", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());
@@ -1387,6 +1664,39 @@ describe("ObsidianClient — periodic notes (by date)", () => {
       target: "status",
     });
     expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/2026/06/15/", expect.any(Object));
+  });
+
+  it("patchPeriodicNoteForDate retries with corrected heading on 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", {
+      operation: "append", targetType: "heading", target: "tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryCall = mockRequest.mock.calls[2];
+    const retryHeaders = getCallHeaders(retryCall);
+    expect(retryHeaders["Target"]).toBe("Tasks");
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchPeriodicNoteForDate throws original error when retry finds no match", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+
+    await expect(
+      client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", { operation: "append", targetType: "heading", target: "Missing" }),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("deletePeriodicNoteForDate deletes", async () => {

@@ -862,3 +862,38 @@ describe("VaultCache — refresh", () => {
     expect(cache.noteCount).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// VaultCache — waitForInitialization
+// ---------------------------------------------------------------------------
+describe("VaultCache — waitForInitialization", () => {
+  it("returns true immediately when already initialized", async () => {
+    const client = createMockClient();
+    const cache = new VaultCache(client, 600000);
+    // Force isInitialized via a successful build
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({ files: [] });
+    await cache.initialize();
+    const result = await cache.waitForInitialization(100);
+    expect(result).toBe(true);
+  });
+
+  it("returns false immediately when no build in progress", async () => {
+    const client = createMockClient();
+    const cache = new VaultCache(client, 600000);
+    // Never called initialize — isBuilding and isRefreshing are false
+    const result = await cache.waitForInitialization(100);
+    expect(result).toBe(false);
+  });
+
+  it("waits for in-flight build to complete", async () => {
+    const client = createMockClient();
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({ files: [] });
+    const cache = new VaultCache(client, 600000);
+    // Start initialization but don't await it
+    const initPromise = cache.initialize();
+    // waitForInitialization should resolve once the build completes
+    const result = await cache.waitForInitialization(5000);
+    await initPromise;
+    expect(result).toBe(true);
+  });
+});

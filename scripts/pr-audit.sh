@@ -158,25 +158,46 @@ while True:
     if result.returncode != 0:
         break
 
-    data = json.loads(result.stdout)
+    try:
+        data = json.loads(result.stdout)
+    except ValueError:
+        result = subprocess.CompletedProcess([], 1)
+        break
     repo = data.get('data', {}).get('repository')
     if not repo:
+        # GraphQL-level error (auth, missing repo, rate limit) — treat as failure
+        result = subprocess.CompletedProcess([], 1)
         break
 
-    rt = repo['pullRequest']['reviewThreads']
-    all_threads.extend(rt['nodes'])
-
-    if not rt['pageInfo']['hasNextPage']:
+    pr_data = repo.get('pullRequest')
+    if not pr_data:
+        result = subprocess.CompletedProcess([], 1)
         break
-    cursor = rt['pageInfo']['endCursor']
+    rt = pr_data.get('reviewThreads')
+    if rt is None:
+        result = subprocess.CompletedProcess([], 1)
+        break
+    all_threads.extend(rt.get('nodes', []))
 
-json.dump(all_threads, open('$THREADS_FILE', 'w'))
+    page_info = rt.get('pageInfo', {})
+    if not page_info.get('hasNextPage'):
+        break
+    cursor = page_info.get('endCursor')
+    if not cursor:
+        break  # Prevent infinite loop if endCursor is absent
+
+with open('$THREADS_FILE', 'w') as f:
+    json.dump(all_threads, f)
+# Exit non-zero if any API call failed (partial results)
+if result.returncode != 0:
+    sys.exit(1)
 " 2>/dev/null
+FETCH_EXIT=$?
 
 ALL_THREADS=$(cat "$THREADS_FILE" 2>/dev/null || echo "[]")
-# Fail closed: if thread fetch returned empty/invalid, block merge
-thread_file_size=$(wc -c < "$THREADS_FILE" 2>/dev/null || echo "0")
-if [ "$thread_file_size" -lt 3 ]; then
+# Fail closed: block merge if fetch failed (partial data) or JSON is invalid
+# python3 must be available; if missing, the non-zero exit triggers api_failed (correct).
+if [ "$FETCH_EXIT" -ne 0 ] || ! python3 -c "import json,sys; v=json.load(open(sys.argv[1])); sys.exit(0 if isinstance(v, list) else 1)" "$THREADS_FILE" 2>/dev/null; then
   api_failed "review threads (GraphQL)"
 fi
 
@@ -924,7 +945,8 @@ for t in threads:
             'outdated': t.get('isOutdated', False),
             'reply_count': t.get('comments',{}).get('totalCount',1) - 1,
         })
-json.dump(details, open('$DETAILS_FILE', 'w'))
+with open('$DETAILS_FILE', 'w') as f:
+    json.dump(details, f)
 " 2>/dev/null || echo "[]" > "$DETAILS_FILE"
 
   python3 -c "

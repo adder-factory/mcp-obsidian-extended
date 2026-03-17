@@ -23,6 +23,7 @@ import {
   handleRecentChanges,
   handleRecentPeriodicNotes,
   batchGetFiles,
+  ensureCacheReady,
 } from "./shared.js";
 
 // --- Preset action restrictions for consolidated mode ---
@@ -303,22 +304,27 @@ async function handleVaultAnalysisAction(
   path: string | undefined,
   limit: number,
 ): Promise<ToolResult> {
-  if (!config.enableCache) {
-    return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
-  }
   switch (action) {
-    case "backlinks":
+    case "backlinks": {
       if (!path) return errorResult("[vault_analysis] path is required for backlinks");
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
+      if (notReady) return notReady;
       return jsonResult(cache.getBacklinks(path));
-    case "connections":
+    }
+    case "connections": {
       if (!path) return errorResult("[vault_analysis] path is required for connections");
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
+      if (notReady) return notReady;
       return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
-    case "structure":
-      if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache is still building. Try again shortly.");
+    }
+    case "structure": {
+      const notReady = await ensureCacheReady({ cache, tool: "vault_analysis", enableCache: config.enableCache });
+      if (notReady) return notReady;
       return buildVaultStructure(cache, limit);
+    }
     case "refresh":
+      // refresh bypasses ensureCacheReady since it doesn't need the cache to be initialized
+      if (!config.enableCache) return errorResult("[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
       await cache.refresh();
       if (!cache.getIsInitialized()) return errorResult("[vault_analysis] Cache refresh failed — Obsidian may be unreachable");
       return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);

@@ -50,6 +50,7 @@ interface ConfigFileShape {
   readonly debug?: boolean;
 }
 
+/** Default configuration values applied when no config file or env var is provided. */
 export const DEFAULTS: Omit<Config, "apiKey" | "configFilePath"> = {
   host: "127.0.0.1",
   port: 27124,

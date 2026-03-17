@@ -342,13 +342,13 @@ export class VaultCache implements VaultCacheInterface {
   /** Normalizes a path and returns `undefined` if it contains unsafe segments (`..` or absolute). */
   private static normalizePath(raw: string): string | undefined {
     let normalized = raw.replaceAll("\\", "/");
+    // Check for absolute paths BEFORE stripping slashes — "/" would become "" otherwise
+    if (normalized.startsWith("/")) return undefined;
     while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
-    if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-      return undefined;
-    }
-    // Collapse single-dot and empty segments (e.g. "docs/./sub" → "docs/sub", "docs//sub" → "docs/sub")
-    normalized = normalized.split("/").filter((s) => s !== "." && s !== "").join("/");
-    return normalized;
+    // Collapse single-dot and empty segments, then check for .. traversal
+    const segments = normalized.split("/").filter((s) => s !== "." && s !== "");
+    if (segments.includes("..")) return undefined;
+    return segments.join("/");
   }
 
   /**
@@ -406,7 +406,7 @@ export class VaultCache implements VaultCacheInterface {
       if (file.endsWith("/")) {
         dirEntries.push(fullPath);
       } else {
-        this.collectFileEntry(fullPath, allFiles);
+        VaultCache.collectFileEntry(fullPath, allFiles);
       }
     }
     for (const dir of dirEntries) {
@@ -429,7 +429,7 @@ export class VaultCache implements VaultCacheInterface {
    * @param file - Raw file entry from the Obsidian REST API listing.
    * @param allFiles - Accumulator array; safe `.md` paths are appended in-place.
    */
-  private collectFileEntry(file: string, allFiles: string[]): void {
+  private static collectFileEntry(file: string, allFiles: string[]): void {
     if (!file.toLowerCase().endsWith(".md")) return;
     const safe = VaultCache.normalizePath(file);
     if (safe === undefined) {
@@ -453,7 +453,7 @@ export class VaultCache implements VaultCacheInterface {
       if (err instanceof ObsidianAuthError) throw err;
       if (err instanceof ObsidianConnectionError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      log("debug", `Cache: skipping inaccessible directory "${dirEntry}": ${msg}`);
+      log("debug", `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`);
     }
   }
 

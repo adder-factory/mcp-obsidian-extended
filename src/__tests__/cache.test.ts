@@ -364,8 +364,10 @@ describe("VaultCache — initialize", () => {
     await cache.initialize();
     // Should complete without hanging — depth limit stops recursion
     expect(cache.noteCount).toBe(1);
-    // listFilesInDir should have been called but limited by depth (max 20 + root)
-    expect(vi.mocked(client.listFilesInDir).mock.calls.length).toBeLessThanOrEqual(22);
+    // Root uses listFilesInVault (depth 0), then listFilesInDir is called
+    // once per depth level 1–20 for "a/" and its "deeper/" children.
+    // Depth 21 exceeds MAX_TRAVERSAL_DEPTH=20, so recursion stops.
+    expect(vi.mocked(client.listFilesInDir).mock.calls.length).toBe(20);
   });
 
   it("rethrows ObsidianAuthError from subdirectory traversal", async () => {

@@ -346,8 +346,8 @@ export class VaultCache implements VaultCacheInterface {
     if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
       return undefined;
     }
-    // Collapse single-dot segments (e.g. "docs/./sub" → "docs/sub")
-    normalized = normalized.split("/").filter((s) => s !== ".").join("/");
+    // Collapse single-dot and empty segments (e.g. "docs/./sub" → "docs/sub", "docs//sub" → "docs/sub")
+    normalized = normalized.split("/").filter((s) => s !== "." && s !== "").join("/");
     return normalized;
   }
 

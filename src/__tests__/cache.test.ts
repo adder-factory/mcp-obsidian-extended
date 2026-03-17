@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseLinks, VaultCache } from "../cache.js";
 // CachedNote and ParsedLink types used only indirectly via mock helpers
 import type { ObsidianClient, NoteJson } from "../obsidian.js";
+import { ObsidianAuthError } from "../errors.js";
 
 // Suppress stderr output
 beforeEach(() => {
@@ -345,6 +346,20 @@ describe("VaultCache — initialize", () => {
     await cache.initialize();
     expect(cache.noteCount).toBe(1);
     expect(cache.getNote("note.md")).toBeDefined();
+  });
+
+  it("rethrows ObsidianAuthError from subdirectory traversal", async () => {
+    const client = createMockClient(
+      ["secret/", "note.md"],
+      {
+        "note.md": makeNoteJson("note.md", "content"),
+      },
+    );
+    // listFilesInDir throws ObsidianAuthError for "secret"
+    vi.mocked(client.listFilesInDir).mockRejectedValue(new ObsidianAuthError());
+
+    const cache = new VaultCache(client, 600000);
+    await expect(cache.initialize()).rejects.toThrow(ObsidianAuthError);
   });
 });
 

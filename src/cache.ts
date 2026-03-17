@@ -381,13 +381,13 @@ export class VaultCache implements VaultCacheInterface {
 
     const { files } = await this.listDirectory(normalized);
 
+    const dirEntries: string[] = [];
     for (const file of files) {
       this.collectFileEntry(file, allFiles);
+      if (file.endsWith("/")) dirEntries.push(file);
     }
-    // Process subdirectories after collecting files (separate pass avoids nesting)
-    for (const file of files) {
-      if (!file.endsWith("/")) continue;
-      await this.traverseSubdirectory(file, allFiles, visited);
+    for (const dir of dirEntries) {
+      await this.traverseSubdirectory(dir, allFiles, visited);
     }
   }
 

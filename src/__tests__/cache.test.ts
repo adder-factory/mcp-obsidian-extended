@@ -361,6 +361,29 @@ describe("VaultCache — initialize", () => {
     const cache = new VaultCache(client, 600000);
     await expect(cache.initialize()).rejects.toThrow(ObsidianAuthError);
   });
+
+  it("skips directory entries with path traversal segments", async () => {
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["../escape/", "note.md"] })),
+      listFilesInDir: vi.fn(),
+      getFileContents: vi.fn(async () => makeNoteJson("note.md", "content")),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(client.listFilesInDir).not.toHaveBeenCalled();
+  });
+
+  it("skips file entries with path traversal segments", async () => {
+    const client = createMockClient(["../escape.md", "note.md"], {
+      "note.md": makeNoteJson("note.md", "content"),
+    });
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("../escape.md")).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

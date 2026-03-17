@@ -339,10 +339,42 @@ export class VaultCache implements VaultCacheInterface {
     log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
   }
 
+  /**
+   * Recursively discovers all `.md` files in the vault by traversing directories.
+   * The Obsidian REST API only returns immediate children per listing call,
+   * so this method recurses into entries ending with `/` (directories).
+   * Individual `listFilesInDir` failures are caught and logged — inaccessible
+   * directories are skipped without aborting the traversal.
+   */
+  private async collectAllMarkdownFiles(): Promise<string[]> {
+    const allFiles: string[] = [];
+
+    const traverse = async (dirPath: string): Promise<void> => {
+      const { files } = dirPath === ""
+        ? await this.client.listFilesInVault()
+        : await this.client.listFilesInDir(dirPath);
+
+      for (const file of files) {
+        if (file.toLowerCase().endsWith(".md")) {
+          allFiles.push(file);
+        } else if (file.endsWith("/")) {
+          try {
+            await traverse(file.slice(0, -1));
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log("debug", `Cache: skipping inaccessible directory "${file}": ${msg}`);
+          }
+        }
+      }
+    };
+
+    await traverse("");
+    return allFiles;
+  }
+
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
   private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
-    const { files } = await this.client.listFilesInVault();
-    const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+    const mdFiles = await this.collectAllMarkdownFiles();
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
     const freshNotes = new Map<string, CachedNote>();
@@ -410,8 +442,8 @@ export class VaultCache implements VaultCacheInterface {
         return;
       }
 
-      const { files } = await this.client.listFilesInVault();
-      const mdFiles = new Set(files.filter((f) => f.toLowerCase().endsWith(".md")));
+      const allMdFiles = await this.collectAllMarkdownFiles();
+      const mdFiles = new Set(allMdFiles);
 
       const deleted = this.pruneDeletedNotes(mdFiles);
       const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);

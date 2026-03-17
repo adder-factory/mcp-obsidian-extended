@@ -199,9 +199,17 @@ describe("resolveRelativePath — via parseLinks", () => {
 function createMockClient(
   files: string[] = [],
   noteContents: Record<string, NoteJson> = {},
+  dirContents: Record<string, string[]> = {},
 ): ObsidianClient {
   return {
     listFilesInVault: vi.fn(async () => ({ files })),
+    listFilesInDir: vi.fn(async (dirPath: string) => {
+      const contents = dirContents[dirPath];
+      if (!contents) {
+        throw new Error(`Dir not found: ${dirPath}`);
+      }
+      return { files: contents };
+    }),
     getFileContents: vi.fn(async (path: string) => {
       const note = noteContents[path];
       if (!note) {
@@ -268,6 +276,58 @@ describe("VaultCache — initialize", () => {
     await cache.initialize();
     expect(cache.noteCount).toBe(1); // only good.md
   });
+
+  it("discovers .md files in nested subdirectories", async () => {
+    const client = createMockClient(
+      ["docs/", "root.md"],
+      {
+        "root.md": makeNoteJson("root.md", "root content"),
+        "docs/guide.md": makeNoteJson("docs/guide.md", "guide content"),
+        "docs/sub/deep.md": makeNoteJson("docs/sub/deep.md", "deep content"),
+      },
+      {
+        "docs": ["docs/guide.md", "docs/sub/"],
+        "docs/sub": ["docs/sub/deep.md"],
+      },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(3);
+    expect(cache.getNote("root.md")).toBeDefined();
+    expect(cache.getNote("docs/guide.md")).toBeDefined();
+    expect(cache.getNote("docs/sub/deep.md")).toBeDefined();
+  });
+
+  it("handles empty directories gracefully", async () => {
+    const client = createMockClient(
+      ["empty/", "note.md"],
+      {
+        "note.md": makeNoteJson("note.md", "content"),
+      },
+      { "empty": [] },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("note.md")).toBeDefined();
+  });
+
+  it("handles listFilesInDir failure gracefully", async () => {
+    const client = createMockClient(
+      ["broken/", "note.md"],
+      {
+        "note.md": makeNoteJson("note.md", "content"),
+      },
+      // "broken" not in dirContents — listFilesInDir will throw
+    );
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("note.md")).toBeDefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -276,8 +336,9 @@ describe("VaultCache — initialize", () => {
 describe("VaultCache — getNote", () => {
   it("returns cached note by exact path", async () => {
     const client = createMockClient(
-      ["folder/note.md"],
+      ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "hello") },
+      { "folder": ["folder/note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -301,8 +362,9 @@ describe("VaultCache — getNote", () => {
 
   it("falls back to filename-based lookup", async () => {
     const client = createMockClient(
-      ["deep/folder/MyNote.md"],
+      ["deep/"],
       { "deep/folder/MyNote.md": makeNoteJson("deep/folder/MyNote.md", "content") },
+      { "deep": ["deep/folder/"], "deep/folder": ["deep/folder/MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -315,8 +377,9 @@ describe("VaultCache — getNote", () => {
 
   it("finds note by case-insensitive full path", async () => {
     const client = createMockClient(
-      ["Folder/MyNote.md"],
+      ["Folder/"],
       { "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "content") },
+      { "Folder": ["Folder/MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -328,8 +391,9 @@ describe("VaultCache — getNote", () => {
 
   it("finds note by filename with .md extension appended", async () => {
     const client = createMockClient(
-      ["folder/note.md"],
+      ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
+      { "folder": ["folder/note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -413,8 +477,9 @@ describe("VaultCache — invalidate", () => {
 
   it("updates shortNameIndex after invalidation", async () => {
     const client = createMockClient(
-      ["folder/note.md"],
+      ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
+      { "folder": ["folder/note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -493,11 +558,12 @@ describe("VaultCache — getBacklinks", () => {
   it("resolves wikilinks from subdirectories via short-name index", async () => {
     // Note in subfolder linking to another note in subfolder via wikilink
     const client = createMockClient(
-      ["folder/a.md", "folder/b.md"],
+      ["folder/"],
       {
         "folder/a.md": makeNoteJson("folder/a.md", "Link to [[b]]"),
         "folder/b.md": makeNoteJson("folder/b.md", "Target note"),
       },
+      { "folder": ["folder/a.md", "folder/b.md"] },
     );
 
     const cache = new VaultCache(client, 600000);

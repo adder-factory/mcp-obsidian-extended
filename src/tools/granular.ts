@@ -9,9 +9,12 @@ import { buildErrorMessage } from "../errors.js";
 import {
   formatSchema,
   periodSchema,
-  patchOperationSchema,
-  patchTargetTypeSchema,
-  patchContentTypeSchema,
+  pathContentFields,
+  dateFields,
+  periodDateContentFields,
+  patchOptionFields,
+  patchOptionFieldsNoCim,
+  dateLabel,
 } from "../schemas.js";
 import {
   formatFileContents,
@@ -99,10 +102,7 @@ function registerVaultTools(
       "put_content",
       {
         description: "Create or overwrite a vault file (idempotent)",
-        inputSchema: z.object({
-          path: z.string().describe("File path"),
-          content: z.string().describe("File content"),
-        }),
+        inputSchema: z.object(pathContentFields),
       },
       async ({ path, content }) => {
         try {
@@ -122,10 +122,7 @@ function registerVaultTools(
       "append_content",
       {
         description: "Append to a vault file (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({
-          path: z.string().describe("File path"),
-          content: z.string().describe("Content to append"),
-        }),
+        inputSchema: z.object(pathContentFields),
       },
       async ({ path, content }) => {
         try {
@@ -145,17 +142,7 @@ function registerVaultTools(
       "patch_content",
       {
         description: "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({
-          path: z.string().describe("File path"),
-          content: z.string().describe("Content to insert"),
-          operation: patchOperationSchema,
-          targetType: patchTargetTypeSchema,
-          target: z.string().describe("Target heading/block/field"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-          createIfMissing: z.boolean().optional().describe("Create target if missing"),
-          contentType: patchContentTypeSchema.optional(),
-        }),
+        inputSchema: z.object({ ...pathContentFields, ...patchOptionFields }),
       },
       async ({ path, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
@@ -307,12 +294,7 @@ function registerActiveFileTools(
         description: "Patch the active file at a target (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           content: z.string().describe("Content to insert"),
-          operation: patchOperationSchema,
-          targetType: patchTargetTypeSchema,
-          target: z.string().describe("Target heading/block/field"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-          contentType: patchContentTypeSchema.optional(),
+          ...patchOptionFieldsNoCim,
         }),
       },
       async ({ content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType }) => {
@@ -555,13 +537,7 @@ function registerPeriodicNoteTools(
         inputSchema: z.object({
           period: periodSchema,
           content: z.string().describe("Content to insert"),
-          operation: patchOperationSchema,
-          targetType: patchTargetTypeSchema,
-          target: z.string().describe("Target heading/block/field"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-          createIfMissing: z.boolean().optional().describe("Create target if missing"),
-          contentType: patchContentTypeSchema.optional(),
+          ...patchOptionFields,
         }),
       },
       async ({ period, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
@@ -613,13 +589,7 @@ function registerPeriodicNoteDateTools(
       "get_periodic_note_for_date",
       {
         description: "Get periodic note for a specific date",
-        inputSchema: z.object({
-          period: periodSchema,
-          year: z.number().int().describe("Year"),
-          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-          format: formatSchema.optional(),
-        }),
+        inputSchema: z.object({ period: periodSchema, ...dateFields, format: formatSchema.optional() }),
       },
       async ({ period, year, month, day, format }) => {
         try {
@@ -638,18 +608,12 @@ function registerPeriodicNoteDateTools(
       "put_periodic_note_for_date",
       {
         description: "Replace periodic note for a date (idempotent)",
-        inputSchema: z.object({
-          period: periodSchema,
-          year: z.number().int().describe("Year"),
-          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-          content: z.string().describe("Note content"),
-        }),
+        inputSchema: z.object(periodDateContentFields),
       },
       async ({ period, year, month, day, content }) => {
         try {
           await client.putPeriodicNoteForDate(period, year, month, day, content);
-          return textResult(`Updated ${period} note for ${String(year)}-${String(month)}-${String(day)}`);
+          return textResult(`Updated ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "put_periodic_note_for_date" }));
         }
@@ -664,18 +628,12 @@ function registerPeriodicNoteDateTools(
       "append_periodic_note_for_date",
       {
         description: "Append to periodic note for a date (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({
-          period: periodSchema,
-          year: z.number().int().describe("Year"),
-          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-          content: z.string().describe("Content to append"),
-        }),
+        inputSchema: z.object(periodDateContentFields),
       },
       async ({ period, year, month, day, content }) => {
         try {
           await client.appendPeriodicNoteForDate(period, year, month, day, content);
-          return textResult(`Appended to ${period} note for ${String(year)}-${String(month)}-${String(day)}`);
+          return textResult(`Appended to ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "append_periodic_note_for_date" }));
         }
@@ -690,25 +648,12 @@ function registerPeriodicNoteDateTools(
       "patch_periodic_note_for_date",
       {
         description: "Patch periodic note for a date (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({
-          period: periodSchema,
-          year: z.number().int().describe("Year"),
-          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-          content: z.string().describe("Content to insert"),
-          operation: patchOperationSchema,
-          targetType: patchTargetTypeSchema,
-          target: z.string().describe("Target heading/block/field"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
-          createIfMissing: z.boolean().optional().describe("Create target if missing"),
-          contentType: patchContentTypeSchema.optional(),
-        }),
+        inputSchema: z.object({ ...periodDateContentFields, ...patchOptionFields }),
       },
       async ({ period, year, month, day, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
           await client.patchPeriodicNoteForDate(period, year, month, day, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
-          return textResult(`Patched ${period} note for ${String(year)}-${String(month)}-${String(day)}`);
+          return textResult(`Patched ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "patch_periodic_note_for_date" }));
         }
@@ -723,17 +668,12 @@ function registerPeriodicNoteDateTools(
       "delete_periodic_note_for_date",
       {
         description: "Delete periodic note for a date (idempotent)",
-        inputSchema: z.object({
-          period: periodSchema,
-          year: z.number().int().describe("Year"),
-          month: z.number().int().min(1).max(12).describe("Month (1-12)"),
-          day: z.number().int().min(1).max(31).describe("Day (1-31)"),
-        }),
+        inputSchema: z.object({ period: periodSchema, ...dateFields }),
       },
       async ({ period, year, month, day }) => {
         try {
           await client.deletePeriodicNoteForDate(period, year, month, day);
-          return textResult(`Deleted ${period} note for ${String(year)}-${String(month)}-${String(day)}`);
+          return textResult(`Deleted ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "delete_periodic_note_for_date" }));
         }

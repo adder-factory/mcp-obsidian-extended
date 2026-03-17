@@ -446,7 +446,7 @@ export class VaultCache implements VaultCacheInterface {
    * @param visited - Visited-path set passed through to `traverseDirectory`.
    * @param depth - Current recursion depth, forwarded to `traverseDirectory`.
    */
-  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>, depth = 0): Promise<void> {
+  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>, depth: number): Promise<void> {
     try {
       await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited, depth);
     } catch (err: unknown) {

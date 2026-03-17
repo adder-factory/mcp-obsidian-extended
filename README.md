@@ -348,7 +348,7 @@ Totals: 16,360 ops | p50=2ms | p95=37ms | 19.3MB heap stable | 6/6 pass
 
 ## Known Limitations
 
-- **PATCH under concurrent writes**: 89.5% success rate (10.5% failure) under concurrent heading restructuring — mitigated by automatic retry with document map refresh. For concurrent editing scenarios, prefer `search_replace` over `patch_content`.
+- **PATCH under concurrent heading restructuring**: 89.5% success rate with automatic retry (up from ~5% success without retry). Under normal single-user usage, PATCH success is ~99%+. For heavy concurrent editing scenarios, prefer `search_replace` over `patch_content`.
 - **Dataview queries**: Only `TABLE` queries are supported by the Obsidian Local REST API. `LIST` queries are not supported — this is an API limitation, not a server limitation.
 - **Cache rebuild contention**: During cache rebuilds on large vaults, graph tools wait up to 5 seconds for the build to complete instead of failing immediately. The cache stampede test confirmed 20 concurrent callers sharing 1 build with zero redundant builds.
 

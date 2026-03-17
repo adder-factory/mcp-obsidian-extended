@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseLinks, VaultCache } from "../cache.js";
 // CachedNote and ParsedLink types used only indirectly via mock helpers
 import type { ObsidianClient, NoteJson } from "../obsidian.js";
-import { ObsidianAuthError } from "../errors.js";
+import { ObsidianAuthError, ObsidianConnectionError } from "../errors.js";
 
 // Suppress stderr output
 beforeEach(() => {
@@ -363,7 +363,6 @@ describe("VaultCache — initialize", () => {
   });
 
   it("rethrows ObsidianConnectionError from subdirectory traversal", async () => {
-    const { ObsidianConnectionError } = await import("../errors.js");
     const client = createMockClient(
       ["sub/", "note.md"],
       {

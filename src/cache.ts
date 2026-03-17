@@ -428,7 +428,7 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /**
-   * Recurses into a subdirectory entry, catching and logging failures. Rethrows auth errors.
+   * Recurses into a subdirectory entry, catching and logging failures. Rethrows auth and connection errors.
    * @param dirEntry - Directory entry with trailing slash (e.g. `"docs/sub/"`).
    * @param allFiles - Accumulator array passed through to `traverseDirectory`.
    * @param visited - Visited-path set passed through to `traverseDirectory`.

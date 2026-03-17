@@ -388,13 +388,17 @@ export class VaultCache implements VaultCacheInterface {
     visited.add(normalized);
 
     const { files } = await this.listDirectory(normalized);
+    // The REST API returns paths relative to the listed directory.
+    // Prepend the parent path to construct full vault-relative paths.
+    const prefix = normalized === "" ? "" : `${normalized}/`;
 
     const dirEntries: string[] = [];
     for (const file of files) {
+      const fullPath = `${prefix}${file}`;
       if (file.endsWith("/")) {
-        dirEntries.push(file);
+        dirEntries.push(fullPath);
       } else {
-        this.collectFileEntry(file, allFiles);
+        this.collectFileEntry(fullPath, allFiles);
       }
     }
     for (const dir of dirEntries) {

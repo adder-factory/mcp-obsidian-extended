@@ -287,8 +287,8 @@ describe("VaultCache — initialize", () => {
         "docs/sub/deep.md": makeNoteJson("docs/sub/deep.md", "deep content"),
       },
       {
-        "docs": ["docs/guide.md", "docs/sub/"],
-        "docs/sub": ["docs/sub/deep.md"],
+        "docs": ["guide.md", "sub/"],
+        "docs/sub": ["deep.md"],
       },
     );
 
@@ -337,8 +337,9 @@ describe("VaultCache — initialize", () => {
       {
         "note.md": makeNoteJson("note.md", "content"),
       },
-      // "loop" lists itself as a child — a true cycle
-      { "loop": ["loop/"] },
+      // "loop" lists "./" as a child — a self-reference cycle. With prefix
+      // prepending, "./" becomes "loop/./" which normalizes to "loop" (already visited).
+      { "loop": ["./"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -409,7 +410,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "hello") },
-      { "folder": ["folder/note.md"] },
+      { "folder": ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -435,7 +436,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["deep/"],
       { "deep/folder/MyNote.md": makeNoteJson("deep/folder/MyNote.md", "content") },
-      { "deep": ["deep/folder/"], "deep/folder": ["deep/folder/MyNote.md"] },
+      { "deep": ["folder/"], "deep/folder": ["MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -450,7 +451,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["Folder/"],
       { "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "content") },
-      { "Folder": ["Folder/MyNote.md"] },
+      { "Folder": ["MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -464,7 +465,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
-      { "folder": ["folder/note.md"] },
+      { "folder": ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -550,7 +551,7 @@ describe("VaultCache — invalidate", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
-      { "folder": ["folder/note.md"] },
+      { "folder": ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -634,7 +635,7 @@ describe("VaultCache — getBacklinks", () => {
         "folder/a.md": makeNoteJson("folder/a.md", "Link to [[b]]"),
         "folder/b.md": makeNoteJson("folder/b.md", "Target note"),
       },
-      { "folder": ["folder/a.md", "folder/b.md"] },
+      { "folder": ["a.md", "b.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -1000,7 +1001,7 @@ describe("VaultCache — refresh", () => {
   });
 
   it("refresh discovers new nested files and prunes deleted ones", async () => {
-    const dirFiles: Record<string, string[]> = { "folder": ["folder/a.md"] };
+    const dirFiles: Record<string, string[]> = { "folder": ["a.md"] };
     const notes: Record<string, NoteJson> = {
       "folder/a.md": makeNoteJson("folder/a.md", "A"),
     };
@@ -1025,7 +1026,7 @@ describe("VaultCache — refresh", () => {
     expect(cache.getNote("folder/a.md")).toBeDefined();
 
     // Simulate: folder/a.md deleted, folder/b.md added
-    dirFiles["folder"] = ["folder/b.md"];
+    dirFiles["folder"] = ["b.md"];
     delete notes["folder/a.md"];
     notes["folder/b.md"] = makeNoteJson("folder/b.md", "B", 2000);
 

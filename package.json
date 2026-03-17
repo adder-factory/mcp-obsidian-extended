@@ -2,7 +2,25 @@
   "name": "mcp-obsidian-extended",
   "version": "1.0.0",
   "description": "MCP server for Obsidian — 38 tools, 100% REST API coverage",
+  "author": "adder-factory",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adder-factory/mcp-obsidian-extended.git"
+  },
+  "homepage": "https://github.com/adder-factory/mcp-obsidian-extended#readme",
+  "bugs": {
+    "url": "https://github.com/adder-factory/mcp-obsidian-extended/issues"
+  },
+  "keywords": [
+    "mcp",
+    "obsidian",
+    "model-context-protocol",
+    "rest-api",
+    "local-rest-api",
+    "vault",
+    "typescript"
+  ],
   "type": "module",
   "bin": {
     "mcp-obsidian-extended": "./dist/index.js"

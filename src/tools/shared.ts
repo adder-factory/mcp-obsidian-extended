@@ -186,7 +186,7 @@ function applyImmediateSetting(setting: string, value: string): void {
  * @param config - The active config object (for file path lookup).
  * @returns A tool result describing success or the validation error.
  */
-export function handleConfigureSet(
+function handleConfigureSet(
   setting: string | undefined,
   value: string | undefined,
   config: Config,
@@ -221,7 +221,7 @@ export function handleConfigureSet(
  * @param config - The active config object (for file path lookup).
  * @returns A tool result describing success or the validation error.
  */
-export function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
+function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
   if (!setting) return errorResult("[configure] Setting name is required for 'reset' action");
   const configPath = config.configFilePath ?? resolve("obsidian-mcp.config.json");
   const resetUpdates = buildConfigReset(setting);
@@ -242,7 +242,7 @@ export function handleConfigureReset(setting: string | undefined, config: Config
  * @param config - The active config object.
  * @returns A JSON tool result with the redacted config.
  */
-export function handleConfigureShow(config: Config): ToolResult {
+function handleConfigureShow(config: Config): ToolResult {
   // Note: config is the startup snapshot. Live runtime changes (e.g. debug toggle)
   // are not reflected here — they take effect on the process but this shows the
   // persisted config. A restart will pick up any file-based changes.

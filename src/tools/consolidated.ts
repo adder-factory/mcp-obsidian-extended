@@ -45,6 +45,12 @@ const SAFE_BLOCKED_ACTIONS: Record<string, ReadonlySet<string>> = {
   periodic_note: new Set(["delete"]),
 };
 
+/** Actions allowed in minimal preset (consolidated mode). */
+const MINIMAL_ACTIONS: Record<string, ReadonlySet<string>> = {
+  vault: new Set(["list", "list_dir", "get", "append"]),
+  search: new Set(["simple"]),
+};
+
 // --- Helpers ---
 
 /** Checks if an action is allowed under the active preset for a given tool. */
@@ -56,6 +62,10 @@ function isActionAllowed(toolName: string, action: string, preset: string): bool
   if (preset === "safe") {
     const blocked = SAFE_BLOCKED_ACTIONS[toolName];
     return !blocked?.has(action);
+  }
+  if (preset === "minimal") {
+    const allowed = MINIMAL_ACTIONS[toolName];
+    return allowed === undefined || allowed.has(action);
   }
   return true;
 }
@@ -178,8 +188,10 @@ async function handleVaultSearchReplace(
   const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
   let pattern: RegExp;
   if (useRegex) {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
     try { pattern = new RegExp(search, flags); } catch { return errorResult(`[vault] Invalid regex: "${search}"`); }
   } else {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
     pattern = new RegExp(escapeRegex(search), flags);
   }
   const updated = useRegex ? result.replace(pattern, replaceText) : result.replace(pattern, () => replaceText);
@@ -526,6 +538,9 @@ export function registerConsolidatedTools(
         }),
       },
       async ({ type, query, jsonQuery, contextLength }) => {
+        if (!isActionAllowed("search", type, config.toolPreset)) {
+          return errorResult(`[search] Type "${type}" is not allowed in "${config.toolPreset}" preset`);
+        }
         try {
           switch (type) {
             case "simple":

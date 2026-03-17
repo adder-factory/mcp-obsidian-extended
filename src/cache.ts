@@ -721,6 +721,19 @@ export class VaultCache implements VaultCacheInterface {
     return results.slice(0, limit);
   }
 
+  /** Returns the total number of resolved link edges without building the full graph. */
+  getEdgeCount(): number {
+    let count = 0;
+    for (const note of this.notes.values()) {
+      for (const link of note.links) {
+        if (this.notes.has(this.resolveLinkToFullPath(link.target))) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
   /** Returns the full vault link graph as nodes (file paths) and edges (source-target pairs). */
   getVaultGraph(): { nodes: readonly string[]; edges: ReadonlyArray<{ source: string; target: string }> } {
     const nodes: string[] = [...this.notes.keys()];

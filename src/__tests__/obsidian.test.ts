@@ -213,21 +213,21 @@ describe("ObsidianClient — parseJsonResponse", () => {
 describe("ObsidianClient — handleErrorResponse", () => {
   it("throws ObsidianAuthError for 401", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string, path: string) => never>)["handleErrorResponse"];
-    expect(() => handle.call(client, 401, "", "/test")).toThrow(ObsidianAuthError);
+    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    expect(() => handle.call(client, 401, "")).toThrow(ObsidianAuthError);
   });
 
   it("throws ObsidianAuthError for 403", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string, path: string) => never>)["handleErrorResponse"];
-    expect(() => handle.call(client, 403, "", "/test")).toThrow(ObsidianAuthError);
+    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    expect(() => handle.call(client, 403, "")).toThrow(ObsidianAuthError);
   });
 
   it("throws ObsidianApiError for other codes", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string, path: string) => never>)["handleErrorResponse"];
+    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
     try {
-      handle.call(client, 500, '{"message":"Internal error","errorCode":99}', "/test");
+      handle.call(client, 500, '{"message":"Internal error","errorCode":99}');
     } catch (err: unknown) {
       expect(err).toBeInstanceOf(ObsidianApiError);
       const apiErr = err as ObsidianApiError;
@@ -241,9 +241,9 @@ describe("ObsidianClient — handleErrorResponse", () => {
 
   it("uses raw body as message when JSON parsing fails", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string, path: string) => never>)["handleErrorResponse"];
+    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
     try {
-      handle.call(client, 500, "raw error text", "/test");
+      handle.call(client, 500, "raw error text");
     } catch (err: unknown) {
       expect(err).toBeInstanceOf(ObsidianApiError);
       expect((err as ObsidianApiError).message).toBe("raw error text");
@@ -452,6 +452,16 @@ describe("ObsidianClient — buildPatchHeaders", () => {
     expect(headers["Target-Delimiter"]).toBeUndefined();
     expect(headers["Trim-Target-Whitespace"]).toBeUndefined();
     expect(headers["Create-Target-If-Missing"]).toBeUndefined();
+  });
+
+  it("encodes non-ASCII Target-Delimiter header", () => {
+    const headers = buildHeaders({
+      operation: "append",
+      targetType: "heading",
+      target: "Test",
+      targetDelimiter: "→",
+    });
+    expect(headers["Target-Delimiter"]).toBe("%E2%86%92");
   });
 });
 
@@ -1128,6 +1138,12 @@ describe("ObsidianClient — active file", () => {
     await expect(client.deleteActiveFile()).rejects.toThrow(ObsidianApiError);
   });
 
+  it("deleteActiveFile silently handles 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(notFound());
+    await expect(client.deleteActiveFile()).resolves.toBeUndefined();
+  });
+
   it("appendActiveFile invalidates all cache", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());
@@ -1715,42 +1731,3 @@ describe("ObsidianClient — periodic notes (by date)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// ObsidianClient — ensureConnection
-// ---------------------------------------------------------------------------
-describe("ObsidianClient — ensureConnection", () => {
-  it("sets isConnected to true on success", async () => {
-    const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue(okJson({ ok: true, service: "obsidian", authenticated: true, versions: {} }));
-
-    await client.ensureConnection();
-    expect(client.getIsConnected()).toBe(true);
-  });
-
-  it("throws ObsidianConnectionError on failure", async () => {
-    const { client, mockRequest } = createMockedClient();
-    mockRequest.mockRejectedValue(new Error("network down"));
-
-    await expect(client.ensureConnection()).rejects.toThrow("Cannot reach Obsidian");
-    expect(client.getIsConnected()).toBe(false);
-  });
-
-  it("rethrows ObsidianAuthError", async () => {
-    const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 401, headers: {}, body: "" });
-
-    await expect(client.ensureConnection()).rejects.toThrow(ObsidianAuthError);
-  });
-
-  it("skips health check when recently connected", async () => {
-    const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue(okJson({ ok: true, service: "obsidian", authenticated: true, versions: {} }));
-
-    await client.ensureConnection();
-    expect(mockRequest).toHaveBeenCalledTimes(1);
-
-    // Second call should be cached
-    await client.ensureConnection();
-    expect(mockRequest).toHaveBeenCalledTimes(1); // no additional call
-  });
-});

@@ -158,6 +158,7 @@ function makeMockCache(initialized = true, willInitialize = initialized): VaultC
     getOrphanNotes: vi.fn().mockReturnValue([]),
     getMostConnectedNotes: vi.fn().mockReturnValue([]),
     getVaultGraph: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
+    getEdgeCount: vi.fn().mockReturnValue(0),
     refresh: vi.fn().mockResolvedValue(undefined),
     initialize: vi.fn().mockResolvedValue(undefined),
     startAutoRefresh: vi.fn(),
@@ -442,7 +443,7 @@ describe("granular tools — registration and basic behavior", () => {
     it("returns text for markdown format", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("# Hello");
-      const result = await getTool("get_file_contents").handler({ filePath: "note.md" });
+      const result = await getTool("get_file_contents").handler({ path: "note.md" });
       expect(client.getFileContents).toHaveBeenCalledWith("note.md", undefined);
       expect(getText(result)).toBe("# Hello");
       expect(result.isError).toBeFalsy();
@@ -458,14 +459,14 @@ describe("granular tools — registration and basic behavior", () => {
         stat: { ctime: 0, mtime: 1000, size: 10 },
       };
       vi.mocked(client.getFileContents).mockResolvedValue(noteJson);
-      const result = await getTool("get_file_contents").handler({ filePath: "note.md", format: "json" });
+      const result = await getTool("get_file_contents").handler({ path: "note.md", format: "json" });
       expect(getText(result)).toContain('"path": "note.md"');
     });
 
     it("returns errorResult on auth error", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianAuthError());
-      const result = await getTool("get_file_contents").handler({ filePath: "note.md" });
+      const result = await getTool("get_file_contents").handler({ path: "note.md" });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("AUTH ERROR");
     });
@@ -477,7 +478,7 @@ describe("granular tools — registration and basic behavior", () => {
   describe("put_content", () => {
     it("calls client.putContent and returns success message", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("put_content").handler({ filePath: "test.md", content: "hello" });
+      const result = await getTool("put_content").handler({ path: "test.md", content: "hello" });
       expect(client.putContent).toHaveBeenCalledWith("test.md", "hello");
       expect(getText(result)).toContain("Written: test.md");
     });
@@ -485,7 +486,7 @@ describe("granular tools — registration and basic behavior", () => {
     it("returns errorResult on failure", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.putContent).mockRejectedValue(new Error("write failed"));
-      const result = await getTool("put_content").handler({ filePath: "test.md", content: "x" });
+      const result = await getTool("put_content").handler({ path: "test.md", content: "x" });
       expect(result.isError).toBe(true);
     });
   });
@@ -496,7 +497,7 @@ describe("granular tools — registration and basic behavior", () => {
   describe("append_content", () => {
     it("calls client.appendContent and returns success", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("append_content").handler({ filePath: "note.md", content: "extra" });
+      const result = await getTool("append_content").handler({ path: "note.md", content: "extra" });
       expect(client.appendContent).toHaveBeenCalledWith("note.md", "extra");
       expect(getText(result)).toContain("Appended to: note.md");
     });
@@ -509,7 +510,7 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.patchContent with all options", async () => {
       const { client, getTool } = setup();
       const result = await getTool("patch_content").handler({
-        filePath: "note.md",
+        path: "note.md",
         content: "new line",
         operation: "append",
         targetType: "heading",
@@ -535,7 +536,7 @@ describe("granular tools — registration and basic behavior", () => {
   describe("delete_file", () => {
     it("calls client.deleteFile and returns success", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("delete_file").handler({ filePath: "old.md" });
+      const result = await getTool("delete_file").handler({ path: "old.md" });
       expect(client.deleteFile).toHaveBeenCalledWith("old.md");
       expect(getText(result)).toContain("Deleted: old.md");
     });
@@ -549,7 +550,7 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("Hello world");
       const result = await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "world",
         replace: "Obsidian",
         useRegex: false,
@@ -564,7 +565,7 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("Hello world");
       const result = await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "xyz",
         replace: "abc",
         useRegex: false,
@@ -579,7 +580,7 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("cat 123 cat");
       const result = await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "\\d+",
         replace: "NUM",
         useRegex: true,
@@ -594,7 +595,7 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("price: $5.00");
       const result = await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "$5.00",
         replace: "$10.00",
         useRegex: false,
@@ -610,7 +611,7 @@ describe("granular tools — registration and basic behavior", () => {
       const noteJson: NoteJson = { content: "", frontmatter: {}, path: "x.md", tags: [], stat: { ctime: 0, mtime: 0, size: 0 } };
       vi.mocked(client.getFileContents).mockResolvedValue(noteJson);
       const result = await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "x",
         replace: "y",
         useRegex: false,
@@ -625,7 +626,7 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("Hello WORLD");
       await getTool("search_replace").handler({
-        filePath: "note.md",
+        path: "note.md",
         search: "world",
         replace: "Obsidian",
         useRegex: false,
@@ -738,7 +739,7 @@ describe("granular tools — registration and basic behavior", () => {
   describe("open_file", () => {
     it("calls client.openFile with path and newLeaf", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("open_file").handler({ filePath: "note.md", newLeaf: true });
+      const result = await getTool("open_file").handler({ path: "note.md", newLeaf: true });
       expect(client.openFile).toHaveBeenCalledWith("note.md", true);
       expect(getText(result)).toContain("Opened: note.md");
     });
@@ -956,7 +957,7 @@ describe("granular tools — registration and basic behavior", () => {
         .mockResolvedValueOnce("# Note A")
         .mockResolvedValueOnce("# Note B");
       const result = await getTool("batch_get_file_contents").handler({
-        filePaths: ["a.md", "b.md"],
+        paths: ["a.md", "b.md"],
       });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
@@ -971,7 +972,7 @@ describe("granular tools — registration and basic behavior", () => {
         .mockResolvedValueOnce("# Note A")
         .mockRejectedValueOnce(new ObsidianApiError("not found", 404));
       const result = await getTool("batch_get_file_contents").handler({
-        filePaths: ["a.md", "missing.md"],
+        paths: ["a.md", "missing.md"],
       });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
@@ -1171,7 +1172,7 @@ describe("granular tools — registration and basic behavior", () => {
         { source: "linker.md", context: "...see [[target.md]]..." },
       ]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      const result = await getTool("get_backlinks").handler({ path: "target.md" });
       expect(cache.getBacklinks).toHaveBeenCalledWith("target.md");
       expect(getText(result)).toContain("linker.md");
     });
@@ -1181,19 +1182,20 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
-      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      const result = await getTool("get_backlinks").handler({ path: "target.md" });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is disabled");
     });
 
-    it("returns errorResult when cache is not yet initialized", async () => {
+    it("returns errorResult and triggers rebuild when cache is not yet initialized", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      const result = await getTool("get_backlinks").handler({ path: "target.md" });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("Cache not available");
+      expect(getText(result)).toContain("Cache is rebuilding");
+      expect(cache.initialize).toHaveBeenCalled();
     });
 
     it("succeeds when cache becomes ready within the wait window", async () => {
@@ -1204,21 +1206,22 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
       vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ filePath: "target.md" });
+      const result = await getTool("get_backlinks").handler({ path: "target.md" });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
       expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
 
-    it("returns error when cache build fails", async () => {
+    it("returns error and triggers rebuild when cache build fails", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false, false);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ filePath: "x.md" });
+      const result = await getTool("get_backlinks").handler({ path: "x.md" });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("Cache not available");
+      expect(getText(result)).toContain("Cache is rebuilding");
       expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.initialize).toHaveBeenCalled();
     });
   });
 
@@ -1232,7 +1235,7 @@ describe("granular tools — registration and basic behavior", () => {
       const cache = makeMockCache(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue(["orphan.md"]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([{ path: "hub.md", inbound: 5, outbound: 3 }]);
-      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: ["a.md"], edges: [{ source: "a.md", target: "b.md" }] });
+      vi.mocked(cache.getEdgeCount).mockReturnValue(1);
       vi.mocked(cache.getFileList).mockReturnValue(["subdir/note.md", "root.md"]);
       Object.defineProperty(cache, "noteCount", { get: vi.fn().mockReturnValue(10) });
       Object.defineProperty(cache, "linkCount", { get: vi.fn().mockReturnValue(5) });
@@ -1250,7 +1253,7 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
-      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
       const result = await getTool("get_vault_structure").handler({ limit: 10 });
@@ -1290,7 +1293,7 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.getBacklinks).mockReturnValue([]);
       vi.mocked(cache.getForwardLinks).mockReturnValue([]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
+      const result = await getTool("get_note_connections").handler({ path: "x.md" });
       expect(result.isError).toBeFalsy();
       expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
     });
@@ -1302,7 +1305,7 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "a.md", context: "see [[target]]" }]);
       vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ filePath: "target.md" });
+      const result = await getTool("get_note_connections").handler({ path: "target.md" });
       const parsed: unknown = JSON.parse(getText(result));
       expect(parsed).toMatchObject({ backlinks: [{ source: "a.md" }], forwardLinks: [{ target: "b.md" }] });
     });
@@ -1312,7 +1315,7 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
-      const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
+      const result = await getTool("get_note_connections").handler({ path: "x.md" });
       expect(result.isError).toBe(true);
     });
 
@@ -1321,7 +1324,7 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(false);
       registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ filePath: "x.md" });
+      const result = await getTool("get_note_connections").handler({ path: "x.md" });
       expect(result.isError).toBe(true);
     });
   });
@@ -1601,6 +1604,100 @@ describe("consolidated tools — registration and behavior", () => {
         useRegex: false, caseSensitive: true, replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalled();
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // vault — minimal preset restricts actions
+  // -------------------------------------------------------------------------
+  describe("vault — minimal preset restricts actions", () => {
+    it("blocks delete in minimal preset", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("vault").handler({
+        action: "delete", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("not allowed");
+    });
+
+    it("blocks put in minimal preset", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("vault").handler({
+        action: "put", path: "note.md", content: "body",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("not allowed");
+    });
+
+    it("blocks search_replace in minimal preset", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("vault").handler({
+        action: "search_replace", path: "note.md", search: "a", replace: "b",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("not allowed");
+    });
+
+    it("allows list in minimal preset", async () => {
+      const { client, getTool } = setup({ toolPreset: "minimal" });
+      vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["a.md"] });
+      const result = await getTool("vault").handler({
+        action: "list", useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("allows get in minimal preset", async () => {
+      const { client, getTool } = setup({ toolPreset: "minimal" });
+      vi.mocked(client.getFileContents).mockResolvedValue("# Hello");
+      const result = await getTool("vault").handler({
+        action: "get", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("allows append in minimal preset", async () => {
+      const { client, getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("vault").handler({
+        action: "append", path: "note.md", content: "more",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(client.appendContent).toHaveBeenCalled();
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // search — minimal preset restricts types
+  // -------------------------------------------------------------------------
+  describe("search — minimal preset restricts types", () => {
+    it("blocks jsonlogic in minimal preset", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("search").handler({
+        type: "jsonlogic", jsonQuery: { glob: ["*.md"] }, contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("not allowed");
+    });
+
+    it("blocks dataview in minimal preset", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("search").handler({
+        type: "dataview", query: "LIST FROM \"\"", contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("not allowed");
+    });
+
+    it("allows simple in minimal preset", async () => {
+      const { client, getTool } = setup({ toolPreset: "minimal" });
+      vi.mocked(client.simpleSearch).mockResolvedValue([]);
+      const result = await getTool("search").handler({
+        type: "simple", query: "test", contextLength: 100,
+      });
       expect(result.isError).toBeFalsy();
     });
   });
@@ -2178,14 +2275,15 @@ describe("consolidated tools — registration and behavior", () => {
       expect(getText(result)).toContain("Cache is disabled");
     });
 
-    it("returns errorResult when cache not initialized", async () => {
+    it("returns errorResult and triggers rebuild when cache not initialized", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("Cache not available");
+      expect(getText(result)).toContain("Cache is rebuilding");
+      expect(cache.initialize).toHaveBeenCalled();
     });
 
     it("succeeds when cache becomes ready within the wait window", async () => {
@@ -2246,7 +2344,7 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
-      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
@@ -2260,7 +2358,7 @@ describe("consolidated tools — registration and behavior", () => {
       const cache = makeMockCache(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue(["orphan.md"]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([{ path: "hub.md", inbound: 7, outbound: 2 }]);
-      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: ["a.md"], edges: [{ source: "a.md", target: "b.md" }] });
+      vi.mocked(cache.getEdgeCount).mockReturnValue(1);
       vi.mocked(cache.getFileList).mockReturnValue(["folder/note.md"]);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
@@ -2269,14 +2367,15 @@ describe("consolidated tools — registration and behavior", () => {
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
     });
 
-    it("returns error when cache not initialized and wait times out", async () => {
+    it("returns error and triggers rebuild when cache not initialized and wait times out", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false, false);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("Cache not available");
+      expect(getText(result)).toContain("Cache is rebuilding");
+      expect(cache.initialize).toHaveBeenCalled();
     });
 
     it("returns errorResult when cache not initialized", async () => {
@@ -2296,7 +2395,7 @@ describe("consolidated tools — registration and behavior", () => {
       const cache = makeMockCache(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue([]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
-      vi.mocked(cache.getVaultGraph).mockReturnValue({ nodes: [], edges: [] });
+      vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
       registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", toolPreset: "read-only", enableCache: true }));
       const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });

@@ -78,15 +78,15 @@ function registerVaultTools(
       {
         description: "Read a vault file as markdown, JSON, or document map",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           format: formatSchema.optional(),
         }),
       },
-      async ({ filePath, format }) => {
+      async ({ path, format }) => {
         try {
-          return formatFileContents(await client.getFileContents(filePath, format));
+          return formatFileContents(await client.getFileContents(path, format));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_file_contents", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "get_file_contents", path }));
         }
       },
     );
@@ -100,16 +100,16 @@ function registerVaultTools(
       {
         description: "Create or overwrite a vault file (idempotent)",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           content: z.string().describe("File content"),
         }),
       },
-      async ({ filePath, content }) => {
+      async ({ path, content }) => {
         try {
-          await client.putContent(filePath, content);
-          return textResult(`Written: ${filePath}`);
+          await client.putContent(path, content);
+          return textResult(`Written: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "put_content", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "put_content", path }));
         }
       },
     );
@@ -123,16 +123,16 @@ function registerVaultTools(
       {
         description: "Append to a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           content: z.string().describe("Content to append"),
         }),
       },
-      async ({ filePath, content }) => {
+      async ({ path, content }) => {
         try {
-          await client.appendContent(filePath, content);
-          return textResult(`Appended to: ${filePath}`);
+          await client.appendContent(path, content);
+          return textResult(`Appended to: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "append_content", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "append_content", path }));
         }
       },
     );
@@ -146,7 +146,7 @@ function registerVaultTools(
       {
         description: "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           content: z.string().describe("Content to insert"),
           operation: patchOperationSchema,
           targetType: patchTargetTypeSchema,
@@ -157,12 +157,12 @@ function registerVaultTools(
           contentType: patchContentTypeSchema.optional(),
         }),
       },
-      async ({ filePath, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
+      async ({ path, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
         try {
-          await client.patchContent(filePath, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
-          return textResult(`Patched: ${filePath}`);
+          await client.patchContent(path, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
+          return textResult(`Patched: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "patch_content", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "patch_content", path }));
         }
       },
     );
@@ -175,14 +175,14 @@ function registerVaultTools(
       "delete_file",
       {
         description: "Delete a vault file to Obsidian trash (idempotent)",
-        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+        inputSchema: z.object({ path: z.string().describe("File path") }),
       },
-      async ({ filePath }) => {
+      async ({ path }) => {
         try {
-          await client.deleteFile(filePath);
-          return textResult(`Deleted: ${filePath}`);
+          await client.deleteFile(path);
+          return textResult(`Deleted: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "delete_file", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "delete_file", path }));
         }
       },
     );
@@ -196,7 +196,7 @@ function registerVaultTools(
       {
         description: "Find and replace in a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           search: z.string().describe("Text to find"),
           replace: z.string().describe("Replacement text"),
           useRegex: z.boolean().default(false).describe("Use regex matching"),
@@ -204,23 +204,25 @@ function registerVaultTools(
           replaceAll: z.boolean().default(true).describe("Replace all occurrences"),
         }),
       },
-      async ({ filePath, search, replace, useRegex, caseSensitive, replaceAll }) => {
+      async ({ path, search, replace, useRegex, caseSensitive, replaceAll }) => {
         try {
-          const result = await client.getFileContents(filePath, "markdown", true);
+          const result = await client.getFileContents(path, "markdown", true);
           if (typeof result !== "string") return errorResult("[search_replace] Expected markdown content");
           const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
           let pattern: RegExp;
           if (useRegex) {
+            // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
             try { pattern = new RegExp(search, flags); } catch { return errorResult(`[search_replace] Invalid regex: "${search}"`); }
           } else {
+            // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
             pattern = new RegExp(escapeRegex(search), flags);
           }
           const updated = useRegex ? result.replace(pattern, replace) : result.replace(pattern, () => replace);
-          if (updated === result) return textResult(`No matches found for "${search}" in ${filePath}`);
-          await client.putContent(filePath, updated);
-          return textResult(`Replaced in: ${filePath}`);
+          if (updated === result) return textResult(`No matches found for "${search}" in ${path}`);
+          await client.putContent(path, updated);
+          return textResult(`Replaced in: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "search_replace", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "search_replace", path }));
         }
       },
     );
@@ -396,16 +398,16 @@ function registerCommandAndSearchTools(
       {
         description: "Open a file in the Obsidian UI",
         inputSchema: z.object({
-          filePath: z.string().describe("File path"),
+          path: z.string().describe("File path"),
           newLeaf: z.boolean().default(false).describe("Open in new tab"),
         }),
       },
-      async ({ filePath, newLeaf }) => {
+      async ({ path, newLeaf }) => {
         try {
-          await client.openFile(filePath, newLeaf);
-          return textResult(`Opened: ${filePath}`);
+          await client.openFile(path, newLeaf);
+          return textResult(`Opened: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "open_file", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "open_file", path }));
         }
       },
     );
@@ -776,13 +778,13 @@ function registerSystemAndAnalysisTools(
       {
         description: "Read multiple vault files in one call",
         inputSchema: z.object({
-          filePaths: z.array(z.string()).min(1).describe("File paths"),
+          paths: z.array(z.string()).min(1).describe("File paths"),
           format: formatSchema.optional(),
         }),
       },
-      async ({ filePaths, format }) => {
+      async ({ paths, format }) => {
         try {
-          return jsonResult(await batchGetFiles(client, filePaths, format));
+          return jsonResult(await batchGetFiles(client, paths, format));
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "batch_get_file_contents" }));
         }
@@ -872,15 +874,15 @@ function registerSystemAndAnalysisTools(
       "get_backlinks",
       {
         description: "Get all notes that link to a file (from cache)",
-        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+        inputSchema: z.object({ path: z.string().describe("File path") }),
       },
-      async ({ filePath }) => {
+      async ({ path }) => {
         try {
           const notReady = await ensureCacheReady({ cache, tool: "get_backlinks", enableCache: config.enableCache });
           if (notReady) return notReady;
-          return jsonResult(cache.getBacklinks(filePath));
+          return jsonResult(cache.getBacklinks(path));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path }));
         }
       },
     );
@@ -914,15 +916,15 @@ function registerSystemAndAnalysisTools(
       "get_note_connections",
       {
         description: "Get backlinks and forward links for a note",
-        inputSchema: z.object({ filePath: z.string().describe("File path") }),
+        inputSchema: z.object({ path: z.string().describe("File path") }),
       },
-      async ({ filePath }) => {
+      async ({ path }) => {
         try {
           const notReady = await ensureCacheReady({ cache, tool: "get_note_connections", enableCache: config.enableCache });
           if (notReady) return notReady;
-          return jsonResult({ backlinks: cache.getBacklinks(filePath), forwardLinks: cache.getForwardLinks(filePath) });
+          return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path: filePath }));
+          return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path }));
         }
       },
     );

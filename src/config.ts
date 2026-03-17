@@ -50,7 +50,7 @@ interface ConfigFileShape {
   readonly debug?: boolean;
 }
 
-const DEFAULTS: Omit<Config, "apiKey" | "configFilePath"> = {
+export const DEFAULTS: Omit<Config, "apiKey" | "configFilePath"> = {
   host: "127.0.0.1",
   port: 27124,
   scheme: "https",
@@ -323,7 +323,7 @@ export function getRedactedConfig(config: Config): Record<string, unknown> {
     verifySsl: config.verifySsl,
     verifyWrites: config.verifyWrites,
     maxResponseChars: config.maxResponseChars,
-    debug: config.debug,
+    debug: getDebugEnabled(),
     toolMode: config.toolMode,
     toolPreset: config.toolPreset,
     includeTools: config.includeTools,
@@ -378,6 +378,11 @@ let debugEnabled = false;
 /** Enables or disables debug-level log output. */
 export function setDebugEnabled(enabled: boolean): void {
   debugEnabled = enabled;
+}
+
+/** Returns the current runtime debug-logging state. */
+export function getDebugEnabled(): boolean {
+  return debugEnabled;
 }
 
 /** Writes a log message to stderr. Debug messages are suppressed unless setDebugEnabled(true) is called. */

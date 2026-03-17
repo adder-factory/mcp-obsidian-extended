@@ -286,8 +286,6 @@ export class ObsidianClient {
   private readonly fileLocks = new Map<string, Promise<unknown>>();
 
   private isConnected = false;
-  private lastHealthCheck = 0;
-  private readonly healthCheckInterval = 30000;
 
   // Cache reference (set after construction)
   private cacheRef: VaultCacheInterface | undefined;
@@ -336,33 +334,6 @@ export class ObsidianClient {
   }
 
   // --- Connection Health ---
-
-  /**
-   * Verifies TCP/HTTP reachability of the Obsidian REST API only.
-   * Does NOT verify API key validity — use an authenticated endpoint
-   * (e.g. listFilesInVault) for a full auth check.
-   * Re-checks at most once per healthCheckInterval.
-   */
-  async ensureConnection(): Promise<void> {
-    const now = Date.now();
-    if (this.isConnected && now - this.lastHealthCheck < this.healthCheckInterval) {
-      return;
-    }
-    try {
-      await this.getServerStatus();
-      this.isConnected = true;
-      this.lastHealthCheck = now;
-    } catch (err: unknown) {
-      this.isConnected = false;
-      if (err instanceof ObsidianAuthError || err instanceof ObsidianApiError) {
-        throw err;
-      }
-      throw new ObsidianConnectionError(
-        "Cannot reach Obsidian. Ensure it is running with Local REST API enabled.",
-        err instanceof Error ? { cause: err } : undefined,
-      );
-    }
-  }
 
   /** Returns whether the last health check succeeded. */
   getIsConnected(): boolean {
@@ -518,7 +489,7 @@ export class ObsidianClient {
   }
 
   /** Parses an error response body and throws the appropriate custom error type. */
-  private handleErrorResponse(statusCode: number, body: string, _path: string): never {
+  private handleErrorResponse(statusCode: number, body: string): never {
     if (statusCode === 401 || statusCode === 403) {
       throw new ObsidianAuthError();
     }
@@ -613,7 +584,7 @@ export class ObsidianClient {
       "Target": encodeTargetHeader(options.target),
     };
     if (options.targetDelimiter !== undefined) {
-      headers["Target-Delimiter"] = options.targetDelimiter;
+      headers["Target-Delimiter"] = encodeTargetHeader(options.targetDelimiter);
     }
     if (options.trimTargetWhitespace !== undefined) {
       headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
@@ -721,7 +692,7 @@ export class ObsidianClient {
   async getServerStatus(): Promise<ServerStatus> {
     const res = await this.request("GET", "/", { auth: false });
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "/");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
     return this.parseJsonResponse<ServerStatus>(res.body, "/", res.headers);
   }
@@ -732,7 +703,7 @@ export class ObsidianClient {
   async listFilesInVault(): Promise<{ files: string[] }> {
     const res = await this.request("GET", "/vault/");
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "/vault/");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
     return this.parseJsonResponse<{ files: string[] }>(res.body, "/vault/", res.headers);
   }
@@ -755,11 +726,11 @@ export class ObsidianClient {
       if (dirExists) {
         return { files: [] };
       }
-      this.handleErrorResponse(404, res.body, dirPath);
+      this.handleErrorResponse(404, res.body);
     }
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, dirPath);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
     return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath, res.headers);
   }
@@ -778,7 +749,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, filePath);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     if (format === "markdown") {
@@ -799,7 +770,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, filePath);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
 
       // Invalidate cache
@@ -835,7 +806,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, filePath);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
 
       this.cacheRef?.invalidate(sanitizeFilePath(filePath));
@@ -881,7 +852,7 @@ export class ObsidianClient {
         }
       }
 
-      this.handleErrorResponse(res.statusCode, res.body, filePath);
+      this.handleErrorResponse(res.statusCode, res.body);
     });
   }
 
@@ -947,7 +918,7 @@ export class ObsidianClient {
       const res = await this.request("DELETE", `/vault/${encoded}`);
 
       if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-        this.handleErrorResponse(res.statusCode, res.body, filePath);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
 
       this.cacheRef?.invalidate(sanitizeFilePath(filePath));
@@ -963,7 +934,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     if (format === "markdown") {
@@ -981,7 +952,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       // Active file path is unknown — invalidate all to ensure cache consistency
       this.cacheRef?.invalidateAll();
@@ -997,7 +968,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1036,7 +1007,7 @@ export class ObsidianClient {
         }
       }
 
-      this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      this.handleErrorResponse(res.statusCode, res.body);
     });
   }
 
@@ -1045,8 +1016,8 @@ export class ObsidianClient {
     await this.withSyntheticLock("active", async () => {
       const res = await this.request("DELETE", "/active/");
 
-      if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, "(active file)");
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1059,7 +1030,7 @@ export class ObsidianClient {
     const res = await this.request("GET", "/commands/");
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "/commands/");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     return this.parseJsonResponse<{ commands: Array<{ id: string; name: string }> }>(res.body, "/commands/", res.headers);
@@ -1071,7 +1042,7 @@ export class ObsidianClient {
     const res = await this.request("POST", `/commands/${encoded}/`);
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, commandId);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
     // Commands can create/rename/delete/edit notes — invalidate all
     this.cacheRef?.invalidateAll();
@@ -1086,7 +1057,7 @@ export class ObsidianClient {
     const res = await this.request("POST", `/open/${encoded}${query}`);
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, filePath);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
   }
 
@@ -1102,7 +1073,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(search)");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     return this.parseJsonResponse<SearchResult[]>(res.body, "/search/simple/", res.headers);
@@ -1117,7 +1088,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(search)");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     return this.parseJsonResponse<SearchResult[]>(res.body, "/search/", res.headers);
@@ -1132,7 +1103,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, "(dataview search)");
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     return this.parseJsonResponse<SearchResult[]>(res.body, "/search/dataview", res.headers);
@@ -1147,7 +1118,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     if (format === "markdown") {
@@ -1170,7 +1141,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       // Periodic note path is resolved by Obsidian — invalidate all
       this.cacheRef?.invalidateAll();
@@ -1186,7 +1157,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1219,7 +1190,7 @@ export class ObsidianClient {
         }
       }
 
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+      this.handleErrorResponse(res.statusCode, res.body);
     });
   }
 
@@ -1229,7 +1200,7 @@ export class ObsidianClient {
       const res = await this.request("DELETE", `/periodic/${encodeURIComponent(period)}/`);
 
       if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period})`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1251,7 +1222,7 @@ export class ObsidianClient {
     });
 
     if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} ${String(year)}-${String(month)}-${String(day)})`);
+      this.handleErrorResponse(res.statusCode, res.body);
     }
 
     if (format === "markdown") {
@@ -1272,7 +1243,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1290,7 +1261,7 @@ export class ObsidianClient {
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });
@@ -1325,7 +1296,7 @@ export class ObsidianClient {
         }
       }
 
-      this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+      this.handleErrorResponse(res.statusCode, res.body);
     });
   }
 
@@ -1338,7 +1309,7 @@ export class ObsidianClient {
       const res = await this.request("DELETE", path);
 
       if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
-        this.handleErrorResponse(res.statusCode, res.body, `(periodic: ${period} date)`);
+        this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
     });

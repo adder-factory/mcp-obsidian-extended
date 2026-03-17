@@ -1425,3 +1425,44 @@ describe("VaultCache — normalizeLinkTarget coverage", () => {
     expect(backlinks).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// VaultCache — getEdgeCount
+// ---------------------------------------------------------------------------
+describe("VaultCache — getEdgeCount", () => {
+  it("returns 0 for empty cache", async () => {
+    const client = createMockClient([], {});
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.getEdgeCount()).toBe(0);
+  });
+
+  it("counts resolved edges", async () => {
+    const client = createMockClient(
+      ["a.md", "b.md"],
+      {
+        "a.md": makeNoteJson("a.md", "see [[b]]"),
+        "b.md": makeNoteJson("b.md", "see [[a]]"),
+      },
+    );
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    // a→b and b→a = 2 edges, matches getVaultGraph().edges.length
+    expect(cache.getEdgeCount()).toBe(cache.getVaultGraph().edges.length);
+    expect(cache.getEdgeCount()).toBe(2);
+  });
+
+  it("excludes unresolved links", async () => {
+    const client = createMockClient(
+      ["a.md"],
+      {
+        "a.md": makeNoteJson("a.md", "see [[nonexistent]]"),
+      },
+    );
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    // Link to nonexistent note should not count as an edge
+    expect(cache.getEdgeCount()).toBe(0);
+    expect(cache.linkCount).toBe(1); // raw link count includes unresolved
+  });
+});

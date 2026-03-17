@@ -19,6 +19,7 @@ import {
   saveConfigToFile,
   log,
   setDebugEnabled,
+  getDebugEnabled,
 } from "../config.js";
 import type { Config } from "../config.js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -534,5 +535,28 @@ describe("setDebugEnabled and log", () => {
     const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     log("warn", "test message");
     expect(spy).toHaveBeenCalledWith("[warn] test message\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getDebugEnabled
+// ---------------------------------------------------------------------------
+describe("getDebugEnabled", () => {
+  it("reflects live debug state after setDebugEnabled", () => {
+    expect(getDebugEnabled()).toBe(false);
+    setDebugEnabled(true);
+    expect(getDebugEnabled()).toBe(true);
+    setDebugEnabled(false);
+    expect(getDebugEnabled()).toBe(false);
+  });
+
+  it("is reflected in getRedactedConfig", () => {
+    const config = loadConfig();
+    setDebugEnabled(true);
+    const redacted = getRedactedConfig(config);
+    expect(redacted["debug"]).toBe(true);
+    setDebugEnabled(false);
+    const redacted2 = getRedactedConfig(config);
+    expect(redacted2["debug"]).toBe(false);
   });
 });

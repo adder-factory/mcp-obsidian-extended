@@ -4,7 +4,7 @@ import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsid
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
-import { getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
+import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
 
 // --- Cache readiness ---
 
@@ -12,6 +12,7 @@ import { getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../co
 interface CacheReadyCheckable {
   getIsInitialized(): boolean;
   waitForInitialization(timeoutMs: number): Promise<boolean>;
+  initialize(): Promise<void>;
 }
 
 /** Options for the ensureCacheReady helper. */
@@ -41,7 +42,11 @@ export async function ensureCacheReady(
   }
   // Guard against narrow timing window where cache became ready after wait returned false
   if (cache.getIsInitialized()) return undefined;
-  return errorResult(`[${tool}] Cache not available. Try again shortly or use refresh_cache to rebuild.`);
+  // Trigger a background rebuild so the next call will find the cache building
+  void cache.initialize().catch((err: unknown) => {
+    log("debug", `Background cache rebuild failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
+  return errorResult(`[${tool}] Cache is rebuilding. Try again shortly.`);
 }
 
 // --- File content formatting ---
@@ -140,17 +145,17 @@ function buildConfigUpdate(setting: string, value: string): Record<string, unkno
 function buildConfigReset(setting: string): Record<string, unknown> | undefined {
   switch (setting) {
     case "debug":
-      return { debug: false };
+      return { debug: DEFAULTS.debug };
     case "timeout":
-      return { reliability: { timeout: 30000 } };
+      return { reliability: { timeout: DEFAULTS.timeout } };
     case "verifyWrites":
-      return { reliability: { verifyWrites: false } };
+      return { reliability: { verifyWrites: DEFAULTS.verifyWrites } };
     case "maxResponseChars":
-      return { reliability: { maxResponseChars: 500000 } };
+      return { reliability: { maxResponseChars: DEFAULTS.maxResponseChars } };
     case "toolMode":
-      return { tools: { mode: "granular" } };
+      return { tools: { mode: DEFAULTS.toolMode } };
     case "toolPreset":
-      return { tools: { preset: "full" } };
+      return { tools: { preset: DEFAULTS.toolPreset } };
     default:
       return undefined;
   }
@@ -251,7 +256,6 @@ export function handleConfigureShow(config: Config): ToolResult {
 export function buildVaultStructure(cache: VaultCache, limit: number): ToolResult {
   const orphans = cache.getOrphanNotes();
   const mostConnected = cache.getMostConnectedNotes(limit);
-  const graph = cache.getVaultGraph();
   const dirs = new Set<string>();
   for (const p of cache.getFileList()) {
     let lastSlash = p.lastIndexOf("/");
@@ -269,7 +273,7 @@ export function buildVaultStructure(cache: VaultCache, limit: number): ToolResul
     orphanCount: orphans.length,
     orphans: orphans.slice(0, 20),
     mostConnected,
-    edgeCount: graph.edges.length,
+    edgeCount: cache.getEdgeCount(),
   });
 }
 

@@ -349,6 +349,25 @@ describe("VaultCache — initialize", () => {
     expect(cache.getNote("note.md")).toBeDefined();
   });
 
+  it("stops recursion at max depth to prevent path-extending cycles", async () => {
+    // Each directory lists a child directory, creating ever-deeper paths
+    const client = createMockClient(
+      ["a/", "note.md"],
+      { "note.md": makeNoteJson("note.md", "content") },
+    );
+    // Every listFilesInDir returns another subdirectory, simulating a symlink cycle
+    vi.mocked(client.listFilesInDir).mockImplementation(async () => {
+      return { files: ["deeper/"] };
+    });
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    // Should complete without hanging — depth limit stops recursion
+    expect(cache.noteCount).toBe(1);
+    // listFilesInDir should have been called but limited by depth (max 20 + root)
+    expect(vi.mocked(client.listFilesInDir).mock.calls.length).toBeLessThanOrEqual(22);
+  });
+
   it("rethrows ObsidianAuthError from subdirectory traversal", async () => {
     const client = createMockClient(
       ["secret/", "note.md"],

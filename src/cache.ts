@@ -366,13 +366,21 @@ export class VaultCache implements VaultCacheInterface {
     return allFiles;
   }
 
+  /** Maximum directory nesting depth to prevent path-extending symlink cycles. */
+  private static readonly MAX_TRAVERSAL_DEPTH = 20;
+
   /**
    * Recursively lists files in a directory, collecting `.md` paths and recursing into subdirectories.
    * @param dirPath - Vault-relative directory path (empty string `""` for the vault root).
    * @param allFiles - Accumulator array; matched `.md` paths are appended in-place.
    * @param visited - Set of already-visited normalized paths used to break symlink cycles.
+   * @param depth - Current recursion depth (0 = vault root).
    */
-  private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>): Promise<void> {
+  private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>, depth = 0): Promise<void> {
+    if (depth > VaultCache.MAX_TRAVERSAL_DEPTH) {
+      log("warn", `Cache: skipping directory "${dirPath}" — max depth ${String(VaultCache.MAX_TRAVERSAL_DEPTH)} exceeded`);
+      return;
+    }
     const normalized = VaultCache.normalizePath(dirPath);
     if (normalized === undefined) {
       log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
@@ -402,7 +410,7 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
     for (const dir of dirEntries) {
-      await this.traverseSubdirectory(dir, allFiles, visited);
+      await this.traverseSubdirectory(dir, allFiles, visited, depth + 1);
     }
   }
 
@@ -436,10 +444,11 @@ export class VaultCache implements VaultCacheInterface {
    * @param dirEntry - Directory entry with trailing slash (e.g. `"docs/sub/"`).
    * @param allFiles - Accumulator array passed through to `traverseDirectory`.
    * @param visited - Visited-path set passed through to `traverseDirectory`.
+   * @param depth - Current recursion depth, forwarded to `traverseDirectory`.
    */
-  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>): Promise<void> {
+  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>, depth = 0): Promise<void> {
     try {
-      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited);
+      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited, depth);
     } catch (err: unknown) {
       if (err instanceof ObsidianAuthError) throw err;
       if (err instanceof ObsidianConnectionError) throw err;

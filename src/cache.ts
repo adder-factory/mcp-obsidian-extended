@@ -370,7 +370,12 @@ export class VaultCache implements VaultCacheInterface {
 
       for (const file of files) {
         if (file.toLowerCase().endsWith(".md")) {
-          allFiles.push(file);
+          const normalizedFile = file.replaceAll("\\", "/");
+          if (normalizedFile.split("/").includes("..") || normalizedFile.startsWith("/")) {
+            log("warn", `Cache: skipping unsafe file path "${file}"`);
+            continue;
+          }
+          allFiles.push(normalizedFile);
         } else if (file.endsWith("/")) {
           try {
             await traverse(file.slice(0, -1));

@@ -328,6 +328,24 @@ describe("VaultCache — initialize", () => {
     expect(cache.noteCount).toBe(1);
     expect(cache.getNote("note.md")).toBeDefined();
   });
+
+  it("detects symlink cycles and avoids infinite recursion", async () => {
+    // "loop/" symlinks back to itself: listFilesInDir("loop") returns "loop/" again
+    const client = createMockClient(
+      ["loop/", "note.md"],
+      {
+        "note.md": makeNoteJson("note.md", "content"),
+      },
+      // "loop" lists itself as a child — a true cycle
+      { "loop": ["loop/"] },
+    );
+
+    const cache = new VaultCache(client, 600000);
+    // Should complete without hanging — cycle detection breaks the loop
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("note.md")).toBeDefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -926,6 +944,43 @@ describe("VaultCache — refresh", () => {
     await cache.refresh();
     // Cache should still have old data
     expect(cache.noteCount).toBe(1);
+  });
+
+  it("refresh discovers new nested files and prunes deleted ones", async () => {
+    const dirFiles: Record<string, string[]> = { "folder": ["folder/a.md"] };
+    const notes: Record<string, NoteJson> = {
+      "folder/a.md": makeNoteJson("folder/a.md", "A"),
+    };
+
+    const client = {
+      listFilesInVault: vi.fn(async () => ({ files: ["folder/"] })),
+      listFilesInDir: vi.fn(async (dirPath: string) => {
+        const contents = dirFiles[dirPath];
+        if (!contents) throw new Error(`Dir not found: ${dirPath}`);
+        return { files: contents };
+      }),
+      getFileContents: vi.fn(async (path: string) => {
+        const note = notes[path];
+        if (!note) throw new Error("not found");
+        return note;
+      }),
+    } as unknown as ObsidianClient;
+
+    const cache = new VaultCache(client, 600000);
+    await cache.initialize();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("folder/a.md")).toBeDefined();
+
+    // Simulate: folder/a.md deleted, folder/b.md added
+    dirFiles["folder"] = ["folder/b.md"];
+    delete notes["folder/a.md"];
+    notes["folder/b.md"] = makeNoteJson("folder/b.md", "B", 2000);
+
+    await cache.refresh();
+    expect(cache.noteCount).toBe(1);
+    expect(cache.getNote("folder/a.md")).toBeUndefined();
+    expect(cache.getNote("folder/b.md")).toBeDefined();
+    expect(cache.getNote("folder/b.md")?.content).toBe("B");
   });
 });
 

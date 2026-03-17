@@ -343,16 +343,29 @@ export class VaultCache implements VaultCacheInterface {
    * Recursively discovers all `.md` files in the vault by traversing directories.
    * The Obsidian REST API only returns immediate children per listing call,
    * so this method recurses into entries ending with `/` (directories).
+   * Tracks visited directories to prevent infinite loops from symlink cycles.
    * Individual `listFilesInDir` failures are caught and logged — inaccessible
    * directories are skipped without aborting the traversal.
    */
   private async collectAllMarkdownFiles(): Promise<string[]> {
     const allFiles: string[] = [];
+    const visited = new Set<string>();
 
     const traverse = async (dirPath: string): Promise<void> => {
-      const { files } = dirPath === ""
+      const normalized = dirPath.replaceAll("\\", "/").replace(/\/+$/, "");
+      if (visited.has(normalized)) {
+        log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
+        return;
+      }
+      if (normalized.split("/").some((s) => s === "..") || normalized.startsWith("/")) {
+        log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
+        return;
+      }
+      visited.add(normalized);
+
+      const { files } = normalized === ""
         ? await this.client.listFilesInVault()
-        : await this.client.listFilesInDir(dirPath);
+        : await this.client.listFilesInDir(normalized);
 
       for (const file of files) {
         if (file.toLowerCase().endsWith(".md")) {

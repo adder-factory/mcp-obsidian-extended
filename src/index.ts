@@ -13,6 +13,8 @@ import { ObsidianClient } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
 
+process.title = "mcp-obsidian-extended";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 const VERSION: string =

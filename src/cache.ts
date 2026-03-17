@@ -339,10 +339,127 @@ export class VaultCache implements VaultCacheInterface {
     log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
   }
 
+  /** Normalizes a path and returns `undefined` if it contains unsafe segments (`..` or absolute). */
+  private static normalizePath(raw: string): string | undefined {
+    let normalized = raw.replaceAll("\\", "/");
+    // Check for absolute paths BEFORE stripping slashes — "/" would become "" otherwise
+    if (normalized.startsWith("/")) return undefined;
+    while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
+    // Collapse single-dot and empty segments, then check for .. traversal
+    const segments = normalized.split("/").filter((s) => s !== "." && s !== "");
+    if (segments.includes("..")) return undefined;
+    return segments.join("/");
+  }
+
+  /**
+   * Recursively discovers all `.md` files in the vault by traversing directories.
+   * The Obsidian REST API only returns immediate children per listing call,
+   * so this method recurses into entries ending with `/` (directories).
+   * Tracks visited directories to prevent infinite loops from symlink cycles.
+   * Individual `listFilesInDir` failures are caught and logged — inaccessible
+   * directories are skipped without aborting the traversal.
+   */
+  private async collectAllMarkdownFiles(): Promise<string[]> {
+    const allFiles: string[] = [];
+    const visited = new Set<string>();
+    await this.traverseDirectory("", allFiles, visited);
+    return allFiles;
+  }
+
+  /** Maximum directory nesting depth to prevent path-extending symlink cycles. */
+  private static readonly MAX_TRAVERSAL_DEPTH = 20;
+
+  /**
+   * Recursively lists files in a directory, collecting `.md` paths and recursing into subdirectories.
+   * @param dirPath - Vault-relative directory path (empty string `""` for the vault root).
+   * @param allFiles - Accumulator array; matched `.md` paths are appended in-place.
+   * @param visited - Set of already-visited normalized paths used to break symlink cycles.
+   * @param depth - Current recursion depth (0 = vault root).
+   */
+  private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>, depth = 0): Promise<void> {
+    if (depth > VaultCache.MAX_TRAVERSAL_DEPTH) {
+      log("warn", `Cache: skipping directory "${dirPath}" — max depth ${String(VaultCache.MAX_TRAVERSAL_DEPTH)} exceeded`);
+      return;
+    }
+    const normalized = VaultCache.normalizePath(dirPath);
+    if (normalized === undefined) {
+      log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
+      return;
+    }
+    // normalizePath(".") collapses to "" (vault root), so a "." entry will also
+    // hit this guard — semantically a self-reference rather than a cycle, but
+    // the guard is correct either way.
+    if (visited.has(normalized)) {
+      log("debug", `Cache: skipping already-visited directory "${dirPath}"`);
+      return;
+    }
+    visited.add(normalized);
+
+    const { files } = await this.listDirectory(normalized);
+    // The REST API returns paths relative to the listed directory.
+    // Prepend the parent path to construct full vault-relative paths.
+    const prefix = normalized === "" ? "" : `${normalized}/`;
+
+    const dirEntries: string[] = [];
+    for (const file of files) {
+      const fullPath = `${prefix}${file}`;
+      if (file.endsWith("/")) {
+        dirEntries.push(fullPath);
+      } else {
+        VaultCache.collectFileEntry(fullPath, allFiles);
+      }
+    }
+    for (const dir of dirEntries) {
+      await this.traverseSubdirectory(dir, allFiles, visited, depth + 1);
+    }
+  }
+
+  /**
+   * Lists files in a directory, dispatching to vault root or subdirectory listing.
+   * @param normalized - Normalized vault-relative directory path.
+   */
+  private async listDirectory(normalized: string): Promise<{ files: string[] }> {
+    return normalized === ""
+      ? this.client.listFilesInVault()
+      : this.client.listFilesInDir(normalized);
+  }
+
+  /**
+   * Adds a `.md` file entry to the collection if its path is safe.
+   * @param file - Raw file entry from the Obsidian REST API listing.
+   * @param allFiles - Accumulator array; safe `.md` paths are appended in-place.
+   */
+  private static collectFileEntry(file: string, allFiles: string[]): void {
+    if (!file.toLowerCase().endsWith(".md")) return;
+    const safe = VaultCache.normalizePath(file);
+    if (safe === undefined) {
+      log("warn", `Cache: skipping unsafe file path "${file}"`);
+      return;
+    }
+    allFiles.push(safe);
+  }
+
+  /**
+   * Recurses into a subdirectory entry, catching and logging failures. Rethrows auth and connection errors.
+   * @param dirEntry - Directory entry with trailing slash (e.g. `"docs/sub/"`).
+   * @param allFiles - Accumulator array passed through to `traverseDirectory`.
+   * @param visited - Visited-path set passed through to `traverseDirectory`.
+   * @param depth - Current recursion depth, forwarded to `traverseDirectory`.
+   */
+  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>, depth: number): Promise<void> {
+    try {
+      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited, depth);
+    } catch (err: unknown) {
+      if (err instanceof ObsidianAuthError) throw err;
+      if (err instanceof ObsidianConnectionError) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      log("debug", `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`);
+    }
+  }
+
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
   private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
-    const { files } = await this.client.listFilesInVault();
-    const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+    const mdFiles = [...new Set(await this.collectAllMarkdownFiles())];
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
     const freshNotes = new Map<string, CachedNote>();
@@ -410,8 +527,9 @@ export class VaultCache implements VaultCacheInterface {
         return;
       }
 
-      const { files } = await this.client.listFilesInVault();
-      const mdFiles = new Set(files.filter((f) => f.toLowerCase().endsWith(".md")));
+      const allMdFiles = await this.collectAllMarkdownFiles();
+      // Set deduplicates paths that may appear in both root and subdirectory listings
+      const mdFiles = new Set(allMdFiles);
 
       const deleted = this.pruneDeletedNotes(mdFiles);
       const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);

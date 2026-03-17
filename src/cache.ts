@@ -339,6 +339,16 @@ export class VaultCache implements VaultCacheInterface {
     log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
   }
 
+  /** Normalizes a path and returns `undefined` if it contains unsafe segments (`..` or absolute). */
+  private static normalizePath(raw: string): string | undefined {
+    let normalized = raw.replaceAll("\\", "/");
+    while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
+    if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+      return undefined;
+    }
+    return normalized;
+  }
+
   /**
    * Recursively discovers all `.md` files in the vault by traversing directories.
    * The Obsidian REST API only returns immediate children per listing call,
@@ -352,14 +362,13 @@ export class VaultCache implements VaultCacheInterface {
     const visited = new Set<string>();
 
     const traverse = async (dirPath: string): Promise<void> => {
-      let normalized = dirPath.replaceAll("\\", "/");
-      while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
-      if (visited.has(normalized)) {
-        log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
+      const normalized = VaultCache.normalizePath(dirPath);
+      if (normalized === undefined) {
+        log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
         return;
       }
-      if (normalized.split("/").includes("..") || normalized.startsWith("/")) {
-        log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
+      if (visited.has(normalized)) {
+        log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
         return;
       }
       visited.add(normalized);
@@ -370,12 +379,12 @@ export class VaultCache implements VaultCacheInterface {
 
       for (const file of files) {
         if (file.toLowerCase().endsWith(".md")) {
-          const normalizedFile = file.replaceAll("\\", "/");
-          if (normalizedFile.split("/").includes("..") || normalizedFile.startsWith("/")) {
+          const safe = VaultCache.normalizePath(file);
+          if (safe === undefined) {
             log("warn", `Cache: skipping unsafe file path "${file}"`);
-            continue;
+          } else {
+            allFiles.push(safe);
           }
-          allFiles.push(normalizedFile);
         } else if (file.endsWith("/")) {
           try {
             await traverse(file.slice(0, -1));
@@ -462,6 +471,7 @@ export class VaultCache implements VaultCacheInterface {
       }
 
       const allMdFiles = await this.collectAllMarkdownFiles();
+      // Set deduplicates paths that may appear in both root and subdirectory listings
       const mdFiles = new Set(allMdFiles);
 
       const deleted = this.pruneDeletedNotes(mdFiles);

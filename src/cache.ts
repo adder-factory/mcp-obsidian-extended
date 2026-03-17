@@ -438,6 +438,7 @@ export class VaultCache implements VaultCacheInterface {
       await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited);
     } catch (err: unknown) {
       if (err instanceof ObsidianAuthError) throw err;
+      if (err instanceof ObsidianConnectionError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       log("debug", `Cache: skipping inaccessible directory "${dirEntry}": ${msg}`);
     }

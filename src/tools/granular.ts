@@ -19,14 +19,13 @@ import {
 import {
   formatFileContents,
   escapeRegex,
-  handleConfigureSet,
-  handleConfigureReset,
-  handleConfigureShow,
   buildVaultStructure,
   handleRecentChanges,
   handleRecentPeriodicNotes,
   batchGetFiles,
   ensureCacheReady,
+  registerOpenFileTool,
+  registerConfigureTool,
 } from "./shared.js";
 
 // --- Registration sub-functions (split to keep complexity below 15) ---
@@ -374,27 +373,7 @@ function registerCommandAndSearchTools(
   }
 
   // --- 16. open_file ---
-  if (shouldRegister("open_file")) {
-    server.registerTool(
-      "open_file",
-      {
-        description: "Open a file in the Obsidian UI",
-        inputSchema: z.object({
-          path: z.string().describe("File path"),
-          newLeaf: z.boolean().default(false).describe("Open in new tab"),
-        }),
-      },
-      async ({ path, newLeaf }) => {
-        try {
-          await client.openFile(path, newLeaf);
-          return textResult(`Opened: ${path}`);
-        } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "open_file", path }));
-        }
-      },
-    );
-    count++;
-  }
+  count += registerOpenFileTool(server, client, shouldRegister);
 
   // --- 17. simple_search ---
   if (shouldRegister("simple_search")) {
@@ -775,38 +754,7 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 34. configure (PROTECTED) ---
-  if (shouldRegister("configure")) {
-    server.registerTool(
-      "configure",
-      {
-        description: "View or change server settings",
-        inputSchema: z.object({
-          action: z.enum(["show", "set", "reset"]).describe("Action"),
-          setting: z.string().optional().describe("Setting name for set/reset"),
-          value: z.string().optional().describe("New value for set"),
-        }),
-      },
-      async ({ action, setting, value }) => {
-        try {
-          switch (action) {
-            case "show":
-              return handleConfigureShow(config);
-            case "set":
-              return handleConfigureSet(setting, value, config);
-            case "reset":
-              return handleConfigureReset(setting, config);
-            default: {
-              const _exhaustive: never = action;
-              return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);
-            }
-          }
-        } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "configure" }));
-        }
-      },
-    );
-    count++;
-  }
+  count += registerConfigureTool(server, shouldRegister, config);
 
   // --- 35. get_backlinks ---
   if (shouldRegister("get_backlinks")) {

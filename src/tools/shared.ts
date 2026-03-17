@@ -1,10 +1,14 @@
 import { resolve } from "node:path";
 
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
 import { textResult, errorResult, jsonResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
+import { buildErrorMessage } from "../errors.js";
 
 // --- Cache readiness ---
 
@@ -401,4 +405,79 @@ export async function batchGetFiles(
     output.push(...results);
   }
   return output;
+}
+
+// --- Shared tool registrations (used by both granular and consolidated modes) ---
+
+/**
+ * Registers the open_file tool. Identical in both granular and consolidated modes.
+ * @returns 1 if registered, 0 if skipped.
+ */
+export function registerOpenFileTool(
+  server: McpServer,
+  client: ObsidianClient,
+  shouldRegister: (name: string) => boolean,
+): number {
+  if (!shouldRegister("open_file")) return 0;
+  server.registerTool(
+    "open_file",
+    {
+      description: "Open a file in the Obsidian UI",
+      inputSchema: z.object({
+        path: z.string().describe("File path"),
+        newLeaf: z.boolean().default(false).describe("Open in new tab"),
+      }),
+    },
+    async ({ path, newLeaf }) => {
+      try {
+        await client.openFile(path, newLeaf);
+        return textResult(`Opened: ${path}`);
+      } catch (err: unknown) {
+        return errorResult(buildErrorMessage(err, { tool: "open_file", path }));
+      }
+    },
+  );
+  return 1;
+}
+
+/**
+ * Registers the configure tool. Identical in both granular and consolidated modes.
+ * @returns 1 if registered, 0 if skipped.
+ */
+export function registerConfigureTool(
+  server: McpServer,
+  shouldRegister: (name: string) => boolean,
+  config: Config,
+): number {
+  if (!shouldRegister("configure")) return 0;
+  server.registerTool(
+    "configure",
+    {
+      description: "View or change server settings",
+      inputSchema: z.object({
+        action: z.enum(["show", "set", "reset"]).describe("Action"),
+        setting: z.string().optional().describe("Setting name for set/reset"),
+        value: z.string().optional().describe("New value for set"),
+      }),
+    },
+    async ({ action, setting, value }) => {
+      try {
+        switch (action) {
+          case "show":
+            return handleConfigureShow(config);
+          case "set":
+            return handleConfigureSet(setting, value, config);
+          case "reset":
+            return handleConfigureReset(setting, config);
+          default: {
+            const _exhaustive: never = action;
+            return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);
+          }
+        }
+      } catch (err: unknown) {
+        return errorResult(buildErrorMessage(err, { tool: "configure" }));
+      }
+    },
+  );
+  return 1;
 }

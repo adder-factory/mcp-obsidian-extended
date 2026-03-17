@@ -346,6 +346,8 @@ export class VaultCache implements VaultCacheInterface {
     if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
       return undefined;
     }
+    // Collapse single-dot segments (e.g. "docs/./sub" → "docs/sub")
+    normalized = normalized.split("/").filter((s) => s !== ".").join("/");
     return normalized;
   }
 
@@ -407,11 +409,12 @@ export class VaultCache implements VaultCacheInterface {
     allFiles.push(safe);
   }
 
-  /** Recurses into a subdirectory entry, catching and logging failures. */
+  /** Recurses into a subdirectory entry, catching and logging failures. Rethrows auth errors. */
   private async traverseSubdirectory(file: string, allFiles: string[], visited: Set<string>): Promise<void> {
     try {
       await this.traverseDirectory(file.slice(0, -1), allFiles, visited);
     } catch (err: unknown) {
+      if (err instanceof ObsidianAuthError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       log("debug", `Cache: skipping inaccessible directory "${file}": ${msg}`);
     }

@@ -521,7 +521,7 @@ export function registerConsolidatedTools(
         inputSchema: z.object({
           type: z.enum(["simple", "jsonlogic", "dataview"]).describe("Search type"),
           query: z.string().optional().describe("Query for simple/dataview"),
-          jsonQuery: z.record(z.unknown()).optional().describe("JsonLogic object"),
+          jsonQuery: z.record(z.string(), z.unknown()).optional().describe("JsonLogic object"),
           contextLength: z.number().default(100).describe("Context chars"),
         }),
       },

@@ -95,7 +95,7 @@ function findConfigFile(): string | undefined {
   return undefined;
 }
 
-const configFileSchema = z.object({
+const configFileSchema = z.looseObject({
   host: z.string().optional(),
   port: z.number().int().min(1).max(65535).optional(),
   scheme: z.string().optional(),
@@ -119,7 +119,7 @@ const configFileSchema = z.object({
     enabled: z.boolean().optional(),
   }).optional(),
   debug: z.boolean().optional(),
-}).passthrough();
+});
 
 /** Recovers valid nested keys from an object section whose top-level validation failed. */
 function recoverNestedKeys(fieldSchema: z.ZodType, value: unknown): Record<string, unknown> | undefined {

@@ -441,7 +441,7 @@ function registerCommandAndSearchTools(
       {
         description: "Search vault with JsonLogic queries (glob, regexp)",
         inputSchema: z.object({
-          query: z.record(z.unknown()).describe("JsonLogic query object"),
+          query: z.record(z.string(), z.unknown()).describe("JsonLogic query object"),
         }),
       },
       async ({ query }) => {

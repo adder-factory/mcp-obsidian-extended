@@ -1,6 +1,6 @@
 # mcp-obsidian-extended
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.27-green.svg)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-brightgreen.svg)](https://nodejs.org/)
@@ -135,7 +135,7 @@ Control which tools are available. Set via `TOOL_PRESET` env var.
 | Preset | Granular | Consolidated | Description |
 |--------|----------|-------------|-------------|
 | `full` | 38 tools | 11 tools, all actions | Everything (default) |
-| `read-only` | 20 tools | 11 tools, read actions only | No writes or deletes |
+| `read-only` | 19 tools | 10 tools, read actions only | No writes or deletes |
 | `minimal` | 7 tools | 4 tools | Essentials only |
 | `safe` | 34 tools | 11 tools, no delete action | Everything except deletes |
 

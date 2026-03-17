@@ -366,15 +366,23 @@ export class VaultCache implements VaultCacheInterface {
     return allFiles;
   }
 
-  /** Recursively lists files in a directory, collecting `.md` paths and recursing into subdirectories. */
+  /**
+   * Recursively lists files in a directory, collecting `.md` paths and recursing into subdirectories.
+   * @param dirPath - Vault-relative directory path (empty string `""` for the vault root).
+   * @param allFiles - Accumulator array; matched `.md` paths are appended in-place.
+   * @param visited - Set of already-visited normalized paths used to break symlink cycles.
+   */
   private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>): Promise<void> {
     const normalized = VaultCache.normalizePath(dirPath);
     if (normalized === undefined) {
       log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
       return;
     }
+    // normalizePath(".") collapses to "" (vault root), so a "." entry will also
+    // hit this guard — semantically a self-reference rather than a cycle, but
+    // the guard is correct either way.
     if (visited.has(normalized)) {
-      log("debug", `Cache: skipping already-visited directory "${dirPath}" (cycle detected)`);
+      log("debug", `Cache: skipping already-visited directory "${dirPath}"`);
       return;
     }
     visited.add(normalized);
@@ -391,14 +399,21 @@ export class VaultCache implements VaultCacheInterface {
     }
   }
 
-  /** Lists files in a directory, dispatching to vault root or subdirectory listing. */
+  /**
+   * Lists files in a directory, dispatching to vault root or subdirectory listing.
+   * @param normalized - Normalized vault-relative directory path.
+   */
   private async listDirectory(normalized: string): Promise<{ files: string[] }> {
     return normalized === ""
       ? this.client.listFilesInVault()
       : this.client.listFilesInDir(normalized);
   }
 
-  /** Adds a `.md` file entry to the collection if its path is safe. */
+  /**
+   * Adds a `.md` file entry to the collection if its path is safe.
+   * @param file - Raw file entry from the Obsidian REST API listing.
+   * @param allFiles - Accumulator array; safe `.md` paths are appended in-place.
+   */
   private collectFileEntry(file: string, allFiles: string[]): void {
     if (!file.toLowerCase().endsWith(".md")) return;
     const safe = VaultCache.normalizePath(file);
@@ -409,14 +424,19 @@ export class VaultCache implements VaultCacheInterface {
     allFiles.push(safe);
   }
 
-  /** Recurses into a subdirectory entry, catching and logging failures. Rethrows auth errors. */
-  private async traverseSubdirectory(file: string, allFiles: string[], visited: Set<string>): Promise<void> {
+  /**
+   * Recurses into a subdirectory entry, catching and logging failures. Rethrows auth errors.
+   * @param dirEntry - Directory entry with trailing slash (e.g. `"docs/sub/"`).
+   * @param allFiles - Accumulator array passed through to `traverseDirectory`.
+   * @param visited - Visited-path set passed through to `traverseDirectory`.
+   */
+  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>): Promise<void> {
     try {
-      await this.traverseDirectory(file.slice(0, -1), allFiles, visited);
+      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited);
     } catch (err: unknown) {
       if (err instanceof ObsidianAuthError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      log("debug", `Cache: skipping inaccessible directory "${file}": ${msg}`);
+      log("debug", `Cache: skipping inaccessible directory "${dirEntry}": ${msg}`);
     }
   }
 

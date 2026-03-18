@@ -8,7 +8,7 @@
  *   mcp-obsidian-extended.skill — Claude Code marketplace format (gzipped tar)
  */
 
-import { mkdtempSync, cpSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -22,17 +22,18 @@ const stageDir = join(tmpDir, FOLDER_NAME);
 
 try {
   // Stage the skill file inside a folder (required by Claude.ai ZIP format)
-  cpSync(SKILL_SRC, join(stageDir, "SKILL.md"), { recursive: true });
+  mkdirSync(stageDir, { recursive: true });
+  cpSync(SKILL_SRC, join(stageDir, "SKILL.md"));
 
   // Generate .zip (Claude.ai)
   const zipOut = join(PROJECT_ROOT, `${FOLDER_NAME}.zip`);
   execFileSync("zip", ["-r", zipOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
-  process.stderr.write(`Created: ${zipOut}\n`);
+  process.stdout.write(`Created: ${zipOut}\n`);
 
   // Generate .skill (gzipped tar for Claude Code)
   const skillOut = join(PROJECT_ROOT, `${FOLDER_NAME}.skill`);
   execFileSync("tar", ["czf", skillOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
-  process.stderr.write(`Created: ${skillOut}\n`);
+  process.stdout.write(`Created: ${skillOut}\n`);
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });
 }

@@ -274,7 +274,6 @@ const COMPACT_FIELD_MAP: ReadonlyMap<string, string> = new Map([
   ["context", "ctx"],
   ["score", "sc"],
   ["matches", "mt"],
-  ["ok", "ok"],
   ["service", "svc"],
   ["authenticated", "auth"],
   ["versions", "v"],

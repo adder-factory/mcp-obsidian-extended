@@ -249,7 +249,7 @@ function registerActiveFileTools(
 ): number {
   let count = 0;
 
-  // --- 9. get_active_file ---
+  // --- 10. get_active_file ---
   if (shouldRegister("get_active_file")) {
     server.registerTool(
       "get_active_file",

@@ -202,7 +202,7 @@ function knownPitfalls(mode: "granular" | "consolidated"): string {
 - ${patch} with replace operation on a top-level heading replaces EVERYTHING under it — including all sub-headings.
 - PATCH with :: heading delimiter has ~10.5% failure rate under concurrent writes. For concurrent editing, prefer ${sr}.
 - Dataview LIST queries are not supported — only TABLE. This is the REST API plugin's limitation.
-- Active file operations (get_active_file, etc.) depend on what the USER has open in Obsidian — if they switch files, the active file changes under you.`;
+- Active file operations (${mode === "consolidated" ? "active_file" : "get_active_file, put_active_file, etc."}) depend on what the USER has open in Obsidian — if they switch files, the active file changes under you.`;
 }
 
 /** Section 6: Consolidated mode action → required params mapping. */

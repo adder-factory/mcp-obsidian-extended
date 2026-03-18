@@ -271,7 +271,7 @@ async function main(): Promise<void> {
   const toolCount = registerAllTools(server, client, cache, config);
 
   const skillContent = buildSkillContent(config.toolMode, config.compactResponses);
-  server.resource(
+  server.registerResource(
     "obsidian-skill",
     "obsidian://skill",
     { description: "LLM usage guide for Obsidian MCP tools" },

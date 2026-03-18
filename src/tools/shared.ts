@@ -106,6 +106,26 @@ function parsePosIntValue(value: string, min: number): number | undefined {
 
 // --- Configure helpers ---
 
+/** Parser entry: maps a setting name to a parse-and-wrap function. */
+interface ConfigUpdateParser {
+  readonly parse: (value: string) => Record<string, unknown> | undefined;
+}
+
+/** Lookup table of per-setting parsers for buildConfigUpdate. Extracted to keep cognitive complexity low. */
+const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<string, ConfigUpdateParser>([
+  ["debug", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { debug: b }; } }],
+  ["compactResponses", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { compactResponses: b }; } }],
+  ["timeout", { parse: (v) => { const n = parsePosIntValue(v, 1); return n === undefined ? undefined : { reliability: { timeout: n } }; } }],
+  ["verifyWrites", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { reliability: { verifyWrites: b } }; } }],
+  ["maxResponseChars", { parse: (v) => { const n = parsePosIntValue(v, 0); return n === undefined ? undefined : { reliability: { maxResponseChars: n } }; } }],
+  ["toolMode", {
+    parse: (v) => (v === "granular" || v === "consolidated") ? { tools: { mode: v } } : undefined,
+  }],
+  ["toolPreset", {
+    parse: (v) => (v === "full" || v === "read-only" || v === "minimal" || v === "safe") ? { tools: { preset: v } } : undefined,
+  }],
+]);
+
 /**
  * Builds a config file update object for a given setting and value.
  * @param setting - The setting name to update.
@@ -113,36 +133,8 @@ function parsePosIntValue(value: string, min: number): number | undefined {
  * @returns A partial config update object, or undefined if the value is invalid.
  */
 function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
-  switch (setting) {
-    case "debug": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { debug: b };
-    }
-    case "compactResponses": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { compactResponses: b };
-    }
-    case "timeout": {
-      const n = parsePosIntValue(value, 1);
-      return n === undefined ? undefined : { reliability: { timeout: n } };
-    }
-    case "verifyWrites": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { reliability: { verifyWrites: b } };
-    }
-    case "maxResponseChars": {
-      const n = parsePosIntValue(value, 0);
-      return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
-    }
-    case "toolMode":
-      if (value !== "granular" && value !== "consolidated") return undefined;
-      return { tools: { mode: value } };
-    case "toolPreset":
-      if (value !== "full" && value !== "read-only" && value !== "minimal" && value !== "safe") return undefined;
-      return { tools: { preset: value } };
-    default:
-      return undefined;
-  }
+  const parser = CONFIG_UPDATE_PARSERS.get(setting);
+  return parser ? parser.parse(value) : undefined;
 }
 
 /**

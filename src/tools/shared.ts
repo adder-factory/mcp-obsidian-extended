@@ -449,6 +449,8 @@ export async function handleMoveFile(
     const msg = error instanceof Error ? error.message : String(error);
     return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Both files now exist — delete the source manually if the destination content is correct.`);
   }
+  // Cache: putContent invalidates destination, deleteFile invalidates source.
+  // The destination will be fully indexed on the next cache auto-refresh cycle.
   return textResult(`Moved: ${normalizedSource} → ${normalizedDest}`);
 }
 

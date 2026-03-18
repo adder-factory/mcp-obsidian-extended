@@ -4,12 +4,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
-import { textResult, errorResult, jsonResult, setCompactResponses, getCompactResponses } from "../obsidian.js";
+import { textResult, errorResult, jsonResult, setCompactResponses, getCompactResponses, sanitizeFilePath } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
 import { ObsidianApiError, buildErrorMessage } from "../errors.js";
-import { sanitizeFilePath } from "../obsidian.js";
 
 // --- Cache readiness ---
 

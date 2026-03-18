@@ -151,7 +151,7 @@ async function setup(): Promise<void> {
 
   // Step 2: Tool Mode
   process.stderr.write("Step 2/4: Tool Mode\n\n");
-  const toolModeRaw = await ask("  Mode (granular = 38 tools, consolidated = 11 tools)", "granular");
+  const toolModeRaw = await ask("  Mode (granular = 39 tools, consolidated = 11 tools)", "granular");
   const toolMode = validateEnum(toolModeRaw, new Set(["granular", "consolidated"] as const), "mode", "granular" as const);
   const toolPresetRaw = await ask("  Preset (full, read-only, minimal, safe)", "full");
   const toolPreset = validateEnum(toolPresetRaw, new Set(["full", "read-only", "minimal", "safe"] as const), "preset", "full" as const);

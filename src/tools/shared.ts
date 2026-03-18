@@ -426,6 +426,10 @@ export async function handleMoveFile(
   if (normalizedSource === normalizedDest) {
     return textResult(`No-op: source and destination are the same (${normalizedSource})`);
   }
+  // Lock ordering: acquire source lock first (via getFileContents), then destination (via putContent).
+  // Each client method internally uses withFileLock, serializing per-path writes.
+  // MCP tool calls are sequential (single client), so cross-call races are not possible.
+  // The conflict check is best-effort — Obsidian itself is the final arbiter.
   const content = await client.getFileContents(normalizedSource, "markdown", true);
   if (typeof content !== "string") {
     return errorResult("[move_file] Expected markdown content from source file");

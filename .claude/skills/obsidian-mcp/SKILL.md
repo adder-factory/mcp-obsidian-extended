@@ -58,7 +58,7 @@ If heading has special characters (em dashes, parentheses), use search_replace i
 - Use list_files_in_dir to find the correct path
 - Server has case-insensitive fallback — but path must be close
 
-**PATCH timeout** — Heading/block target not found.
+**PATCH 400 error** — Heading/block target not found (returned as a bad request, not a timeout).
 - Get the document map first: get_file_contents(path, format: "map")
 - Check heading uses :: delimiter for nested headings: "Parent::Child"
 - If heading has special characters, use search_replace instead

@@ -71,7 +71,7 @@ describe("buildSkillContent", () => {
   it("includes all error recovery scenarios", () => {
     const content = buildSkillContent("granular", false);
     expect(content).toContain("404 NOT FOUND");
-    expect(content).toContain("PATCH timeout");
+    expect(content).toContain("PATCH 400 error");
     expect(content).toContain("Connection refused");
     expect(content).toContain("CONFLICT (move_file)");
     expect(content).toContain("Large response truncated");

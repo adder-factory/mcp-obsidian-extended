@@ -1,7 +1,7 @@
 {
   "name": "mcp-obsidian-extended",
   "version": "1.1.0",
-  "description": "MCP server for Obsidian — 38 tools, 100% REST API coverage",
+  "description": "MCP server for Obsidian — 39 tools, 100% REST API coverage",
   "author": "adder-factory",
   "license": "MIT",
   "repository": {

@@ -256,6 +256,7 @@ configure:
   show           → (no params)
   set            → setting, value
   reset          → setting
+  skill          → (no params, returns LLM usage guide)
 
 vault_analysis:
   backlinks      → path

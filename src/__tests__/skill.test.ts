@@ -176,4 +176,11 @@ describe("buildSkillContent", () => {
     expect(content).not.toContain("## Consolidated Mode Action Reference");
     expect(content).not.toContain("## Compact Response Field Reference");
   });
+
+  // --- configure skill action in consolidated reference ---
+
+  it("includes skill action in configure's consolidated reference", () => {
+    const content = buildSkillContent("consolidated", false);
+    expect(content).toMatch(/configure:[\s\S]*?skill/);
+  });
 });

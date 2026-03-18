@@ -122,7 +122,7 @@ This is a TypeScript rewrite of [mcp-obsidian](https://github.com/MarkusPfundste
 | 32 | `batch_get_file_contents` | Read multiple vault files in one call |
 | 33 | `get_recent_changes` | Get recently modified files sorted by date |
 | 34 | `get_recent_periodic_notes` | Get recent periodic notes for a period type |
-| 35 | `configure` | View or change server settings |
+| 35 | `configure` | View or change server settings, or load LLM usage guide |
 | 36 | `get_backlinks` | Get all notes that link to a file |
 | 37 | `get_vault_structure` | Vault stats: note count, links, orphans, most connected |
 | 38 | `get_note_connections` | Get backlinks and forward links for a note |
@@ -143,7 +143,7 @@ Combines related tools into multi-action tools. Reduces the tool list sent to th
 | 7 | `status` | — | Tool 31 |
 | 8 | `batch_get` | — | Tool 32 |
 | 9 | `recent` | changes, periodic_notes | Tools 33-34 |
-| 10 | `configure` | show, set, reset | Tool 35 |
+| 10 | `configure` | show, set, reset, skill | Tool 35 |
 | 11 | `vault_analysis` | backlinks, connections, structure, refresh | Tools 36-39 |
 
 Set `TOOL_MODE=consolidated` to enable.
@@ -264,7 +264,21 @@ The server exposes an MCP resource at `obsidian://skill` — a dynamic usage gui
 
 Covers: golden rules, step-by-step workflows, error recovery, tool selection guide, known pitfalls, and (when applicable) consolidated action reference and compact field mapping.
 
-Also ships as `.claude/skills/obsidian-mcp/SKILL.md` for Claude Code users.
+Also ships as `.claude/skills/obsidian-mcp/SKILL.md` for Claude Code users. Additionally, `configure({ action: "skill" })` returns the guide as tool output — useful for clients that don't expose MCP resources to conversations.
+
+### Claude.ai Setup
+
+Claude.ai registers MCP resources but does not currently expose them to conversations. Use one of these options to load the skill guide:
+
+**Option A: Upload Skill (recommended)** — Download `mcp-obsidian-extended.zip` from [Releases](https://github.com/adder-factory/mcp-obsidian-extended/releases). In Claude.ai, go to Customize → Skills → "+" → Upload and select the ZIP. Requires Code execution to be enabled. Per-user (does not sync across surfaces).
+
+**Option B: Auto-load per session** — Add to your Project Instructions: *"Call `configure({ action: 'skill' })` at the start of each conversation."* One tool call, always returns the latest guide tailored to the active mode and compact setting.
+
+**Option C: Claude Code (automatic)** — `SKILL.md` ships in the npm package. Claude Code reads it automatically when the server is configured.
+
+**Option D: API** — Upload via the Skills API: `POST /v1/skills` with the `anthropic-beta: skills-2025-01-01` header.
+
+> **Important:** `TOOL_MODE=consolidated` is strongly recommended for Claude.ai. Granular mode registers 39 tools, which can exceed Claude.ai's platform tool loading limits — in testing, only 34 of 39 tools loaded (missing patch_content, move_file, configure, get_recent_changes, get_recent_periodic_notes). Consolidated mode's 11 tools load reliably and save ~42% on tool registration tokens.
 
 ## Compact Responses
 

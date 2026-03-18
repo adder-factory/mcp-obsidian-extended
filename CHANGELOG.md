@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 (2026-03-18)
+
+### New
+- **configure skill action:** `configure({ action: "skill" })` returns the LLM usage guide as tool output — workaround for Claude.ai where MCP resources are not exposed to conversations
+- **Skill packaging:** `npm run build:skill` generates `.zip` (Claude.ai) and `.skill` (Claude Code) distributable archives
+
+### Changed
+- configure tool description updated to mention LLM usage guide
+- Consolidated action reference lists `skill` action for configure
+
 ## 1.1.0 (2026-03-18)
 
 ### New

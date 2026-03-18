@@ -215,7 +215,10 @@ Responses use abbreviated field names to save tokens:
 | src | source |
 | tgt | target |
 | in | inbound |
-| out | outbound |`;
+| out | outbound |
+| st | start |
+| en | end |
+| fn | filename |`;
 }
 
 // --- Public API ---

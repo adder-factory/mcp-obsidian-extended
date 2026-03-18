@@ -283,6 +283,9 @@ const COMPACT_FIELD_MAP: ReadonlyMap<string, string> = new Map([
   ["target", "tgt"],
   ["inbound", "in"],
   ["outbound", "out"],
+  ["start", "st"],
+  ["end", "en"],
+  ["filename", "fn"],
 ]);
 
 /** Keys whose values are opaque user data — never recurse into or rename their contents. */

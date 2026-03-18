@@ -36,7 +36,7 @@ If heading has special characters (em dashes, parentheses), use search_replace i
 3. get_backlinks(path) — verify links were detected
 
 ### Move or rename a file (v1.1.0+)
-1. move_file(source, destination) — compound operation, handles everything
+1. move_file(source, destination) — copies content + deletes source (wikilinks from other notes are NOT updated automatically)
 
 ### Search strategies
 - simple_search(query) — keyword search, fast, good for finding files by content

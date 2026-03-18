@@ -9,18 +9,29 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { loadConfig, getRedactedConfig, saveConfigToFile, log, setDebugEnabled } from "./config.js";
-import { ObsidianClient } from "./obsidian.js";
+import { ObsidianClient, setCompactResponses, getCompactResponses } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
+import { buildSkillContent } from "./skill.js";
 
 process.title = "mcp-obsidian-extended";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
-const VERSION: string =
-  pkg !== null && typeof pkg === "object" && "version" in pkg && typeof (pkg as Record<string, unknown>)["version"] === "string"
-    ? (pkg as Record<string, unknown>)["version"] as string
-    : "unknown";
+
+/** Reads the package version, falling back to "unknown" in SEA binaries where package.json is absent. */
+function readPackageVersion(): string {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
+    if (raw !== null && typeof raw === "object" && "version" in raw && typeof (raw as Record<string, unknown>)["version"] === "string") {
+      return (raw as Record<string, unknown>)["version"] as string;
+    }
+  } catch {
+    // SEA binary or missing package.json — fall through
+  }
+  return "unknown";
+}
+
+const VERSION: string = readPackageVersion();
 
 // --- CLI: --show-config ---
 
@@ -150,7 +161,7 @@ async function setup(): Promise<void> {
 
   // Step 2: Tool Mode
   process.stderr.write("Step 2/4: Tool Mode\n\n");
-  const toolModeRaw = await ask("  Mode (granular = 38 tools, consolidated = 11 tools)", "granular");
+  const toolModeRaw = await ask("  Mode (granular = 39 tools, consolidated = 11 tools)", "granular");
   const toolMode = validateEnum(toolModeRaw, new Set(["granular", "consolidated"] as const), "mode", "granular" as const);
   const toolPresetRaw = await ask("  Preset (full, read-only, minimal, safe)", "full");
   const toolPreset = validateEnum(toolPresetRaw, new Set(["full", "read-only", "minimal", "safe"] as const), "preset", "full" as const);
@@ -251,6 +262,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   setDebugEnabled(config.debug);
+  setCompactResponses(config.compactResponses);
 
   if (!config.apiKey) {
     log("error", "OBSIDIAN_API_KEY is required. Set it as an environment variable or in config file.");
@@ -267,6 +279,16 @@ async function main(): Promise<void> {
   });
 
   const toolCount = registerAllTools(server, client, cache, config);
+
+  server.registerResource(
+    "obsidian-skill",
+    "obsidian://skill",
+    { description: "LLM usage guide for Obsidian MCP tools" },
+    async () => {
+      const skillContent = buildSkillContent(config.toolMode, getCompactResponses());
+      return { contents: [{ uri: "obsidian://skill", text: skillContent, mimeType: "text/markdown" }] };
+    },
+  );
 
   log("info", `mcp-obsidian-extended v${VERSION}`);
   if (config.configFilePath) {

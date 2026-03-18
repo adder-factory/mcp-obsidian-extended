@@ -163,6 +163,15 @@ describe("loadConfig — env overrides", () => {
     expect(loadConfig().enableCache).toBe(false);
   });
 
+  it("overrides compactResponses from OBSIDIAN_COMPACT_RESPONSES", () => {
+    process.env["OBSIDIAN_COMPACT_RESPONSES"] = "true";
+    expect(loadConfig().compactResponses).toBe(true);
+  });
+
+  it("defaults compactResponses to false", () => {
+    expect(loadConfig().compactResponses).toBe(false);
+  });
+
   it("reads OBSIDIAN_API_KEY", () => {
     process.env["OBSIDIAN_API_KEY"] = "my-secret-key";
     expect(loadConfig().apiKey).toBe("my-secret-key");
@@ -283,6 +292,7 @@ describe("getRedactedConfig", () => {
       excludeTools: [],
       cacheTtl: 600000,
       enableCache: true,
+      compactResponses: false,
       configFilePath: undefined,
     };
 
@@ -309,6 +319,7 @@ describe("getRedactedConfig", () => {
       excludeTools: [],
       cacheTtl: 600000,
       enableCache: true,
+      compactResponses: false,
       configFilePath: undefined,
     };
 

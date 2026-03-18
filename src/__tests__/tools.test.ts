@@ -187,6 +187,7 @@ const BASE_CONFIG: Config = {
   excludeTools: [],
   cacheTtl: 600000,
   enableCache: true,
+  compactResponses: false,
   configFilePath: undefined,
 };
 
@@ -208,13 +209,13 @@ function getText(result: ToolResult): string {
 // ===========================================================================
 
 describe("registerAllTools — granular mode", () => {
-  it("registers 38 tools in full preset", () => {
+  it("registers 39 tools in full preset", () => {
     const { server, getRegistered } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(server as never, client, cache, makeConfig());
-    expect(count).toBe(38);
-    expect(getRegistered()).toHaveLength(38);
+    expect(count).toBe(39);
+    expect(getRegistered()).toHaveLength(39);
   });
 
   it("registers 19 tools in read-only preset", () => {
@@ -241,7 +242,7 @@ describe("registerAllTools — granular mode", () => {
     expect(count).toBe(8);
   });
 
-  it("registers 34 tools in safe preset", () => {
+  it("registers 35 tools in safe preset", () => {
     const { server } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
@@ -249,7 +250,7 @@ describe("registerAllTools — granular mode", () => {
       server as never, client, cache,
       makeConfig({ toolPreset: "safe" }),
     );
-    expect(count).toBe(34);
+    expect(count).toBe(35);
   });
 
   it("protected tools are always registered even when excluded", () => {
@@ -634,6 +635,46 @@ describe("granular tools — registration and basic behavior", () => {
         replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalledWith("note.md", "Hello Obsidian");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // move_file
+  // -------------------------------------------------------------------------
+  describe("move_file", () => {
+    it("moves a file from source to destination", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content")
+        .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
+      const result = await getTool("move_file").handler({ source: "old.md", destination: "new.md" });
+      expect(getText(result)).toContain("Moved");
+      expect(client.putContent).toHaveBeenCalledWith("new.md", "# Content");
+      expect(client.deleteFile).toHaveBeenCalledWith("old.md");
+    });
+
+    it("returns no-op when source and destination are the same", async () => {
+      const { getTool } = setup();
+      const result = await getTool("move_file").handler({ source: "same.md", destination: "same.md" });
+      expect(getText(result)).toContain("No-op");
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("returns conflict error when destination exists", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Source")
+        .mockResolvedValueOnce("# Destination exists");
+      const result = await getTool("move_file").handler({ source: "old.md", destination: "existing.md" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("CONFLICT");
+    });
+
+    it("returns error when source does not exist", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianApiError("Not found", 404));
+      const result = await getTool("move_file").handler({ source: "missing.md", destination: "new.md" });
+      expect(result.isError).toBe(true);
     });
   });
 
@@ -1550,6 +1591,58 @@ describe("consolidated tools — registration and behavior", () => {
         useRegex: false, caseSensitive: true, replaceAll: true,
       });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // vault — move action
+  // -------------------------------------------------------------------------
+  describe("vault — move action", () => {
+    it("moves a file from source to destination", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content")
+        .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
+      const result = await getTool("vault").handler({
+        action: "move", source: "old.md", destination: "new.md",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(getText(result)).toContain("Moved");
+      expect(client.putContent).toHaveBeenCalledWith("new.md", "# Content");
+      expect(client.deleteFile).toHaveBeenCalledWith("old.md");
+    });
+
+    it("returns error when source is missing", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "move", destination: "new.md",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("source is required");
+    });
+
+    it("returns error when destination is missing", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "move", source: "old.md",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("destination is required");
+    });
+
+    it("returns conflict when destination exists", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Source")
+        .mockResolvedValueOnce("# Existing");
+      const result = await getTool("vault").handler({
+        action: "move", source: "old.md", destination: "existing.md",
+        useRegex: false, caseSensitive: true, replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("CONFLICT");
     });
   });
 

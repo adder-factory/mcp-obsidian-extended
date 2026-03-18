@@ -4,11 +4,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
-import { textResult, errorResult, jsonResult } from "../obsidian.js";
+import { textResult, errorResult, jsonResult, setCompactResponses, getCompactResponses, sanitizeFilePath } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
-import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
-import { buildErrorMessage } from "../errors.js";
+import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, getDebugEnabled, log } from "../config.js";
+import { ObsidianApiError, buildErrorMessage } from "../errors.js";
 
 // --- Cache readiness ---
 
@@ -106,6 +106,26 @@ function parsePosIntValue(value: string, min: number): number | undefined {
 
 // --- Configure helpers ---
 
+/** Parser entry: maps a setting name to a parse-and-wrap function. */
+interface ConfigUpdateParser {
+  readonly parse: (value: string) => Record<string, unknown> | undefined;
+}
+
+/** Lookup table of per-setting parsers for buildConfigUpdate. Extracted to keep cognitive complexity low. */
+const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<string, ConfigUpdateParser>([
+  ["debug", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { debug: b }; } }],
+  ["compactResponses", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { compactResponses: b }; } }],
+  ["timeout", { parse: (v) => { const n = parsePosIntValue(v, 1); return n === undefined ? undefined : { reliability: { timeout: n } }; } }],
+  ["verifyWrites", { parse: (v) => { const b = parseBoolValue(v); return b === undefined ? undefined : { reliability: { verifyWrites: b } }; } }],
+  ["maxResponseChars", { parse: (v) => { const n = parsePosIntValue(v, 0); return n === undefined ? undefined : { reliability: { maxResponseChars: n } }; } }],
+  ["toolMode", {
+    parse: (v) => (v === "granular" || v === "consolidated") ? { tools: { mode: v } } : undefined,
+  }],
+  ["toolPreset", {
+    parse: (v) => (v === "full" || v === "read-only" || v === "minimal" || v === "safe") ? { tools: { preset: v } } : undefined,
+  }],
+]);
+
 /**
  * Builds a config file update object for a given setting and value.
  * @param setting - The setting name to update.
@@ -113,32 +133,8 @@ function parsePosIntValue(value: string, min: number): number | undefined {
  * @returns A partial config update object, or undefined if the value is invalid.
  */
 function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
-  switch (setting) {
-    case "debug": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { debug: b };
-    }
-    case "timeout": {
-      const n = parsePosIntValue(value, 1);
-      return n === undefined ? undefined : { reliability: { timeout: n } };
-    }
-    case "verifyWrites": {
-      const b = parseBoolValue(value);
-      return b === undefined ? undefined : { reliability: { verifyWrites: b } };
-    }
-    case "maxResponseChars": {
-      const n = parsePosIntValue(value, 0);
-      return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
-    }
-    case "toolMode":
-      if (value !== "granular" && value !== "consolidated") return undefined;
-      return { tools: { mode: value } };
-    case "toolPreset":
-      if (value !== "full" && value !== "read-only" && value !== "minimal" && value !== "safe") return undefined;
-      return { tools: { preset: value } };
-    default:
-      return undefined;
-  }
+  const parser = CONFIG_UPDATE_PARSERS.get(setting);
+  return parser ? parser.parse(value) : undefined;
 }
 
 /**
@@ -150,6 +146,8 @@ function buildConfigReset(setting: string): Record<string, unknown> | undefined 
   switch (setting) {
     case "debug":
       return { debug: DEFAULTS.debug };
+    case "compactResponses":
+      return { compactResponses: DEFAULTS.compactResponses };
     case "timeout":
       return { reliability: { timeout: DEFAULTS.timeout } };
     case "verifyWrites":
@@ -167,7 +165,7 @@ function buildConfigReset(setting: string): Record<string, unknown> | undefined 
 
 /**
  * Applies an immediate-effect setting change to the running process.
- * Only `debug` takes effect without a restart; all other settings require a restart.
+ * Settings `debug` and `compactResponses` take effect immediately; all other settings require a restart.
  * @param setting - The setting name being changed.
  * @param value - The new string value.
  */
@@ -176,11 +174,15 @@ function applyImmediateSetting(setting: string, value: string): void {
     setDebugEnabled(value === "true");
     log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
   }
+  if (setting === "compactResponses") {
+    setCompactResponses(value === "true");
+    log("info", `Compact responses ${value === "true" ? "enabled" : "disabled"}`);
+  }
 }
 
 /**
  * Handles the configure "set" action — validates, saves, and applies the setting.
- * Only `debug` takes effect immediately; all other settings require a restart.
+ * Settings `debug` and `compactResponses` take effect immediately; all other settings require a restart.
  * @param setting - The setting name to change.
  * @param value - The new value string.
  * @param config - The active config object (for file path lookup).
@@ -197,7 +199,7 @@ function handleConfigureSet(
   if (value === undefined) {
     return errorResult("[configure] Value is required for 'set' action");
   }
-  const immediateSettings = new Set(["debug"]);
+  const immediateSettings = new Set(["debug", "compactResponses"]);
   const restartSettings = new Set(["timeout", "verifyWrites", "maxResponseChars", "toolMode", "toolPreset"]);
   if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
     return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
@@ -230,8 +232,8 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
   }
   saveConfigToFile(configPath, resetUpdates);
   // Apply immediately for settings that take effect without restart
-  if (setting === "debug") {
-    applyImmediateSetting(setting, "false");
+  if (setting === "debug" || setting === "compactResponses") {
+    applyImmediateSetting(setting, String(DEFAULTS[setting as keyof typeof DEFAULTS]));
     return textResult(`Setting "${setting}" reset to default (effective immediately)`);
   }
   return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);
@@ -243,10 +245,7 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
  * @returns A JSON tool result with the redacted config.
  */
 function handleConfigureShow(config: Config): ToolResult {
-  // Note: config is the startup snapshot. Live runtime changes (e.g. debug toggle)
-  // are not reflected here — they take effect on the process but this shows the
-  // persisted config. A restart will pick up any file-based changes.
-  return jsonResult(getRedactedConfig(config));
+  return jsonResult(getRedactedConfig(config, { debug: getDebugEnabled(), compactResponses: getCompactResponses() }));
 }
 
 // --- Vault structure ---
@@ -405,6 +404,61 @@ export async function batchGetFiles(
     output.push(...results);
   }
   return output;
+}
+
+// --- Move file ---
+
+/**
+ * Moves or renames a vault file by copying content to the destination and deleting the source.
+ * The source is sent to Obsidian trash (recoverable). Returns a no-op if source equals destination.
+ * @param client - The Obsidian API client.
+ * @param source - Source file path.
+ * @param destination - Destination file path.
+ * @returns A tool result describing success, no-op, or conflict.
+ */
+export async function handleMoveFile(
+  client: ObsidianClient,
+  source: string,
+  destination: string,
+): Promise<ToolResult> {
+  const normalizedSource = sanitizeFilePath(source);
+  const normalizedDest = sanitizeFilePath(destination);
+  if (normalizedSource === normalizedDest) {
+    return textResult(`No-op: source and destination are the same (${normalizedSource})`);
+  }
+  if (!normalizedSource.toLowerCase().endsWith(".md")) {
+    return errorResult("[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.");
+  }
+  if (!normalizedDest.toLowerCase().endsWith(".md")) {
+    return errorResult("[move_file] Destination must be a .md file.");
+  }
+  // Lock ordering: acquire source lock first (via getFileContents), then destination (via putContent).
+  // Each client method internally uses withFileLock, serializing per-path writes.
+  // MCP tool calls are sequential (single client), so cross-call races are not possible.
+  // The conflict check is best-effort — Obsidian itself is the final arbiter.
+  const content = await client.getFileContents(normalizedSource, "markdown", true);
+  if (typeof content !== "string") {
+    return errorResult("[move_file] Expected markdown content from source file");
+  }
+  try {
+    await client.getFileContents(normalizedDest, "markdown");
+    return errorResult("CONFLICT: Destination already exists. Delete it first or choose a different path.");
+  } catch (err: unknown) {
+    if (!(err instanceof ObsidianApiError && err.statusCode === 404)) {
+      throw err;
+    }
+  }
+  await client.putContent(normalizedDest, content);
+  try {
+    await client.deleteFile(normalizedSource);
+  } catch (error: unknown) {
+    // Cache state: destination was invalidated by putContent; source remains cached (correct — it still exists).
+    const msg = error instanceof Error ? error.message : String(error);
+    return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Both files now exist — delete the source manually if the destination content is correct.`);
+  }
+  // Cache: putContent invalidates destination, deleteFile invalidates source.
+  // The destination will be fully indexed on the next cache auto-refresh cycle.
+  return textResult(`Moved: ${normalizedSource} → ${normalizedDest}`);
 }
 
 // --- Shared tool registrations (used by both granular and consolidated modes) ---

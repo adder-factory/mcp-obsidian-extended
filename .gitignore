@@ -5,3 +5,8 @@ dist/
 *.tsbuildinfo
 .scannerwork/
 coverage/
+.claude/scheduled_tasks.lock
+mcp-obsidian-extended
+sea-prep.blob
+sea-config.json
+sea-entry.cjs

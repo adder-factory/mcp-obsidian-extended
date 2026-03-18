@@ -24,6 +24,7 @@ import {
   handleRecentPeriodicNotes,
   batchGetFiles,
   ensureCacheReady,
+  handleMoveFile,
   registerOpenFileTool,
   registerConfigureTool,
 } from "./shared.js";
@@ -215,10 +216,32 @@ function registerVaultTools(
     count++;
   }
 
+  // --- 9. move_file ---
+  if (shouldRegister("move_file")) {
+    server.registerTool(
+      "move_file",
+      {
+        description: "Move or rename a .md vault file (not idempotent, do not retry)",
+        inputSchema: z.object({
+          source: z.string().describe("Source file path"),
+          destination: z.string().describe("Destination file path"),
+        }),
+      },
+      async ({ source, destination }) => {
+        try {
+          return await handleMoveFile(client, source, destination);
+        } catch (err: unknown) {
+          return errorResult(buildErrorMessage(err, { tool: "move_file", path: source }));
+        }
+      },
+    );
+    count++;
+  }
+
   return count;
 }
 
-/** Registers active file tools (#9-13). */
+/** Registers active file tools (#10-14). */
 function registerActiveFileTools(
   server: McpServer,
   client: ObsidianClient,
@@ -226,7 +249,7 @@ function registerActiveFileTools(
 ): number {
   let count = 0;
 
-  // --- 9. get_active_file ---
+  // --- 10. get_active_file ---
   if (shouldRegister("get_active_file")) {
     server.registerTool(
       "get_active_file",

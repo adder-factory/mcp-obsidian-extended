@@ -162,9 +162,18 @@ periodic_note:
   patch          → period, content, operation, targetType, target, year?, month?, day?
   delete         → period, year?, month?, day?
 
+status:              → (no params)
+
+batch_get:           → paths, format?
+
 recent:
   changes        → limit?
   periodic_notes → period, limit?
+
+configure:
+  show           → (no params)
+  set            → setting, value
+  reset          → setting
 
 vault_analysis:
   backlinks      → path

@@ -28,6 +28,12 @@ function cleanup() {
   }
 }
 
+if (process.platform === "win32") {
+  // eslint-disable-next-line no-console -- build script, not MCP transport
+  console.error("SEA build is not supported on Windows. Use macOS or Linux.");
+  process.exit(1);
+}
+
 try {
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilding SEA binary: ${BINARY_NAME}\n`);

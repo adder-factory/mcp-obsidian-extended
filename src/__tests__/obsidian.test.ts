@@ -140,10 +140,10 @@ describe("compactify", () => {
     expect(result).toEqual({ s: { m: 100, ct: 50, sz: 200 } });
   });
 
-  it("strips null and undefined values", () => {
+  it("preserves null values and strips undefined", () => {
     const data = { content: "hello", path: null, tags: undefined };
     const result = compactify(data);
-    expect(result).toEqual({ c: "hello" });
+    expect(result).toEqual({ c: "hello", p: null });
   });
 
   it("handles arrays recursively", () => {
@@ -164,9 +164,16 @@ describe("compactify", () => {
     expect(compactify(true)).toBe(true);
   });
 
-  it("returns undefined for null/undefined", () => {
-    expect(compactify(null)).toBeUndefined();
+  it("preserves null, returns undefined for undefined", () => {
+    expect(compactify(null)).toBeNull();
     expect(compactify(undefined)).toBeUndefined();
+  });
+
+  it("does not recurse into opaque keys (frontmatter, result)", () => {
+    const data = { frontmatter: { path: "/real/path", tags: ["a"] }, path: "note.md" };
+    const result = compactify(data);
+    // frontmatter internals should NOT be renamed
+    expect(result).toEqual({ fm: { path: "/real/path", tags: ["a"] }, p: "note.md" });
   });
 
   it("handles deeply nested objects", () => {
@@ -180,8 +187,13 @@ describe("compactify", () => {
 // setCompactResponses / getCompactResponses + jsonResult compact mode
 // ---------------------------------------------------------------------------
 describe("compact responses", () => {
-  afterEach(() => {
+  let savedCompactState: boolean;
+  beforeEach(() => {
+    savedCompactState = getCompactResponses();
     setCompactResponses(false);
+  });
+  afterEach(() => {
+    setCompactResponses(savedCompactState);
   });
 
   it("defaults to disabled", () => {

@@ -8,7 +8,7 @@
 - Use batch_get_file_contents for multiple files — never sequential get_file_contents calls.
 - Use get_vault_structure at the start of a session to understand the vault layout (note count, links, orphans, most connected).
 - NEVER use put_content to edit a section — it replaces the ENTIRE file. Use append_content, patch_content, or search_replace instead.
-- NEVER retry a non-idempotent tool on timeout: append_content, patch_content, search_replace, append_active_file, patch_active_file, all append/patch periodic note tools.
+- NEVER retry a non-idempotent tool on timeout: append_content, patch_content, search_replace, move_file, append_active_file, patch_active_file, all append/patch periodic note tools.
 - NEVER assume a path exists — verify with list_files_in_dir or simple_search first.
 
 ## Common Workflows

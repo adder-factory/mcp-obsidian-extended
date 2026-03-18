@@ -4,11 +4,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
-import { textResult, errorResult, jsonResult, setCompactResponses } from "../obsidian.js";
+import { textResult, errorResult, jsonResult, setCompactResponses, getCompactResponses } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
 import { ObsidianApiError, buildErrorMessage } from "../errors.js";
+import { sanitizeFilePath } from "../obsidian.js";
 
 // --- Cache readiness ---
 
@@ -245,10 +246,7 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
  * @returns A JSON tool result with the redacted config.
  */
 function handleConfigureShow(config: Config): ToolResult {
-  // Note: config is the startup snapshot. Live runtime changes (e.g. debug toggle)
-  // are not reflected here — they take effect on the process but this shows the
-  // persisted config. A restart will pick up any file-based changes.
-  return jsonResult(getRedactedConfig(config));
+  return jsonResult(getRedactedConfig(config, { compactResponses: getCompactResponses() }));
 }
 
 // --- Vault structure ---
@@ -424,24 +422,31 @@ export async function handleMoveFile(
   source: string,
   destination: string,
 ): Promise<ToolResult> {
-  if (source === destination) {
-    return textResult(`No-op: source and destination are the same (${source})`);
+  const normalizedSource = sanitizeFilePath(source);
+  const normalizedDest = sanitizeFilePath(destination);
+  if (normalizedSource === normalizedDest) {
+    return textResult(`No-op: source and destination are the same (${normalizedSource})`);
   }
-  const content = await client.getFileContents(source, "markdown", true);
+  const content = await client.getFileContents(normalizedSource, "markdown", true);
   if (typeof content !== "string") {
     return errorResult("[move_file] Expected markdown content from source file");
   }
   try {
-    await client.getFileContents(destination, "markdown");
+    await client.getFileContents(normalizedDest, "markdown");
     return errorResult("CONFLICT: Destination already exists. Delete it first or choose a different path.");
   } catch (err: unknown) {
     if (!(err instanceof ObsidianApiError && err.statusCode === 404)) {
       throw err;
     }
   }
-  await client.putContent(destination, content);
-  await client.deleteFile(source);
-  return textResult(`Moved: ${source} → ${destination}`);
+  await client.putContent(normalizedDest, content);
+  try {
+    await client.deleteFile(normalizedSource);
+  } catch (deleteErr: unknown) {
+    const msg = deleteErr instanceof Error ? deleteErr.message : String(deleteErr);
+    return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Check both paths before retrying.`);
+  }
+  return textResult(`Moved: ${normalizedSource} → ${normalizedDest}`);
 }
 
 // --- Shared tool registrations (used by both granular and consolidated modes) ---

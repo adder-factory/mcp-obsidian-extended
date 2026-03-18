@@ -252,7 +252,7 @@ export function setCompactResponses(enabled: boolean): void {
   compactResponsesEnabled = enabled;
 }
 
-/** Returns whether compact responses are currently enabled. */
+/** Returns the current runtime compact-responses state. */
 export function getCompactResponses(): boolean {
   return compactResponsesEnabled;
 }
@@ -286,22 +286,28 @@ const COMPACT_FIELD_MAP: ReadonlyMap<string, string> = new Map([
   ["outbound", "out"],
 ]);
 
+/** Keys whose values are opaque user data — never recurse into or rename their contents. */
+const OPAQUE_KEYS: ReadonlySet<string> = new Set(["frontmatter", "result"]);
+
 /**
- * Recursively maps known field names to compact abbreviations and strips null/undefined values.
+ * Recursively maps known envelope field names to compact abbreviations.
+ * Preserves null values (common in YAML frontmatter). Strips only undefined.
+ * Does not recurse into opaque user-data objects (frontmatter, result).
  * @param data - The data to compactify.
  * @returns A new object with compact field names.
  */
 export function compactify(data: unknown): unknown {
-  if (data === null || data === undefined) return undefined;
-  if (Array.isArray(data)) return data.map(compactify).filter((v) => v !== undefined);
+  if (data === undefined) return undefined;
+  if (data === null) return null;
+  if (Array.isArray(data)) return data.map(compactify);
   if (typeof data === "object") {
     const obj = data as Record<string, unknown>;
     const result: Record<string, unknown> = {};
     for (const key of Object.keys(obj)) {
-      const val = compactify(obj[key]);
+      const val = obj[key];
       if (val === undefined) continue;
       const mappedKey = COMPACT_FIELD_MAP.get(key) ?? key;
-      result[mappedKey] = val;
+      result[mappedKey] = OPAQUE_KEYS.has(key) ? val : compactify(val);
     }
     return result;
   }

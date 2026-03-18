@@ -49,8 +49,8 @@ try {
   };
   writeFileSync(CONFIG_FILE, JSON.stringify(seaConfig));
 
-  // 3. Generate blob
-  run(`node --experimental-sea-config ${CONFIG_FILE}`);
+  // 3. Generate blob (use same Node binary that will host the SEA)
+  run(`"${process.execPath}" --experimental-sea-config ${CONFIG_FILE}`);
 
   // 4. Copy node binary
   // eslint-disable-next-line no-console -- build script, not MCP transport

@@ -401,7 +401,8 @@ export function registerConsolidatedTools(
         try {
           return await handleVaultAction(client, action, path, args);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "vault", path }));
+          const errorPath = action === "move" ? (args.source ?? path) : path;
+          return errorResult(buildErrorMessage(err, { tool: "vault", path: errorPath }));
         }
       },
     );

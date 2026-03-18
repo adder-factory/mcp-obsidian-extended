@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { loadConfig, getRedactedConfig, saveConfigToFile, log, setDebugEnabled } from "./config.js";
-import { ObsidianClient, setCompactResponses } from "./obsidian.js";
+import { ObsidianClient, setCompactResponses, getCompactResponses } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
 import { buildSkillContent } from "./skill.js";
@@ -270,12 +270,14 @@ async function main(): Promise<void> {
 
   const toolCount = registerAllTools(server, client, cache, config);
 
-  const skillContent = buildSkillContent(config.toolMode, config.compactResponses);
   server.registerResource(
     "obsidian-skill",
     "obsidian://skill",
     { description: "LLM usage guide for Obsidian MCP tools" },
-    async () => ({ contents: [{ uri: "obsidian://skill", text: skillContent, mimeType: "text/markdown" }] }),
+    async () => {
+      const skillContent = buildSkillContent(config.toolMode, getCompactResponses());
+      return { contents: [{ uri: "obsidian://skill", text: skillContent, mimeType: "text/markdown" }] };
+    },
   );
 
   log("info", `mcp-obsidian-extended v${VERSION}`);

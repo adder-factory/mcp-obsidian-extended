@@ -317,8 +317,13 @@ export function loadConfig(): Config {
   return config;
 }
 
+/** Optional live runtime overrides for getRedactedConfig (for settings that can change without restart). */
+export interface RedactedConfigOverrides {
+  readonly compactResponses?: boolean | undefined;
+}
+
 /** Returns a copy of the config safe for display — API key is shown as `[SET]` or `[NOT SET]`. */
-export function getRedactedConfig(config: Config): Record<string, unknown> {
+export function getRedactedConfig(config: Config, overrides?: RedactedConfigOverrides): Record<string, unknown> {
   return {
     host: config.host,
     port: config.port,
@@ -336,7 +341,7 @@ export function getRedactedConfig(config: Config): Record<string, unknown> {
     excludeTools: config.excludeTools,
     cacheTtl: config.cacheTtl,
     enableCache: config.enableCache,
-    compactResponses: config.compactResponses,
+    compactResponses: overrides?.compactResponses ?? config.compactResponses,
     configFilePath: config.configFilePath ?? null,
   };
 }
@@ -391,6 +396,7 @@ export function setDebugEnabled(enabled: boolean): void {
 export function getDebugEnabled(): boolean {
   return debugEnabled;
 }
+
 
 /** Writes a log message to stderr. Debug messages are suppressed unless setDebugEnabled(true) is called. */
 export function log(level: "info" | "warn" | "error" | "debug", message: string): void {

@@ -32,13 +32,17 @@ try {
   mkdirSync(stageDir, { recursive: true });
   cpSync(SKILL_SRC, join(stageDir, "SKILL.md"));
 
-  // Generate .zip (Claude.ai)
+  // Remove stale archives — zip updates in-place rather than recreating
   const zipOut = join(PROJECT_ROOT, `${FOLDER_NAME}.zip`);
+  const skillOut = join(PROJECT_ROOT, `${FOLDER_NAME}.skill`);
+  rmSync(zipOut, { force: true });
+  rmSync(skillOut, { force: true });
+
+  // Generate .zip (Claude.ai)
   execFileSync("zip", ["-r", zipOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
   process.stdout.write(`Created: ${zipOut}\n`);
 
   // Generate .skill (gzipped tar for Claude Code)
-  const skillOut = join(PROJECT_ROOT, `${FOLDER_NAME}.skill`);
   execFileSync("tar", ["czf", skillOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
   process.stdout.write(`Created: ${skillOut}\n`);
 } finally {

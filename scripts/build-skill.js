@@ -18,8 +18,9 @@ const PROJECT_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/[/\\
 const SKILL_SRC = join(PROJECT_ROOT, ".claude", "skills", "obsidian-mcp", "SKILL.md");
 const FOLDER_NAME = "mcp-obsidian-extended";
 
+const whichCmd = process.platform === "win32" ? "where" : "which";
 for (const cmd of ["zip", "tar"]) {
-  try { execFileSync("which", [cmd], { stdio: "pipe" }); }
+  try { execFileSync(whichCmd, [cmd], { stdio: "pipe" }); }
   catch { process.stderr.write(`Error: '${cmd}' is required but not found in PATH\n`); process.exit(1); }
 }
 

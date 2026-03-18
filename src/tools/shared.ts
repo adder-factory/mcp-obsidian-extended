@@ -233,7 +233,7 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
   saveConfigToFile(configPath, resetUpdates);
   // Apply immediately for settings that take effect without restart
   if (setting === "debug" || setting === "compactResponses") {
-    applyImmediateSetting(setting, "false");
+    applyImmediateSetting(setting, String(DEFAULTS[setting as keyof typeof DEFAULTS]));
     return textResult(`Setting "${setting}" reset to default (effective immediately)`);
   }
   return textResult(`Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`);

@@ -181,6 +181,7 @@ describe("buildSkillContent", () => {
 
   it("includes skill action in configure's consolidated reference", () => {
     const content = buildSkillContent("consolidated", false);
-    expect(content).toMatch(/configure:[\s\S]*?skill/);
+    expect(content).toContain("configure:");
+    expect(content).toContain("skill          \u2192 (no params, returns LLM usage guide)");
   });
 });

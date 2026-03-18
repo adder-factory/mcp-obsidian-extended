@@ -27,7 +27,7 @@
   },
   "files": [
     "dist",
-    ".claude"
+    ".claude/skills"
   ],
   "engines": {
     "node": ">=22"

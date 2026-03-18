@@ -91,8 +91,9 @@ function errorRecovery(): string {
 - Use get_file_contents with format: "map" to see structure without full content`;
 }
 
-/** Section 4: Tool selection guide. */
-function toolSelectionGuide(): string {
+/** Section 4: Tool selection guide (mode-aware for move tool name). */
+function toolSelectionGuide(mode: "granular" | "consolidated"): string {
+  const moveTool = mode === "consolidated" ? "vault action: move" : "move_file";
   return `## Tool Selection Guide
 
 | I want to... | Use this tool |
@@ -109,7 +110,7 @@ function toolSelectionGuide(): string {
 | Full link analysis | get_note_connections (backlinks + forward links) |
 | Run an Obsidian command | list_commands, find ID, then execute_command |
 | Open file in Obsidian | open_file (newLeaf: true for new tab) |
-| Move/rename a file | move_file (v1.1.0+) |`;
+| Move/rename a file | ${moveTool} (v1.1.0+) |`;
 }
 
 /** Section 5: Known pitfalls from real-world usage. */
@@ -232,7 +233,7 @@ export function buildSkillContent(mode: "granular" | "consolidated", compact: bo
     goldenRules(),
     commonWorkflows(),
     errorRecovery(),
-    toolSelectionGuide(),
+    toolSelectionGuide(mode),
     knownPitfalls(),
   ];
 

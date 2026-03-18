@@ -17,11 +17,21 @@ import { buildSkillContent } from "./skill.js";
 process.title = "mcp-obsidian-extended";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
-const VERSION: string =
-  pkg !== null && typeof pkg === "object" && "version" in pkg && typeof (pkg as Record<string, unknown>)["version"] === "string"
-    ? (pkg as Record<string, unknown>)["version"] as string
-    : "unknown";
+
+/** Reads the package version, falling back to "unknown" in SEA binaries where package.json is absent. */
+function readPackageVersion(): string {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
+    if (raw !== null && typeof raw === "object" && "version" in raw && typeof (raw as Record<string, unknown>)["version"] === "string") {
+      return (raw as Record<string, unknown>)["version"] as string;
+    }
+  } catch {
+    // SEA binary or missing package.json — fall through
+  }
+  return "unknown";
+}
+
+const VERSION: string = readPackageVersion();
 
 // --- CLI: --show-config ---
 

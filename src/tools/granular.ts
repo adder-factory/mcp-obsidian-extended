@@ -199,10 +199,10 @@ function registerVaultTools(
           let pattern: RegExp;
           if (useRegex) {
             // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
-            try { pattern = new RegExp(search, flags); } catch { return errorResult(`[search_replace] Invalid regex: "${search}"`); }
+            try { pattern = new RegExp(search, flags); } catch { return errorResult(`[search_replace] Invalid regex: "${search}"`); } // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
           } else {
             // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
-            pattern = new RegExp(escapeRegex(search), flags);
+            pattern = new RegExp(escapeRegex(search), flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
           }
           const updated = useRegex ? result.replace(pattern, replace) : result.replace(pattern, () => replace);
           if (updated === result) return textResult(`No matches found for "${search}" in ${path}`);

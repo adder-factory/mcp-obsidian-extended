@@ -176,4 +176,12 @@ describe("buildSkillContent", () => {
     expect(content).not.toContain("## Consolidated Mode Action Reference");
     expect(content).not.toContain("## Compact Response Field Reference");
   });
+
+  // --- configure skill action in consolidated reference ---
+
+  it("includes skill action in configure's consolidated reference", () => {
+    const content = buildSkillContent("consolidated", false);
+    expect(content).toContain("configure:");
+    expect(content).toContain("skill          \u2192 (no params, returns LLM usage guide)");
+  });
 });

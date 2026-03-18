@@ -1,6 +1,6 @@
 {
   "name": "mcp-obsidian-extended",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server for Obsidian — 39 tools, 100% REST API coverage",
   "author": "adder-factory",
   "license": "MIT",
@@ -47,6 +47,7 @@
     "sonar": "sonar-scanner -Dsonar.host.url=http://localhost:9000",
     "pr:audit": "bash scripts/pr-audit.sh",
     "build:sea": "npm run build && node scripts/build-sea.js",
+    "build:skill": "node scripts/build-skill.js",
     "verify:all": "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/",
     "security:all": "npx snyk test && npx snyk code test && npx semgrep --config auto src/"
   },

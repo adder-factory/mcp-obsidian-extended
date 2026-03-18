@@ -1202,6 +1202,26 @@ describe("granular tools — registration and basic behavior", () => {
   });
 
   // -------------------------------------------------------------------------
+  // configure — skill action
+  // -------------------------------------------------------------------------
+  describe("configure — skill action", () => {
+    it("returns non-empty markdown with golden rules", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({ action: "skill" });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("# Obsidian MCP");
+      expect(getText(result)).toContain("Golden Rules");
+    });
+
+    it("uses granular tool names in granular mode", async () => {
+      const { getTool } = setup();
+      const text = getText(await getTool("configure").handler({ action: "skill" }));
+      expect(text).toContain("get_file_contents");
+      expect(text).not.toContain("Consolidated Mode Action Reference");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // get_backlinks (cache-dependent)
   // -------------------------------------------------------------------------
   describe("get_backlinks", () => {
@@ -2331,6 +2351,18 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({ action: "reset" });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // configure — consolidated skill
+  // -------------------------------------------------------------------------
+  describe("configure — consolidated skill", () => {
+    it("uses consolidated tool names and includes action reference", async () => {
+      const { getTool } = setup();
+      const text = getText(await getTool("configure").handler({ action: "skill" }));
+      expect(text).toContain("vault action: get");
+      expect(text).toContain("Consolidated Mode Action Reference");
     });
   });
 

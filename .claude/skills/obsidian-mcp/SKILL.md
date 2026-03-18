@@ -1,5 +1,7 @@
 # Obsidian MCP — Tool Usage Guide
 
+> **Tip:** This guide is also available dynamically via `configure({ action: "skill" })` — returns the latest version tailored to the active tool mode and compact setting.
+
 ## Golden Rules
 
 - ALWAYS get_file_contents(path, format: "map") BEFORE any patch_content — verify the heading exists first. Never patch a heading you haven't confirmed.

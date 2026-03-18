@@ -9,6 +9,7 @@ import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, getDebugEnabled, log } from "../config.js";
 import { ObsidianApiError, buildErrorMessage } from "../errors.js";
+import { buildSkillContent } from "../skill.js";
 
 // --- Cache readiness ---
 
@@ -507,9 +508,9 @@ export function registerConfigureTool(
   server.registerTool(
     "configure",
     {
-      description: "View or change server settings",
+      description: "View or change server settings, or load LLM usage guide",
       inputSchema: z.object({
-        action: z.enum(["show", "set", "reset"]).describe("Action"),
+        action: z.enum(["show", "set", "reset", "skill"]).describe("Action"),
         setting: z.string().optional().describe("Setting name for set/reset"),
         value: z.string().optional().describe("New value for set"),
       }),
@@ -523,6 +524,8 @@ export function registerConfigureTool(
             return handleConfigureSet(setting, value, config);
           case "reset":
             return handleConfigureReset(setting, config);
+          case "skill":
+            return textResult(buildSkillContent(config.toolMode, getCompactResponses()));
           default: {
             const _exhaustive: never = action;
             return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);

@@ -371,7 +371,7 @@ export function registerConsolidatedTools(
     server.registerTool(
       "vault",
       {
-        description: "Read, write, search vault files. Do not retry append/patch/search_replace/move on timeout",
+        description: "Read, write, search vault files. move is .md only. Do not retry append/patch/search_replace/move",
         inputSchema: z.object({
           action: z.enum(["list", "list_dir", "get", "put", "append", "patch", "delete", "search_replace", "move"]).describe("Operation"),
           path: z.string().optional().describe("File or directory path"),

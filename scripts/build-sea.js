@@ -81,6 +81,7 @@ try {
 } catch (err) {
   cleanup();
   if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
+  if (existsSync(BINARY_NAME)) unlinkSync(BINARY_NAME);
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.error("SEA build failed:", err.message);
   process.exit(1);

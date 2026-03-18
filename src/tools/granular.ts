@@ -221,7 +221,7 @@ function registerVaultTools(
     server.registerTool(
       "move_file",
       {
-        description: "Move or rename a vault file (not idempotent, do not retry on timeout)",
+        description: "Move or rename a .md vault file (not idempotent, do not retry)",
         inputSchema: z.object({
           source: z.string().describe("Source file path"),
           destination: z.string().describe("Destination file path"),

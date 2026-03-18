@@ -165,7 +165,7 @@ function buildConfigReset(setting: string): Record<string, unknown> | undefined 
 
 /**
  * Applies an immediate-effect setting change to the running process.
- * Only `debug` takes effect without a restart; all other settings require a restart.
+ * Settings `debug` and `compactResponses` take effect immediately; all other settings require a restart.
  * @param setting - The setting name being changed.
  * @param value - The new string value.
  */
@@ -182,7 +182,7 @@ function applyImmediateSetting(setting: string, value: string): void {
 
 /**
  * Handles the configure "set" action — validates, saves, and applies the setting.
- * Only `debug` takes effect immediately; all other settings require a restart.
+ * Settings `debug` and `compactResponses` take effect immediately; all other settings require a restart.
  * @param setting - The setting name to change.
  * @param value - The new value string.
  * @param config - The active config object (for file path lookup).

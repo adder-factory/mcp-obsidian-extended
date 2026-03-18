@@ -121,7 +121,7 @@ function jsonResult(data: unknown): ToolResult {
 }
 ```
 
-The `compactify()` function recursively maps known field names and strips null/undefined values.
+The `compactify()` function recursively maps known field names and strips `undefined` values. `null` values are preserved — they are valid JSON and commonly appear in YAML frontmatter (bare keys like `status:` parse as `null`).
 
 ### Skill Integration
 The skill's `buildSkillContent()` function includes the field mapping table ONLY when `config.compactResponses` is true. When false, the mapping section is omitted — no wasted tokens.

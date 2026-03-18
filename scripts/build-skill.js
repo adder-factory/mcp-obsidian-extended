@@ -3,6 +3,9 @@
 /**
  * Generates distributable skill archives for Claude.ai (.zip) and Claude Code (.skill).
  *
+ * Requirements: `zip` and `tar` must be available in PATH (macOS/Linux).
+ * Windows users: install zip via Git Bash, WSL, or Info-ZIP, or run in WSL.
+ *
  * Output files (project root):
  *   mcp-obsidian-extended.zip   — Upload to Claude.ai via Customize → Skills → "+" → Upload
  *   mcp-obsidian-extended.skill — Claude Code marketplace format (gzipped tar)

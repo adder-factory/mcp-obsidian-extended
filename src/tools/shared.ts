@@ -427,7 +427,7 @@ export async function handleMoveFile(
     return textResult(`No-op: source and destination are the same (${normalizedSource})`);
   }
   if (!normalizedSource.toLowerCase().endsWith(".md")) {
-    return errorResult("[move_file] Only .md files can be moved — binary files are not supported via the REST API content endpoint.");
+    return errorResult("[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.");
   }
   if (!normalizedDest.toLowerCase().endsWith(".md")) {
     return errorResult("[move_file] Destination must be a .md file.");

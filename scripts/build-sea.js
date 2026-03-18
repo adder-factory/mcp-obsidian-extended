@@ -79,9 +79,9 @@ try {
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilt: ./${BINARY_NAME}\n`);
 } catch (err) {
-  cleanup();
-  if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
-  if (existsSync(BINARY_NAME)) unlinkSync(BINARY_NAME);
+  try { cleanup(); } catch { /* best-effort */ }
+  try { if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs"); } catch { /* best-effort */ }
+  try { if (existsSync(BINARY_NAME)) unlinkSync(BINARY_NAME); } catch { /* best-effort */ }
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.error("SEA build failed:", err.message);
   process.exit(1);

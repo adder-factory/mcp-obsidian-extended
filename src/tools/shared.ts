@@ -452,6 +452,7 @@ export async function handleMoveFile(
   try {
     await client.deleteFile(normalizedSource);
   } catch (error: unknown) {
+    // Cache state: destination was invalidated by putContent; source remains cached (correct — it still exists).
     const msg = error instanceof Error ? error.message : String(error);
     return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Both files now exist — delete the source manually if the destination content is correct.`);
   }

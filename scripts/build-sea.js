@@ -34,6 +34,13 @@ if (process.platform === "win32") {
   process.exit(1);
 }
 
+const nodeVersion = parseInt(process.version.slice(1), 10);
+if (nodeVersion < 20) {
+  // eslint-disable-next-line no-console -- build script, not MCP transport
+  console.error(`SEA requires Node.js >= 20 (current: ${process.version}).`);
+  process.exit(1);
+}
+
 try {
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilding SEA binary: ${BINARY_NAME}\n`);

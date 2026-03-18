@@ -447,7 +447,7 @@ export async function handleMoveFile(
     await client.deleteFile(normalizedSource);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Check both paths before retrying.`);
+    return errorResult(`PARTIAL MOVE: File copied to ${normalizedDest} but source ${normalizedSource} could not be deleted (${msg}). Both files now exist — delete the source manually if the destination content is correct.`);
   }
   return textResult(`Moved: ${normalizedSource} → ${normalizedDest}`);
 }

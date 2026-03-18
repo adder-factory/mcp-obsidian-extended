@@ -270,6 +270,37 @@ Also ships as `.claude/skills/obsidian-mcp/SKILL.md` for Claude Code users.
 
 Set `OBSIDIAN_COMPACT_RESPONSES=true` to abbreviate JSON field names (`content`→`c`, `frontmatter`→`fm`, `path`→`p`, etc.) and strip JSON whitespace. Reduces token usage for large vault operations. Toggle at runtime via the `configure` tool without restart.
 
+### Token Savings: Granular + Verbose vs Consolidated + Compact
+
+Measured against a live Obsidian vault with real notes, links, and search results:
+
+**Tool Registration Overhead (sent to LLM on every request)**
+
+| Mode | Tools | Size | Savings |
+|------|-------|------|---------|
+| Granular (default) | 39 | 32,772 chars | — |
+| Consolidated + compact | 11 | 18,911 chars | **42.3%** |
+
+**Response Size Comparison (same data, both modes)**
+
+| Response Type | Verbose | Compact | Savings |
+|--------------|---------|---------|---------|
+| NoteJson (format:json) | 602 chars | 468 chars | 22.3% |
+| DocumentMap (format:map) | 213 chars | 133 chars | 37.6% |
+| Search results | 464 chars | 330 chars | 28.9% |
+| Vault structure | 639 chars | 348 chars | 45.5% |
+| Note connections | 597 chars | 434 chars | 27.3% |
+| Command list | 1,885 chars | 1,357 chars | 28.0% |
+
+**Combined Session Overhead (tool defs + skill resource + 10 tool calls)**
+
+| Configuration | Total | Estimated Tokens | Savings |
+|--------------|-------|-----------------|---------|
+| Granular + verbose | 44,119 chars | ~11,030 tokens | — |
+| Consolidated + compact | 31,283 chars | ~7,821 tokens | **29.1%** |
+
+Savings of **~3,200 tokens per session**. The biggest win is tool registration (42.3%) — sent on every LLM request. Response savings (27.4%) compound across multi-tool conversations.
+
 ## Performance
 
 Benchmarked against Obsidian Local REST API on macOS with mcp-test-vault.

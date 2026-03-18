@@ -319,6 +319,7 @@ export function loadConfig(): Config {
 
 /** Optional live runtime overrides for getRedactedConfig (for settings that can change without restart). */
 export interface RedactedConfigOverrides {
+  readonly debug?: boolean | undefined;
   readonly compactResponses?: boolean | undefined;
 }
 
@@ -334,7 +335,7 @@ export function getRedactedConfig(config: Config, overrides?: RedactedConfigOver
     verifySsl: config.verifySsl,
     verifyWrites: config.verifyWrites,
     maxResponseChars: config.maxResponseChars,
-    debug: getDebugEnabled(),
+    debug: overrides?.debug ?? getDebugEnabled(),
     toolMode: config.toolMode,
     toolPreset: config.toolPreset,
     includeTools: config.includeTools,

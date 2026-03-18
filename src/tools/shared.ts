@@ -7,7 +7,7 @@ import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsid
 import { textResult, errorResult, jsonResult, setCompactResponses, getCompactResponses, sanitizeFilePath } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
-import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
+import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, getDebugEnabled, log } from "../config.js";
 import { ObsidianApiError, buildErrorMessage } from "../errors.js";
 
 // --- Cache readiness ---
@@ -245,7 +245,7 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
  * @returns A JSON tool result with the redacted config.
  */
 function handleConfigureShow(config: Config): ToolResult {
-  return jsonResult(getRedactedConfig(config, { compactResponses: getCompactResponses() }));
+  return jsonResult(getRedactedConfig(config, { debug: getDebugEnabled(), compactResponses: getCompactResponses() }));
 }
 
 // --- Vault structure ---

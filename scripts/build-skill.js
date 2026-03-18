@@ -38,12 +38,12 @@ try {
   rmSync(zipOut, { force: true });
   rmSync(skillOut, { force: true });
 
-  // Generate .zip (Claude.ai)
-  execFileSync("zip", ["-r", zipOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
+  // Generate .zip (Claude.ai) — pipe stdout to suppress zip's file listing, inherit stderr for errors
+  execFileSync("zip", ["-r", zipOut, FOLDER_NAME], { cwd: tmpDir, stdio: ["pipe", "pipe", "inherit"] });
   process.stdout.write(`Created: ${zipOut}\n`);
 
   // Generate .skill (gzipped tar for Claude Code)
-  execFileSync("tar", ["czf", skillOut, FOLDER_NAME], { cwd: tmpDir, stdio: "pipe" });
+  execFileSync("tar", ["czf", skillOut, FOLDER_NAME], { cwd: tmpDir, stdio: ["pipe", "pipe", "inherit"] });
   process.stdout.write(`Created: ${skillOut}\n`);
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

@@ -169,11 +169,18 @@ describe("compactify", () => {
     expect(compactify(undefined)).toBeUndefined();
   });
 
-  it("does not recurse into opaque keys (frontmatter, result)", () => {
+  it("does not recurse into opaque keys (frontmatter)", () => {
     const data = { frontmatter: { path: "/real/path", tags: ["a"] }, path: "note.md" };
     const result = compactify(data);
     // frontmatter internals should NOT be renamed
     expect(result).toEqual({ fm: { path: "/real/path", tags: ["a"] }, p: "note.md" });
+  });
+
+  it("does not recurse into opaque keys (result)", () => {
+    const data = { result: { content: "raw", matches: [1] }, path: "note.md" };
+    const result = compactify(data);
+    // result internals should NOT be renamed
+    expect(result).toEqual({ result: { content: "raw", matches: [1] }, p: "note.md" });
   });
 
   it("handles deeply nested objects", () => {

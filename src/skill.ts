@@ -278,9 +278,10 @@ Responses use abbreviated field names to save tokens:
 | p | path |
 | t | tags |
 | s | stat |
-| s.m | stat.mtime |
-| s.ct | stat.ctime |
-| s.sz | stat.size |
+| m | mtime (flat, e.g. recent changes) |
+| s.m | stat.mtime (nested in stat) |
+| s.ct | stat.ctime (nested in stat) |
+| s.sz | stat.size (nested in stat) |
 | h | headings |
 | b | blocks |
 | fmf | frontmatterFields |

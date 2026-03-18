@@ -41,13 +41,13 @@ try {
   // 1. Bundle dist/ into a single file with esbuild
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log("Step 1: Bundling with esbuild...");
-  run("npx esbuild dist/index.js --bundle --platform=node --format=esm --outfile=sea-entry.mjs --external:node:*");
+  run("npx esbuild dist/index.js --bundle --platform=node --format=cjs --outfile=sea-entry.cjs --external:node:*");
 
   // 2. Write SEA config
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log("Step 2: Generating SEA blob...");
   const seaConfig = {
-    main: "sea-entry.mjs",
+    main: "sea-entry.cjs",
     output: BLOB_FILE,
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
@@ -74,13 +74,13 @@ try {
 
   // 6. Cleanup
   cleanup();
-  if (existsSync("sea-entry.mjs")) unlinkSync("sea-entry.mjs");
+  if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
 
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilt: ./${BINARY_NAME}\n`);
 } catch (err) {
   cleanup();
-  if (existsSync("sea-entry.mjs")) unlinkSync("sea-entry.mjs");
+  if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.error("SEA build failed:", err.message);
   process.exit(1);

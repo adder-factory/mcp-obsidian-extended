@@ -426,6 +426,9 @@ export async function handleMoveFile(
   if (normalizedSource === normalizedDest) {
     return textResult(`No-op: source and destination are the same (${normalizedSource})`);
   }
+  if (!normalizedSource.toLowerCase().endsWith(".md")) {
+    return errorResult("[move_file] Only .md files can be moved — binary files are not supported via the REST API content endpoint.");
+  }
   // Lock ordering: acquire source lock first (via getFileContents), then destination (via putContent).
   // Each client method internally uses withFileLock, serializing per-path writes.
   // MCP tool calls are sequential (single client), so cross-call races are not possible.

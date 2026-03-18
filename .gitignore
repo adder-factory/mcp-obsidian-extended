@@ -9,4 +9,4 @@ coverage/
 mcp-obsidian-extended
 sea-prep.blob
 sea-config.json
-sea-entry.mjs
+sea-entry.cjs

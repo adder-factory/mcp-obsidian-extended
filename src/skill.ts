@@ -28,6 +28,7 @@ const CONSOLIDATED_NAMES: ReadonlyMap<string, string> = new Map([
   ["get_server_status", "status"],
   ["list_files_in_dir", "vault action: list_dir"],
   ["list_files_in_vault", "vault action: list"],
+  ["list_commands", "commands action: list"],
   ["execute_command", "commands action: execute"],
   ["append_active_file", "active_file action: append"],
   ["patch_active_file", "active_file action: patch"],
@@ -185,7 +186,7 @@ function toolSelectionGuide(mode: "granular" | "consolidated"): string {
 | Check vault health | ${structure} — shows orphans, most connected |
 | Who links to this note? | ${backlinks} |
 | Full link analysis | ${connections} (backlinks + forward links) |
-| Run an Obsidian command | list_commands, find ID, then ${exec} |
+| Run an Obsidian command | ${t(mode, "list_commands")}, find ID, then ${exec} |
 | Open file in Obsidian | open_file (newLeaf: true for new tab) |
 | Move/rename a file | ${move} (v1.1.0+) |`;
 }

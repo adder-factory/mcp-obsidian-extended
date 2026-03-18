@@ -243,6 +243,71 @@ function encodeTargetHeader(target: string): string {
   });
 }
 
+// --- Compact Responses ---
+
+let compactResponsesEnabled = false;
+
+/** Enables or disables compact field-name mapping in JSON tool results. */
+export function setCompactResponses(enabled: boolean): void {
+  compactResponsesEnabled = enabled;
+}
+
+/** Returns whether compact responses are currently enabled. */
+export function getCompactResponses(): boolean {
+  return compactResponsesEnabled;
+}
+
+/** Maps verbose field names to compact abbreviations for token savings. */
+const COMPACT_FIELD_MAP: ReadonlyMap<string, string> = new Map([
+  ["content", "c"],
+  ["frontmatter", "fm"],
+  ["path", "p"],
+  ["tags", "t"],
+  ["stat", "s"],
+  ["mtime", "m"],
+  ["ctime", "ct"],
+  ["size", "sz"],
+  ["headings", "h"],
+  ["blocks", "b"],
+  ["frontmatterFields", "fmf"],
+  ["query", "q"],
+  ["context", "ctx"],
+  ["score", "sc"],
+  ["matches", "mt"],
+  ["ok", "ok"],
+  ["service", "svc"],
+  ["authenticated", "auth"],
+  ["versions", "v"],
+  ["count", "cnt"],
+  ["notes", "n"],
+  ["source", "src"],
+  ["target", "tgt"],
+  ["inbound", "in"],
+  ["outbound", "out"],
+]);
+
+/**
+ * Recursively maps known field names to compact abbreviations and strips null/undefined values.
+ * @param data - The data to compactify.
+ * @returns A new object with compact field names.
+ */
+export function compactify(data: unknown): unknown {
+  if (data === null || data === undefined) return undefined;
+  if (Array.isArray(data)) return data.map(compactify).filter((v) => v !== undefined);
+  if (typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(obj)) {
+      const val = compactify(obj[key]);
+      if (val === undefined) continue;
+      const mappedKey = COMPACT_FIELD_MAP.get(key) ?? key;
+      result[mappedKey] = val;
+    }
+    return result;
+  }
+  return data;
+}
+
 // --- Tool Result Helpers ---
 
 /** Standard MCP tool response shape (index signature required by MCP SDK). */
@@ -262,9 +327,11 @@ export function errorResult(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-/** Serialises data as pretty-printed JSON in an MCP tool result. */
+/** Serialises data as JSON in an MCP tool result. Uses compact field names when enabled. */
 export function jsonResult(data: unknown): ToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+  const mapped = compactResponsesEnabled ? compactify(data) : data;
+  const text = compactResponsesEnabled ? JSON.stringify(mapped) : JSON.stringify(mapped, null, 2);
+  return { content: [{ type: "text", text }] };
 }
 
 // --- HTTP Client ---

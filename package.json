@@ -1,6 +1,6 @@
 {
   "name": "mcp-obsidian-extended",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "MCP server for Obsidian — 38 tools, 100% REST API coverage",
   "author": "adder-factory",
   "license": "MIT",
@@ -26,7 +26,8 @@
     "mcp-obsidian-extended": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    ".claude"
   ],
   "engines": {
     "node": ">=22"
@@ -45,6 +46,7 @@
     "pack:mcpb": "npm run build && npx mcpb pack",
     "sonar": "sonar-scanner -Dsonar.host.url=http://localhost:9000",
     "pr:audit": "bash scripts/pr-audit.sh",
+    "build:sea": "npm run build && node scripts/build-sea.js",
     "verify:all": "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/",
     "security:all": "npx snyk test && npx snyk code test && npx semgrep --config auto src/"
   },
@@ -57,8 +59,10 @@
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "@vitest/coverage-v8": "^4.1.0",
+    "esbuild": "^0.25.0",
     "eslint": "^10.0.3",
     "eslint-plugin-security": "^4.0.0",
+    "postject": "^1.0.0-alpha.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"

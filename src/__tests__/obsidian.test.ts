@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
   sanitizeFilePath,
   textResult,
   errorResult,
   jsonResult,
+  compactify,
+  setCompactResponses,
+  getCompactResponses,
   ObsidianClient,
 } from "../obsidian.js";
 import type { ToolResult } from "../obsidian.js";
@@ -118,6 +121,99 @@ describe("jsonResult", () => {
   it("handles null", () => {
     const result = jsonResult(null);
     expect(result.content[0]?.text).toBe("null");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// compactify
+// ---------------------------------------------------------------------------
+describe("compactify", () => {
+  it("maps known field names to compact abbreviations", () => {
+    const data = { content: "hello", path: "test.md", frontmatter: {} };
+    const result = compactify(data);
+    expect(result).toEqual({ c: "hello", p: "test.md", fm: {} });
+  });
+
+  it("maps nested stat fields", () => {
+    const data = { stat: { mtime: 100, ctime: 50, size: 200 } };
+    const result = compactify(data);
+    expect(result).toEqual({ s: { m: 100, ct: 50, sz: 200 } });
+  });
+
+  it("strips null and undefined values", () => {
+    const data = { content: "hello", path: null, tags: undefined };
+    const result = compactify(data);
+    expect(result).toEqual({ c: "hello" });
+  });
+
+  it("handles arrays recursively", () => {
+    const data = [{ path: "a.md" }, { path: "b.md" }];
+    const result = compactify(data);
+    expect(result).toEqual([{ p: "a.md" }, { p: "b.md" }]);
+  });
+
+  it("preserves unmapped keys", () => {
+    const data = { unknownField: "value", path: "x.md" };
+    const result = compactify(data);
+    expect(result).toEqual({ unknownField: "value", p: "x.md" });
+  });
+
+  it("handles primitives unchanged", () => {
+    expect(compactify(42)).toBe(42);
+    expect(compactify("hello")).toBe("hello");
+    expect(compactify(true)).toBe(true);
+  });
+
+  it("returns undefined for null/undefined", () => {
+    expect(compactify(null)).toBeUndefined();
+    expect(compactify(undefined)).toBeUndefined();
+  });
+
+  it("handles deeply nested objects", () => {
+    const data = { matches: [{ context: "some text", score: 0.9 }] };
+    const result = compactify(data);
+    expect(result).toEqual({ mt: [{ ctx: "some text", sc: 0.9 }] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setCompactResponses / getCompactResponses + jsonResult compact mode
+// ---------------------------------------------------------------------------
+describe("compact responses", () => {
+  afterEach(() => {
+    setCompactResponses(false);
+  });
+
+  it("defaults to disabled", () => {
+    expect(getCompactResponses()).toBe(false);
+  });
+
+  it("can be toggled", () => {
+    setCompactResponses(true);
+    expect(getCompactResponses()).toBe(true);
+    setCompactResponses(false);
+    expect(getCompactResponses()).toBe(false);
+  });
+
+  it("jsonResult uses compact field names when enabled", () => {
+    setCompactResponses(true);
+    const data = { content: "hello", path: "test.md" };
+    const result = jsonResult(data);
+    const parsed: unknown = JSON.parse(result.content[0]?.text ?? "");
+    expect(parsed).toEqual({ c: "hello", p: "test.md" });
+  });
+
+  it("jsonResult omits whitespace when compact", () => {
+    setCompactResponses(true);
+    const result = jsonResult({ content: "hello" });
+    // Compact mode uses no indentation
+    expect(result.content[0]?.text).not.toContain("\n");
+  });
+
+  it("jsonResult uses pretty-print when not compact", () => {
+    setCompactResponses(false);
+    const result = jsonResult({ key: "value" });
+    expect(result.content[0]?.text).toContain("\n");
   });
 });
 

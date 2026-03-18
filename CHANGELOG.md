@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0 (2026-03-18)
+
+### New
+- **LLM Skill resource:** MCP resource (`obsidian://skill`) that teaches LLMs how to use tools effectively — includes workflow patterns, safe editing tips, error recovery, and token optimization guidance. Adapts content based on tool mode and compact responses setting. Also ships as `.claude/skills/obsidian-mcp/SKILL.md` for Claude Code users.
+- **Compact responses:** `OBSIDIAN_COMPACT_RESPONSES=true` maps verbose field names to short abbreviations (e.g. `content`→`c`, `frontmatter`→`fm`, `path`→`p`) and removes JSON whitespace — reduces token usage for large vault operations. Configurable at runtime via the `configure` tool.
+- **move_file tool:** Move or rename vault files (granular tool #39, consolidated `vault` action `move`). Copies content to destination, deletes source to Obsidian trash (recoverable). Detects conflicts when destination already exists. Available in `full` and `safe` presets.
+- **SEA binary build:** `npm run build:sea` compiles the server into a standalone binary using Node.js Single Executable Applications — no Node.js installation required. macOS code-signing included.
+
+### Changed
+- Granular full preset: 38→39 tools (added move_file)
+- Granular safe preset: 34→35 tools (added move_file)
+- New env var: `OBSIDIAN_COMPACT_RESPONSES` (default: `false`), total env vars: 18
+
 ## 1.0.1 (2026-03-17)
 
 ### Fixed

@@ -12,7 +12,7 @@ import { registerConsolidatedTools } from "./tools/consolidated.js";
 const GRANULAR_PRESETS: Record<string, readonly string[]> = {
   full: [
     "list_files_in_vault", "list_files_in_dir", "get_file_contents", "put_content",
-    "append_content", "patch_content", "delete_file", "search_replace",
+    "append_content", "patch_content", "delete_file", "search_replace", "move_file",
     "get_active_file", "put_active_file", "append_active_file", "patch_active_file", "delete_active_file",
     "list_commands", "execute_command", "open_file",
     "simple_search", "complex_search", "dataview_search",
@@ -36,7 +36,7 @@ const GRANULAR_PRESETS: Record<string, readonly string[]> = {
   ],
   safe: [
     "list_files_in_vault", "list_files_in_dir", "get_file_contents", "put_content",
-    "append_content", "patch_content", "search_replace",
+    "append_content", "patch_content", "search_replace", "move_file",
     "get_active_file", "put_active_file", "append_active_file", "patch_active_file",
     "list_commands", "execute_command", "open_file",
     "simple_search", "complex_search", "dataview_search",

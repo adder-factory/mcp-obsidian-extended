@@ -21,6 +21,7 @@ import {
   handleRecentPeriodicNotes,
   batchGetFiles,
   ensureCacheReady,
+  handleMoveFile,
   registerOpenFileTool,
   registerConfigureTool,
 } from "./shared.js";
@@ -73,9 +74,11 @@ function isActionAllowed(toolName: string, action: string, preset: string): bool
 
 /** Inferred args shape for the vault consolidated tool. */
 interface VaultArgs {
-  readonly action: "list" | "list_dir" | "get" | "put" | "append" | "patch" | "delete" | "search_replace";
+  readonly action: "list" | "list_dir" | "get" | "put" | "append" | "patch" | "delete" | "search_replace" | "move";
   readonly path?: string | undefined;
   readonly content?: string | undefined;
+  readonly source?: string | undefined;
+  readonly destination?: string | undefined;
   readonly format?: "markdown" | "json" | "map" | undefined;
   readonly operation?: PatchOptions["operation"] | undefined;
   readonly targetType?: PatchOptions["targetType"] | undefined;
@@ -105,6 +108,11 @@ async function handleVaultAction(
   args: VaultArgs,
 ): Promise<ToolResult> {
   if (action === "list") return jsonResult(await client.listFilesInVault());
+  if (action === "move") {
+    if (!args.source) return errorResult("[vault] source is required for move");
+    if (!args.destination) return errorResult("[vault] destination is required for move");
+    return handleMoveFile(client, args.source, args.destination);
+  }
   const pathErr = requirePath(action, path);
   if (pathErr) return pathErr;
   // After requirePath, path is guaranteed non-empty
@@ -363,11 +371,13 @@ export function registerConsolidatedTools(
     server.registerTool(
       "vault",
       {
-        description: "Read, write, search vault files. Do not retry append/patch/search_replace on timeout",
+        description: "Read, write, search vault files. Do not retry append/patch/search_replace/move on timeout",
         inputSchema: z.object({
-          action: z.enum(["list", "list_dir", "get", "put", "append", "patch", "delete", "search_replace"]).describe("Operation"),
+          action: z.enum(["list", "list_dir", "get", "put", "append", "patch", "delete", "search_replace", "move"]).describe("Operation"),
           path: z.string().optional().describe("File or directory path"),
           content: z.string().optional().describe("Content for writes"),
+          source: z.string().optional().describe("Source path for move"),
+          destination: z.string().optional().describe("Destination path for move"),
           format: formatSchema.optional(),
           operation: patchOperationSchema.optional(),
           targetType: patchTargetTypeSchema.optional(),

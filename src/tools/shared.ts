@@ -4,11 +4,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { NoteJson, DocumentMap, ToolResult, ObsidianClient } from "../obsidian.js";
-import { textResult, errorResult, jsonResult } from "../obsidian.js";
+import { textResult, errorResult, jsonResult, setCompactResponses } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
 import type { Config } from "../config.js";
 import { DEFAULTS, getRedactedConfig, saveConfigToFile, setDebugEnabled, log } from "../config.js";
-import { buildErrorMessage } from "../errors.js";
+import { ObsidianApiError, buildErrorMessage } from "../errors.js";
 
 // --- Cache readiness ---
 
@@ -118,6 +118,10 @@ function buildConfigUpdate(setting: string, value: string): Record<string, unkno
       const b = parseBoolValue(value);
       return b === undefined ? undefined : { debug: b };
     }
+    case "compactResponses": {
+      const b = parseBoolValue(value);
+      return b === undefined ? undefined : { compactResponses: b };
+    }
     case "timeout": {
       const n = parsePosIntValue(value, 1);
       return n === undefined ? undefined : { reliability: { timeout: n } };
@@ -150,6 +154,8 @@ function buildConfigReset(setting: string): Record<string, unknown> | undefined 
   switch (setting) {
     case "debug":
       return { debug: DEFAULTS.debug };
+    case "compactResponses":
+      return { compactResponses: DEFAULTS.compactResponses };
     case "timeout":
       return { reliability: { timeout: DEFAULTS.timeout } };
     case "verifyWrites":
@@ -176,6 +182,10 @@ function applyImmediateSetting(setting: string, value: string): void {
     setDebugEnabled(value === "true");
     log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
   }
+  if (setting === "compactResponses") {
+    setCompactResponses(value === "true");
+    log("info", `Compact responses ${value === "true" ? "enabled" : "disabled"}`);
+  }
 }
 
 /**
@@ -197,7 +207,7 @@ function handleConfigureSet(
   if (value === undefined) {
     return errorResult("[configure] Value is required for 'set' action");
   }
-  const immediateSettings = new Set(["debug"]);
+  const immediateSettings = new Set(["debug", "compactResponses"]);
   const restartSettings = new Set(["timeout", "verifyWrites", "maxResponseChars", "toolMode", "toolPreset"]);
   if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
     return errorResult(`[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`);
@@ -230,7 +240,7 @@ function handleConfigureReset(setting: string | undefined, config: Config): Tool
   }
   saveConfigToFile(configPath, resetUpdates);
   // Apply immediately for settings that take effect without restart
-  if (setting === "debug") {
+  if (setting === "debug" || setting === "compactResponses") {
     applyImmediateSetting(setting, "false");
     return textResult(`Setting "${setting}" reset to default (effective immediately)`);
   }
@@ -405,6 +415,41 @@ export async function batchGetFiles(
     output.push(...results);
   }
   return output;
+}
+
+// --- Move file ---
+
+/**
+ * Moves or renames a vault file by copying content to the destination and deleting the source.
+ * The source is sent to Obsidian trash (recoverable). Returns a no-op if source equals destination.
+ * @param client - The Obsidian API client.
+ * @param source - Source file path.
+ * @param destination - Destination file path.
+ * @returns A tool result describing success, no-op, or conflict.
+ */
+export async function handleMoveFile(
+  client: ObsidianClient,
+  source: string,
+  destination: string,
+): Promise<ToolResult> {
+  if (source === destination) {
+    return textResult(`No-op: source and destination are the same (${source})`);
+  }
+  const content = await client.getFileContents(source, "markdown", true);
+  if (typeof content !== "string") {
+    return errorResult("[move_file] Expected markdown content from source file");
+  }
+  try {
+    await client.getFileContents(destination, "markdown");
+    return errorResult("CONFLICT: Destination already exists. Delete it first or choose a different path.");
+  } catch (err: unknown) {
+    if (!(err instanceof ObsidianApiError && err.statusCode === 404)) {
+      throw err;
+    }
+  }
+  await client.putContent(destination, content);
+  await client.deleteFile(source);
+  return textResult(`Moved: ${source} → ${destination}`);
 }
 
 // --- Shared tool registrations (used by both granular and consolidated modes) ---

@@ -9,9 +9,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { loadConfig, getRedactedConfig, saveConfigToFile, log, setDebugEnabled } from "./config.js";
-import { ObsidianClient } from "./obsidian.js";
+import { ObsidianClient, setCompactResponses } from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
+import { buildSkillContent } from "./skill.js";
 
 process.title = "mcp-obsidian-extended";
 
@@ -251,6 +252,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   setDebugEnabled(config.debug);
+  setCompactResponses(config.compactResponses);
 
   if (!config.apiKey) {
     log("error", "OBSIDIAN_API_KEY is required. Set it as an environment variable or in config file.");
@@ -267,6 +269,14 @@ async function main(): Promise<void> {
   });
 
   const toolCount = registerAllTools(server, client, cache, config);
+
+  const skillContent = buildSkillContent(config.toolMode, config.compactResponses);
+  server.resource(
+    "obsidian-skill",
+    "obsidian://skill",
+    { description: "LLM usage guide for Obsidian MCP tools" },
+    async () => ({ contents: [{ uri: "obsidian://skill", text: skillContent, mimeType: "text/markdown" }] }),
+  );
 
   log("info", `mcp-obsidian-extended v${VERSION}`);
   if (config.configFilePath) {

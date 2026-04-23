@@ -41,6 +41,15 @@ export default [
     },
   },
   {
-    ignores: ["dist/", "node_modules/", "scripts/", "eslint.config.js"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "scripts/",
+      "coverage/",
+      ".adder-pipeline/",
+      ".codegraph/",
+      ".claude/",
+      "eslint.config.js",
+    ],
   },
 ];

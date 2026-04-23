@@ -22,10 +22,14 @@ export default {
   // ~/projects/code-review-pipeline/baseline-findings.md for the bake-in run.
   // TODO: raise `break` to 70 once a sustained run keeps the score above it.
   thresholds: { high: 80, low: 70, break: 55 },
-  // ignoreStatic must stay at default `false` — static mutants catch wrong
-  // defaults / bad constants / bad regex literals, which is exactly what
-  // type checks and linters miss. Silencing `warnings.slow` keeps CI output
-  // clean without changing what gets tested.
+  // ignoreStatic must stay `false` — static mutants catch wrong defaults
+  // / bad constants / bad regex literals, which is exactly what type checks
+  // and linters miss. Explicit value (not relying on Stryker's current
+  // default) locks the behavior against an upstream default flip in a
+  // future Stryker release.
+  ignoreStatic: false,
+  // Silencing `warnings.slow` keeps CI output clean without changing what
+  // gets tested. Explicit for the same reason as above.
   warnings: { slow: false },
   incremental: true,
   incrementalFile: "reports/stryker-incremental.json",

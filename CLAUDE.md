@@ -200,11 +200,20 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 4. Iterate on every comment from BOTH reviewers. Nitpicks count. No "will fix later."
 5. If CodeRabbit and CodeAnt disagree on something, stop and ask the human — do
    not oscillate between the two reviewers' preferred approaches
-6. Ask for human approval only when:
+6. Ask the human to merge only when all of the following are true:
    - All CI checks green
    - All CodeRabbit threads resolved
    - All CodeAnt threads resolved
    - `npm run pre-pr` passes locally on the branch head
+
+   **There is no human code review.** The pipeline spec is explicit: "No
+   human code review — pipeline must be thorough enough that human only
+   tests functionality." The human's pre-merge role is confirming that
+   CI + AI reviewers are clean and clicking merge — not inspecting the
+   diff. Branch protection intentionally sets
+   `required_pull_request_reviews: null` to match this principle;
+   reviewer approval at the GitHub level is not required and not
+   configured. Human functional testing happens post-merge.
 
 ### Never do
 

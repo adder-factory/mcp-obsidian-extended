@@ -150,7 +150,7 @@ The skill's `buildSkillContent()` function includes the field mapping table ONLY
 ```typescript
 server.tool(
   "move_file",
-  "Move or rename a vault file (not idempotent)",
+  "Move or rename a .md vault file (not idempotent)",
   {
     source: z.string().describe("Source file path"),
     destination: z.string().describe("Destination file path"),

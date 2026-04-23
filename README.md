@@ -90,7 +90,7 @@ This is a TypeScript rewrite of [mcp-obsidian](https://github.com/MarkusPfundste
 | --- | ------------------------------- | ------------------------------------------------------- |
 | 1   | `list_files_in_vault`           | List all files and directories in vault root            |
 | 2   | `list_files_in_dir`             | List files in a vault directory                         |
-| 3   | `get_file_contents`             | Read a vault file as markdown, JSON, or document map    |
+| 3   | `get_file_contents`             | Read a vault file as Markdown, JSON, or document map    |
 | 4   | `put_content`                   | Create or overwrite a vault file (idempotent)           |
 | 5   | `append_content`                | Append to a vault file                                  |
 | 6   | `patch_content`                 | Insert at a heading, block, or frontmatter target       |

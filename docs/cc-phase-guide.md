@@ -67,21 +67,23 @@ Run `npm install`.
 
 ```typescript
 export class ObsidianApiError extends Error {
+  public readonly statusCode: number;
+  public readonly errorCode: number | undefined;
   constructor(
     message: string,
-    public readonly statusCode: number,
-    public readonly errorCode?: number,
+    statusCode: number,
+    errorCode?: number,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "ObsidianApiError";
+    this.statusCode = statusCode;
+    this.errorCode = errorCode;
   }
 }
 export class ObsidianConnectionError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: Error,
-  ) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ObsidianConnectionError";
   }
 }
@@ -187,6 +189,7 @@ import { registerConsolidatedTools } from "./tools/consolidated.js";
 export function registerAllTools(
   server: McpServer,
   client: ObsidianClient,
+  cache: VaultCache,
   config: Config,
 ): number {
   // 1. Determine base tool set from preset
@@ -205,7 +208,9 @@ export function registerAllTools(
 export function registerGranularTools(
   server: McpServer,
   client: ObsidianClient,
+  cache: VaultCache,
   shouldRegister: (name: string) => boolean,
+  config: Config,
 ): number {
   let count = 0;
 
@@ -329,7 +334,7 @@ Entry point. Order of operations:
    ```
 10. **Log startup summary:**
 
-```
+```text
 [info] mcp-obsidian-extended v1.0.0
 [info] Config: ~/.obsidian-mcp.config.json + env overrides
 [info] Tools: granular mode | preset: full | 38 registered

@@ -70,7 +70,7 @@ jobs:
           fi
 
       - name: Semgrep
-        run: semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off
+        run: semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off --quiet .
 
       # Qwen step intentionally omitted — runs locally only via
       # scripts/pre-pr.sh (spec step 15). CI relies on CodeRabbit + CodeAnt
@@ -79,20 +79,26 @@ jobs:
   sonar:
     name: SonarQube
     runs-on: ubuntu-latest
-    # Skip cleanly when the secret isn't configured — self-hosted Sonar
-    # isn't reachable from GHA unless tunneled (we use Cloudflare Tunnel).
-    if: ${{ secrets.SONAR_TOKEN != '' }}
+    # Secrets can't be referenced in a job-level `if:` in GitHub Actions, so
+    # the job always runs but every step is gated on an env-shim check. When
+    # SONAR_TOKEN isn't configured the job no-ops cleanly (self-hosted Sonar
+    # isn't reachable from GHA unless tunneled — we use Cloudflare Tunnel).
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
     steps:
+      - name: Skip when SONAR_TOKEN is unset
+        if: env.SONAR_TOKEN == ''
+        run: echo "SONAR_TOKEN secret not set — SonarQube gate skipped."
+
       - uses: actions/checkout@v4
+        if: env.SONAR_TOKEN != ''
         with:
           fetch-depth: 0
 
       - uses: SonarSource/sonarqube-scan-action@v5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        if: env.SONAR_TOKEN != ''
 
-      - uses: SonarSource/sonarqube-quality-gate-action@master
+      - uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        if: env.SONAR_TOKEN != ''
         timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

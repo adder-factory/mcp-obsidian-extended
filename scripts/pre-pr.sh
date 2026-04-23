@@ -41,7 +41,7 @@ if ! is_inside_git_repo; then
   fail "Not a git repository — run from the target repo root."
   exit 1
 fi
-cd "$(repo_root)"
+cd "$(repo_root)" || { fail "cd to repo root failed"; exit 1; }
 
 if [ -z "$BASE_REF" ]; then
   BASE_REF="${PIPELINE_BASE_REF:-$(default_base_ref)}"
@@ -168,10 +168,15 @@ else
   _qwen_dur=$(( $(date +%s) - _qwen_start ))
   case "$_qwen_rc" in
     0) _qwen_res="pass" ;;
-    # Exit 2 from qwen-review.sh means Ollama unreachable. Degrade to SKIP so
-    # a dev without the daemon running doesn't see a hard fail — they'll
-    # notice the SKIP on the pre-push run and start Ollama then. CI never
-    # reaches this branch (CI calls pre-pr.sh with --skip-qwen).
+    # Exit 2 specifically = Ollama unreachable. Degrade to SKIP so a dev
+    # without the daemon running doesn't see a hard fail — they'll notice
+    # the SKIP on the pre-push run and start Ollama then. CI never reaches
+    # this branch (CI calls pre-pr.sh with --skip-qwen).
+    #
+    # Every other non-zero exit (1 = findings, 3 = model not pulled,
+    # 4 = invalid JSON, 5 = setup error — missing tool, bad base ref,
+    # failed cwd) fails the gate — a setup problem masquerading as a
+    # skip would let bad code reach the PR.
     2) _qwen_res="skip"
        warn "Ollama not reachable — Qwen review degraded to SKIP (start with: brew services start ollama)" ;;
     *) _qwen_res="fail" ;;

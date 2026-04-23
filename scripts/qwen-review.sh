@@ -48,24 +48,26 @@ Model selection:   QWEN_MODEL env var (default: qwen2.5-coder:32b).
 
 Exit codes:        0 clean, or only nitpicks / minor
                    1 blocker or major findings present
-                   2 Ollama unreachable (setup error)
+                   2 Ollama unreachable (skippable by pre-pr.sh)
                    3 model not pulled on the Ollama host
                    4 response was not valid JSON (prompt compliance failure)
+                   5 other setup / validation error (missing tool, bad ref,
+                     failed cwd, etc.) — NOT skippable
 EOF
       exit 0 ;;
     *) fail "Unknown flag: $1"; exit 1 ;;
   esac
 done
 
-require_cmd curl    "macOS ships curl — check PATH"  || exit 2
-require_cmd python3 "python3 is required for JSON I/O" || exit 2
-require_cmd git     "install git" || exit 2
+require_cmd curl    "macOS ships curl — check PATH"  || exit 5
+require_cmd python3 "python3 is required for JSON I/O" || exit 5
+require_cmd git     "install git" || exit 5
 
 if ! is_inside_git_repo; then
   fail "Not a git repository — run from the target repo root."
-  exit 2
+  exit 5
 fi
-cd "$(repo_root)"
+cd "$(repo_root)" || { fail "cd to repo root failed"; exit 5; }
 
 if [ -z "$BASE_REF" ]; then
   BASE_REF="${PIPELINE_BASE_REF:-$(default_base_ref)}"
@@ -76,7 +78,7 @@ fi
 if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
   fail "Base ref not found in this repo: $BASE_REF"
   printf '    Fetch origin first, or pass a different --base / PIPELINE_BASE_REF.\n'
-  exit 2
+  exit 5
 fi
 
 # Per-model request options. num_ctx is a ceiling; Ollama honors the model's
@@ -99,18 +101,21 @@ if ! curl -sS --max-time 3 "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1; then
   exit 2
 fi
 
-if ! curl -sS "$OLLAMA_HOST_URL/api/tags" \
+if ! curl -sS --max-time 10 "$OLLAMA_HOST_URL/api/tags" \
      | python3 -c "import json,sys; tags=json.load(sys.stdin).get('models', []); \
                    sys.exit(0 if any(m.get('name')==sys.argv[1] for m in tags) else 1)" \
      "$MODEL" 2>/dev/null; then
-  fail "Model $MODEL not found on Ollama host"
+  fail "Model $MODEL not found on Ollama host (or /api/tags timed out)"
   printf '    Pull it with: ollama pull %s\n' "$MODEL"
   exit 3
 fi
 
 DIFF=$(git diff --merge-base "$BASE_REF" -- . \
        ':(exclude)*.lock' ':(exclude)*.snap' ':(exclude)package-lock.json' \
-       ':(exclude)yarn.lock' ':(exclude)pnpm-lock.yaml' 2>/dev/null || true)
+       ':(exclude)yarn.lock' ':(exclude)pnpm-lock.yaml' 2>/dev/null) || {
+  fail "Could not diff against $BASE_REF (unrelated histories? shallow clone?)"
+  exit 5
+}
 
 if [ -z "$DIFF" ]; then
   info "No changes vs $BASE_REF — nothing to review."
@@ -118,8 +123,14 @@ if [ -z "$DIFF" ]; then
   exit 0
 fi
 
+# Keep exclusions identical to the $DIFF query so the model isn't told about
+# files whose content we didn't include (especially lockfiles).
 FILES=$(git diff --merge-base --name-only "$BASE_REF" -- . \
-        ':(exclude)*.lock' ':(exclude)*.snap' 2>/dev/null || true)
+        ':(exclude)*.lock' ':(exclude)*.snap' ':(exclude)package-lock.json' \
+        ':(exclude)yarn.lock' ':(exclude)pnpm-lock.yaml' 2>/dev/null) || {
+  fail "Could not enumerate changed files against $BASE_REF"
+  exit 5
+}
 
 # CodeGraph impact context is best-effort — never fails the gate.
 CODEGRAPH_CONTEXT=""
@@ -273,7 +284,11 @@ fi
 
 printf '%s' "$CLEAN_JSON" | OUTPUT_JSON="$OUTPUT_JSON" python3 -c '
 import json, os, sys
-data = json.loads(sys.stdin.read())
+try:
+    data = json.loads(sys.stdin.read())
+except json.JSONDecodeError as e:
+    sys.stderr.write("  (invalid JSON from model after extraction: %s)\n" % e)
+    sys.exit(4)
 findings = data.get("findings", []) or []
 by_sev = {"blocker":0, "major":0, "minor":0, "nitpick":0}
 for f in findings:

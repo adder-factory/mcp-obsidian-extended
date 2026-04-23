@@ -48,7 +48,9 @@ try {
   // 1. Bundle dist/ into a single file with esbuild
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log("Step 1: Bundling with esbuild...");
-  run("npx esbuild dist/index.js --bundle --platform=node --format=cjs --outfile=sea-entry.cjs --external:node:*");
+  run(
+    "npx esbuild dist/index.js --bundle --platform=node --format=cjs --outfile=sea-entry.cjs --external:node:*",
+  );
 
   // 2. Write SEA config
   // eslint-disable-next-line no-console -- build script, not MCP transport
@@ -73,10 +75,14 @@ try {
   // 5. Inject blob (platform-specific)
   if (process.platform === "darwin") {
     run(`codesign --remove-signature ${BINARY_NAME}`);
-    run(`npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE} --macho-segment-name NODE_SEA`);
+    run(
+      `npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE} --macho-segment-name NODE_SEA`,
+    );
     run(`codesign --sign - ${BINARY_NAME}`);
   } else {
-    run(`npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE}`);
+    run(
+      `npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE}`,
+    );
   }
 
   // 6. Cleanup
@@ -86,9 +92,21 @@ try {
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilt: ./${BINARY_NAME}\n`);
 } catch (err) {
-  try { cleanup(); } catch { /* best-effort */ }
-  try { if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs"); } catch { /* best-effort */ }
-  try { if (existsSync(BINARY_NAME)) unlinkSync(BINARY_NAME); } catch { /* best-effort */ }
+  try {
+    cleanup();
+  } catch {
+    /* best-effort */
+  }
+  try {
+    if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
+  } catch {
+    /* best-effort */
+  }
+  try {
+    if (existsSync(BINARY_NAME)) unlinkSync(BINARY_NAME);
+  } catch {
+    /* best-effort */
+  }
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.error("SEA build failed:", err.message);
   process.exit(1);

@@ -313,7 +313,10 @@ Responses use abbreviated field names to save tokens:
  * @param compact - Whether compact responses are enabled.
  * @returns Complete markdown skill document.
  */
-export function buildSkillContent(mode: "granular" | "consolidated", compact: boolean): string {
+export function buildSkillContent(
+  mode: "granular" | "consolidated",
+  compact: boolean,
+): string {
   const sections = [
     "# Obsidian MCP — Tool Usage Guide",
     goldenRules(mode),

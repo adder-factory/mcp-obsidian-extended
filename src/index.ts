@@ -8,8 +8,18 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { loadConfig, getRedactedConfig, saveConfigToFile, log, setDebugEnabled } from "./config.js";
-import { ObsidianClient, setCompactResponses, getCompactResponses } from "./obsidian.js";
+import {
+  loadConfig,
+  getRedactedConfig,
+  saveConfigToFile,
+  log,
+  setDebugEnabled,
+} from "./config.js";
+import {
+  ObsidianClient,
+  setCompactResponses,
+  getCompactResponses,
+} from "./obsidian.js";
 import { VaultCache } from "./cache.js";
 import { registerAllTools } from "./tools.js";
 import { buildSkillContent } from "./skill.js";
@@ -21,8 +31,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Reads the package version, falling back to "unknown" in SEA binaries where package.json is absent. */
 function readPackageVersion(): string {
   try {
-    const raw: unknown = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
-    if (raw !== null && typeof raw === "object" && "version" in raw && typeof (raw as Record<string, unknown>)["version"] === "string") {
+    const raw: unknown = JSON.parse(
+      readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
+    );
+    if (
+      raw !== null &&
+      typeof raw === "object" &&
+      "version" in raw &&
+      typeof (raw as Record<string, unknown>)["version"] === "string"
+    ) {
       return (raw as Record<string, unknown>)["version"] as string;
     }
   } catch {
@@ -39,7 +56,9 @@ const VERSION: string = readPackageVersion();
 function showConfig(): void {
   const config = loadConfig();
   const redacted = getRedactedConfig(config);
-  process.stderr.write(`mcp-obsidian-extended v${VERSION} — Active Configuration\n\n`);
+  process.stderr.write(
+    `mcp-obsidian-extended v${VERSION} — Active Configuration\n\n`,
+  );
   process.stderr.write(`${JSON.stringify(redacted, null, 2)}\n`);
   process.exit(0);
 }
@@ -48,7 +67,9 @@ function showConfig(): void {
 
 /** Tests connectivity and authentication against the configured Obsidian instance. */
 async function validate(): Promise<void> {
-  process.stderr.write(`mcp-obsidian-extended v${VERSION} — Validating connection...\n\n`);
+  process.stderr.write(
+    `mcp-obsidian-extended v${VERSION} — Validating connection...\n\n`,
+  );
   const config = loadConfig();
 
   if (!config.apiKey) {
@@ -56,7 +77,9 @@ async function validate(): Promise<void> {
     process.exit(1);
   }
 
-  process.stderr.write(`  Host: ${config.scheme}://${config.host}:${String(config.port)}\n`);
+  process.stderr.write(
+    `  Host: ${config.scheme}://${config.host}:${String(config.port)}\n`,
+  );
   process.stderr.write(`  API Key: [SET]\n`);
   if (config.configFilePath) {
     process.stderr.write(`  Config: ${config.configFilePath}\n`);
@@ -91,15 +114,25 @@ async function validate(): Promise<void> {
 /** Validates and returns a port number, warning and defaulting on invalid input. */
 function validatePort(portStr: string): number {
   const portNum = Number(portStr);
-  if (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535) return portNum;
-  process.stderr.write(`  Warning: invalid port "${portStr}" — using default 27124\n`);
+  if (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535)
+    return portNum;
+  process.stderr.write(
+    `  Warning: invalid port "${portStr}" — using default 27124\n`,
+  );
   return 27124;
 }
 
 /** Validates and returns an enum value, warning and defaulting on invalid input. */
-function validateEnum<T extends string>(value: string, valid: ReadonlySet<T>, label: string, fallback: T): T {
+function validateEnum<T extends string>(
+  value: string,
+  valid: ReadonlySet<T>,
+  label: string,
+  fallback: T,
+): T {
   if (valid.has(value as T)) return value as T;
-  process.stderr.write(`  Warning: invalid ${label} "${value}" — using default "${fallback}"\n`);
+  process.stderr.write(
+    `  Warning: invalid ${label} "${value}" — using default "${fallback}"\n`,
+  );
   return fallback;
 }
 
@@ -108,7 +141,9 @@ function validateEnum<T extends string>(value: string, valid: ReadonlySet<T>, la
 /** Interactive setup wizard. Prompts for connection details, tests, and saves config. */
 async function setup(): Promise<void> {
   if (!process.stdin.isTTY) {
-    process.stderr.write("Error: --setup requires an interactive terminal (TTY).\n");
+    process.stderr.write(
+      "Error: --setup requires an interactive terminal (TTY).\n",
+    );
     process.exit(1);
   }
 
@@ -126,7 +161,9 @@ async function setup(): Promise<void> {
 
   // Step 1: Connection
   process.stderr.write("Step 1/4: Connection\n\n");
-  const apiKey = await ask("  API Key (from Obsidian Settings → Local REST API)");
+  const apiKey = await ask(
+    "  API Key (from Obsidian Settings → Local REST API)",
+  );
   if (!apiKey) {
     process.stderr.write("\nError: API key is required.\n");
     rl.close();
@@ -136,7 +173,12 @@ async function setup(): Promise<void> {
   const portStr = await ask("  Port", "27124");
   const port = validatePort(portStr);
   const schemeRaw = await ask("  Scheme (https/http)", "https");
-  const scheme = validateEnum(schemeRaw, new Set(["http", "https"] as const), "scheme", "https" as const);
+  const scheme = validateEnum(
+    schemeRaw,
+    new Set(["http", "https"] as const),
+    "scheme",
+    "https" as const,
+  );
 
   // Test connection
   process.stderr.write("\n  Testing connection...\n");
@@ -146,7 +188,7 @@ async function setup(): Promise<void> {
     apiKey,
     host,
     port,
-    scheme: scheme === "http" ? "http" as const : "https" as const,
+    scheme: scheme === "http" ? ("http" as const) : ("https" as const),
   };
   const testClient = new ObsidianClient(tempConfig);
   try {
@@ -156,28 +198,57 @@ async function setup(): Promise<void> {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`  ✗ Connection failed: ${message}\n`);
-    process.stderr.write("  Saving config anyway — you can fix the connection later.\n\n");
+    process.stderr.write(
+      "  Saving config anyway — you can fix the connection later.\n\n",
+    );
   }
 
   // Step 2: Tool Mode
   process.stderr.write("Step 2/4: Tool Mode\n\n");
-  const toolModeRaw = await ask("  Mode (granular = 39 tools, consolidated = 11 tools)", "granular");
-  const toolMode = validateEnum(toolModeRaw, new Set(["granular", "consolidated"] as const), "mode", "granular" as const);
-  const toolPresetRaw = await ask("  Preset (full, read-only, minimal, safe)", "full");
-  const toolPreset = validateEnum(toolPresetRaw, new Set(["full", "read-only", "minimal", "safe"] as const), "preset", "full" as const);
+  const toolModeRaw = await ask(
+    "  Mode (granular = 39 tools, consolidated = 11 tools)",
+    "granular",
+  );
+  const toolMode = validateEnum(
+    toolModeRaw,
+    new Set(["granular", "consolidated"] as const),
+    "mode",
+    "granular" as const,
+  );
+  const toolPresetRaw = await ask(
+    "  Preset (full, read-only, minimal, safe)",
+    "full",
+  );
+  const toolPreset = validateEnum(
+    toolPresetRaw,
+    new Set(["full", "read-only", "minimal", "safe"] as const),
+    "preset",
+    "full" as const,
+  );
 
   // Step 3: Reliability
   process.stderr.write("\nStep 3/4: Reliability\n\n");
   const validBools = new Set(["true", "false"] as const);
   const verifyWritesRaw = await ask("  Verify writes (true/false)", "false");
-  const verifyWrites = validateEnum(verifyWritesRaw, validBools, "verify writes", "false" as const);
-  const maxResponseChars = await ask("  Max response chars (0 = unlimited)", "500000");
+  const verifyWrites = validateEnum(
+    verifyWritesRaw,
+    validBools,
+    "verify writes",
+    "false" as const,
+  );
+  const maxResponseChars = await ask(
+    "  Max response chars (0 = unlimited)",
+    "500000",
+  );
   const debugRaw = await ask("  Debug logging (true/false)", "false");
   const debug = validateEnum(debugRaw, validBools, "debug", "false" as const);
 
   // Step 4: Save
   process.stderr.write("\nStep 4/4: Save\n\n");
-  const savePath = await ask("  Config file path", join(homedir(), ".obsidian-mcp.config.json"));
+  const savePath = await ask(
+    "  Config file path",
+    join(homedir(), ".obsidian-mcp.config.json"),
+  );
   const resolvedPath = resolve(savePath);
 
   const configToSave: Record<string, unknown> = {
@@ -212,7 +283,10 @@ async function setup(): Promise<void> {
   // CWD-relative path excluded — it varies by runtime context, so always
   // include OBSIDIAN_CONFIG in the snippet when the user picks a CWD-relative path.
   const isNonDefaultPath = !defaultPaths.has(resolvedPath);
-  const maskedKey = apiKey.length > 4 ? `${apiKey.slice(0, 4)}${"*".repeat(apiKey.length - 4)}` : "****";
+  const maskedKey =
+    apiKey.length > 4
+      ? `${apiKey.slice(0, 4)}${"*".repeat(apiKey.length - 4)}`
+      : "****";
   const envBlock: Record<string, string> = { OBSIDIAN_API_KEY: maskedKey };
   if (isNonDefaultPath) {
     envBlock["OBSIDIAN_CONFIG"] = resolvedPath;
@@ -227,7 +301,9 @@ async function setup(): Promise<void> {
     },
   };
   process.stderr.write(`${JSON.stringify(snippet, null, 2)}\n\n`);
-  process.stderr.write("  (API key shown masked — replace with your actual key in the config above)\n\n");
+  process.stderr.write(
+    "  (API key shown masked — replace with your actual key in the config above)\n\n",
+  );
 
   rl.close();
   process.exit(0);
@@ -265,7 +341,10 @@ async function main(): Promise<void> {
   setCompactResponses(config.compactResponses);
 
   if (!config.apiKey) {
-    log("error", "OBSIDIAN_API_KEY is required. Set it as an environment variable or in config file.");
+    log(
+      "error",
+      "OBSIDIAN_API_KEY is required. Set it as an environment variable or in config file.",
+    );
     process.exit(1);
   }
 
@@ -285,8 +364,19 @@ async function main(): Promise<void> {
     "obsidian://skill",
     { description: "LLM usage guide for Obsidian MCP tools" },
     async () => {
-      const skillContent = buildSkillContent(config.toolMode, getCompactResponses());
-      return { contents: [{ uri: "obsidian://skill", text: skillContent, mimeType: "text/markdown" }] };
+      const skillContent = buildSkillContent(
+        config.toolMode,
+        getCompactResponses(),
+      );
+      return {
+        contents: [
+          {
+            uri: "obsidian://skill",
+            text: skillContent,
+            mimeType: "text/markdown",
+          },
+        ],
+      };
     },
   );
 
@@ -294,7 +384,10 @@ async function main(): Promise<void> {
   if (config.configFilePath) {
     log("info", `Config: ${config.configFilePath} + env overrides`);
   }
-  log("info", `Tools: ${config.toolMode} mode | preset: ${config.toolPreset} | ${String(toolCount)} registered`);
+  log(
+    "info",
+    `Tools: ${config.toolMode} mode | preset: ${config.toolPreset} | ${String(toolCount)} registered`,
+  );
 
   // Startup health check — runs in background so transport connects immediately
   void (async () => {
@@ -315,7 +408,10 @@ async function main(): Promise<void> {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      log("warn", `Startup check failed: ${message}. Tools may fail until Obsidian is running.`);
+      log(
+        "warn",
+        `Startup check failed: ${message}. Tools may fail until Obsidian is running.`,
+      );
       // Start auto-refresh even on failure — refresh() will call initialize()
       // on the next tick, providing automatic recovery when Obsidian comes back
       if (config.enableCache) {

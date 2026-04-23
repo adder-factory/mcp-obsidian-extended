@@ -4,7 +4,10 @@ import { log } from "./config.js";
 
 /** Sentinel error for generation-mismatch discards — retried immediately without backoff. */
 class CacheBuildDiscardedError extends Error {
-  constructor(message: string) { super(message); this.name = "CacheBuildDiscardedError"; }
+  constructor(message: string) {
+    super(message);
+    this.name = "CacheBuildDiscardedError";
+  }
 }
 
 // --- Types ---
@@ -22,7 +25,11 @@ export interface CachedNote {
   readonly content: string;
   readonly frontmatter: Record<string, unknown>;
   readonly tags: readonly string[];
-  readonly stat: { readonly ctime: number; readonly mtime: number; readonly size: number };
+  readonly stat: {
+    readonly ctime: number;
+    readonly mtime: number;
+    readonly size: number;
+  };
   readonly links: readonly ParsedLink[];
   readonly cachedAt: number;
 }
@@ -38,7 +45,9 @@ export interface CachedNote {
  * @param currentPath - The vault path of the note containing the links.
  */
 export function parseLinks(content: string, currentPath: string): ParsedLink[] {
-  const currentDir = currentPath.includes("/") ? currentPath.slice(0, currentPath.lastIndexOf("/")) : "";
+  const currentDir = currentPath.includes("/")
+    ? currentPath.slice(0, currentPath.lastIndexOf("/"))
+    : "";
   return [
     ...parseWikilinks(content),
     ...parseMarkdownLinks(content, currentDir),
@@ -115,13 +124,23 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
     if (bracketOpen === -1) break;
     const bracketClose = content.indexOf("]", bracketOpen + 1);
     if (bracketClose === -1) break;
-    if (content[bracketClose + 1] !== "(") { pos = bracketClose + 1; continue; }
+    if (content[bracketClose + 1] !== "(") {
+      pos = bracketClose + 1;
+      continue;
+    }
     const parenClose = findMatchingParen(content, bracketClose + 1);
-    if (parenClose === -1) { pos = bracketClose + 2; continue; }
+    if (parenClose === -1) {
+      pos = bracketClose + 2;
+      continue;
+    }
     const rawUrl = content.slice(bracketClose + 2, parenClose);
     // Decode URL-encoded paths (e.g. %20 → space) before extraction
     let url: string;
-    try { url = decodeURIComponent(rawUrl); } catch { url = rawUrl; }
+    try {
+      url = decodeURIComponent(rawUrl);
+    } catch {
+      url = rawUrl;
+    }
     const urlPath = extractMdLinkPath(url);
     if (urlPath !== undefined) {
       const target = resolveRelativePath(urlPath, currentDir);
@@ -156,7 +175,9 @@ function extractMdLinkPath(url: string): string | undefined {
   if (titleMatch?.[1]) {
     path = titleMatch[1];
   }
-  return path.toLowerCase().endsWith(".md") && path.length > 3 ? path : undefined;
+  return path.toLowerCase().endsWith(".md") && path.length > 3
+    ? path
+    : undefined;
 }
 
 /** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */
@@ -243,7 +264,11 @@ export class VaultCache implements VaultCacheInterface {
     // Join any in-flight build. Loop handles the case where a build finishes
     // but cache was immediately invalidated, and another caller starts a new build.
     while (this.buildPromise) {
-      try { await this.buildPromise; } catch { /* primary caller handles errors */ }
+      try {
+        await this.buildPromise;
+      } catch {
+        /* primary caller handles errors */
+      }
       if (this.isInitialized) return;
     }
     if (this.isInitialized) return;
@@ -280,10 +305,16 @@ export class VaultCache implements VaultCacheInterface {
       } catch (err: unknown) {
         const result = this.handleBuildAttemptError(err, attempt);
         lastError = err;
-        if (!result.isDiscard) { hadNonDiscardError = true; }
-        if (firstRealError === undefined && !result.isDiscard) { firstRealError = err; }
+        if (!result.isDiscard) {
+          hadNonDiscardError = true;
+        }
+        if (firstRealError === undefined && !result.isDiscard) {
+          firstRealError = err;
+        }
         if (result.backoffMs > 0) {
-          await new Promise<void>((resolve) => { setTimeout(resolve, result.backoffMs); });
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, result.backoffMs);
+          });
         }
       }
     }
@@ -291,52 +322,81 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Classifies a build attempt error and logs it. Rethrows non-transient errors. */
-  private handleBuildAttemptError(err: unknown, attempt: number): { isDiscard: boolean; backoffMs: number } {
+  private handleBuildAttemptError(
+    err: unknown,
+    attempt: number,
+  ): { isDiscard: boolean; backoffMs: number } {
     if (err instanceof ObsidianAuthError) {
-      log("warn", `Cache initialization failed (non-transient): ${err.message}`);
+      log(
+        "warn",
+        `Cache initialization failed (non-transient): ${err.message}`,
+      );
       throw err;
     }
     // ObsidianApiError (including 4xx) is retried — max 3 attempts limits exposure
     const isDiscard = err instanceof CacheBuildDiscardedError;
     const msg = err instanceof Error ? err.message : String(err);
-    log(isDiscard ? "debug" : "warn", `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`);
+    log(
+      isDiscard ? "debug" : "warn",
+      `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`,
+    );
     // No backoff on final attempt; shorter for discards, longer for network errors
-    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1) return { isDiscard, backoffMs: 0 };
-    const backoffMs = isDiscard ? VaultCache.DISCARD_BACKOFF_MS : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
+    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1)
+      return { isDiscard, backoffMs: 0 };
+    const backoffMs = isDiscard
+      ? VaultCache.DISCARD_BACKOFF_MS
+      : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
     return { isDiscard, backoffMs };
   }
 
   /** Throws the appropriate error after exhausting all retry attempts. */
-  private throwExhaustedError(hadNonDiscardError: boolean, lastError: unknown): never {
+  private throwExhaustedError(
+    hadNonDiscardError: boolean,
+    lastError: unknown,
+  ): never {
     const msg = hadNonDiscardError
       ? `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`
       : `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`;
     // Don't expose internal CacheBuildDiscardedError as cause — it's a sentinel
     let cause: Error | undefined;
-    if (lastError instanceof Error && !(lastError instanceof CacheBuildDiscardedError)) {
+    if (
+      lastError instanceof Error &&
+      !(lastError instanceof CacheBuildDiscardedError)
+    ) {
       cause = lastError;
     }
     throw new ObsidianConnectionError(msg, { cause });
   }
 
   /** Executes a single build attempt. Throws on generation mismatch or failure. */
-  private async executeBuildAttempt(attempt: number, maxAttempts: number): Promise<void> {
+  private async executeBuildAttempt(
+    attempt: number,
+    maxAttempts: number,
+  ): Promise<void> {
     const startTime = Date.now();
     const buildGeneration = this.generation;
-    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes(buildGeneration);
+    const { notes: freshNotes, totalFiles } =
+      await this.fetchAllNotes(buildGeneration);
 
     if (this.generation !== buildGeneration) {
-      throw new CacheBuildDiscardedError(`Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`);
+      throw new CacheBuildDiscardedError(
+        `Cache build discarded (attempt ${String(attempt + 1)}/${String(maxAttempts)}): vault invalidated during build`,
+      );
     }
 
     const elapsed = Date.now() - startTime;
     // Check before swapping to preserve any existing cache state during retries
     if (freshNotes.size === 0 && totalFiles > 0) {
-      throw new ObsidianConnectionError(`Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`);
+      throw new ObsidianConnectionError(
+        `Cache: all ${String(totalFiles)} file fetches failed (${String(elapsed)}ms). Try refresh_cache later.`,
+      );
     }
     this.applySnapshot(freshNotes);
     this.isInitialized = true;
-    log("info", `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`);
+    log(
+      "info",
+      `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`,
+    );
   }
 
   /** Normalizes a path and returns `undefined` if it contains unsafe segments (`..` or absolute). */
@@ -344,7 +404,9 @@ export class VaultCache implements VaultCacheInterface {
     let normalized = raw.replaceAll("\\", "/");
     // Check for absolute paths BEFORE stripping slashes — "/" would become "" otherwise
     if (normalized.startsWith("/")) return undefined;
-    while (normalized.endsWith("/")) { normalized = normalized.slice(0, -1); }
+    while (normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
     // Collapse single-dot and empty segments, then check for .. traversal
     const segments = normalized.split("/").filter((s) => s !== "." && s !== "");
     if (segments.includes("..")) return undefined;
@@ -376,9 +438,17 @@ export class VaultCache implements VaultCacheInterface {
    * @param visited - Set of already-visited normalized paths used to break symlink cycles.
    * @param depth - Current recursion depth (0 = vault root).
    */
-  private async traverseDirectory(dirPath: string, allFiles: string[], visited: Set<string>, depth = 0): Promise<void> {
+  private async traverseDirectory(
+    dirPath: string,
+    allFiles: string[],
+    visited: Set<string>,
+    depth = 0,
+  ): Promise<void> {
     if (depth > VaultCache.MAX_TRAVERSAL_DEPTH) {
-      log("warn", `Cache: skipping directory "${dirPath}" — max depth ${String(VaultCache.MAX_TRAVERSAL_DEPTH)} exceeded`);
+      log(
+        "warn",
+        `Cache: skipping directory "${dirPath}" — max depth ${String(VaultCache.MAX_TRAVERSAL_DEPTH)} exceeded`,
+      );
       return;
     }
     const normalized = VaultCache.normalizePath(dirPath);
@@ -418,7 +488,9 @@ export class VaultCache implements VaultCacheInterface {
    * Lists files in a directory, dispatching to vault root or subdirectory listing.
    * @param normalized - Normalized vault-relative directory path.
    */
-  private async listDirectory(normalized: string): Promise<{ files: string[] }> {
+  private async listDirectory(
+    normalized: string,
+  ): Promise<{ files: string[] }> {
     return normalized === ""
       ? this.client.listFilesInVault()
       : this.client.listFilesInDir(normalized);
@@ -446,19 +518,34 @@ export class VaultCache implements VaultCacheInterface {
    * @param visited - Visited-path set passed through to `traverseDirectory`.
    * @param depth - Current recursion depth, forwarded to `traverseDirectory`.
    */
-  private async traverseSubdirectory(dirEntry: string, allFiles: string[], visited: Set<string>, depth: number): Promise<void> {
+  private async traverseSubdirectory(
+    dirEntry: string,
+    allFiles: string[],
+    visited: Set<string>,
+    depth: number,
+  ): Promise<void> {
     try {
-      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited, depth);
+      await this.traverseDirectory(
+        dirEntry.slice(0, -1),
+        allFiles,
+        visited,
+        depth,
+      );
     } catch (err: unknown) {
       if (err instanceof ObsidianAuthError) throw err;
       if (err instanceof ObsidianConnectionError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      log("debug", `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`);
+      log(
+        "debug",
+        `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`,
+      );
     }
   }
 
   /** Fetches all markdown notes from the vault in batches. Aborts early if generation changes. */
-  private async fetchAllNotes(buildGeneration: number): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
+  private async fetchAllNotes(
+    buildGeneration: number,
+  ): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
     const mdFiles = [...new Set(await this.collectAllMarkdownFiles())];
     log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
@@ -472,7 +559,9 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
+            throw new Error(
+              `Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`,
+            );
           }
           const links = parseLinks(result.content, filePath);
           freshNotes.set(filePath, {
@@ -532,17 +621,26 @@ export class VaultCache implements VaultCacheInterface {
       const mdFiles = new Set(allMdFiles);
 
       const deleted = this.pruneDeletedNotes(mdFiles);
-      const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);
+      const updated = await this.fetchChangedNotes(
+        [...mdFiles],
+        refreshGeneration,
+      );
 
       if (this.generation !== refreshGeneration) {
-        log("debug", "Cache refresh discarded: vault was invalidated during refresh");
+        log(
+          "debug",
+          "Cache refresh discarded: vault was invalidated during refresh",
+        );
         return;
       }
 
       if (updated > 0 || deleted > 0) {
         this.rebuildIndex();
         this.recalcLinkCount();
-        log("debug", `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`);
+        log(
+          "debug",
+          `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`,
+        );
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -566,7 +664,10 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Fetches notes in batches and updates cache entries whose mtime has changed. */
-  private async fetchChangedNotes(filesToCheck: readonly string[], expectedGeneration: number): Promise<number> {
+  private async fetchChangedNotes(
+    filesToCheck: readonly string[],
+    expectedGeneration: number,
+  ): Promise<number> {
     let updated = 0;
     const batchSize = 20;
 
@@ -576,7 +677,9 @@ export class VaultCache implements VaultCacheInterface {
         batch.map(async (filePath) => {
           const result = await this.client.getFileContents(filePath, "json");
           if (typeof result === "string" || !("content" in result)) {
-            throw new Error(`Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`);
+            throw new Error(
+              `Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`,
+            );
           }
           const existing = this.notes.get(filePath);
           if (existing?.stat.mtime !== result.stat.mtime) {
@@ -600,7 +703,10 @@ export class VaultCache implements VaultCacheInterface {
 
       for (const r of results) {
         if (r.status === "rejected") {
-          log("debug", `Cache refresh: failed to fetch a file: ${String(r.reason)}`);
+          log(
+            "debug",
+            `Cache refresh: failed to fetch a file: ${String(r.reason)}`,
+          );
         }
       }
     }
@@ -693,9 +799,15 @@ export class VaultCache implements VaultCacheInterface {
         timeoutId = setTimeout(resolve, Math.max(0, deadline - Date.now()));
       });
       await Promise.race([
-        this.buildPromise.then(() => undefined, (err: unknown) => {
-          log("debug", `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`);
-        }),
+        this.buildPromise.then(
+          () => undefined,
+          (err: unknown) => {
+            log(
+              "debug",
+              `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
+        ),
         timeoutPromise,
       ]);
       clearTimeout(timeoutId);
@@ -717,7 +829,9 @@ export class VaultCache implements VaultCacheInterface {
       if (!this.isBuilding && !this.isRefreshing) return false;
       const remaining = deadline - Date.now();
       const wait = Math.min(pollInterval, Math.max(remaining, 0));
-      await new Promise<void>((resolve) => { setTimeout(resolve, wait); });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, wait);
+      });
     }
     return false;
   }
@@ -738,7 +852,8 @@ export class VaultCache implements VaultCacheInterface {
     if (this.isRefreshing) {
       this.invalidatedDuringRefresh.add(path);
     }
-    const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+    const shortName =
+      path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
     const bucket = this.shortNameIndex.get(shortName);
     if (bucket) {
       bucket.delete(path);
@@ -808,7 +923,9 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Returns the most connected notes sorted by total link count (inbound + outbound). */
-  getMostConnectedNotes(limit: number): Array<{ path: string; inbound: number; outbound: number }> {
+  getMostConnectedNotes(
+    limit: number,
+  ): Array<{ path: string; inbound: number; outbound: number }> {
     const inboundCounts = new Map<string, number>();
 
     for (const note of this.notes.values()) {
@@ -820,7 +937,8 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
 
-    const results: Array<{ path: string; inbound: number; outbound: number }> = [];
+    const results: Array<{ path: string; inbound: number; outbound: number }> =
+      [];
 
     for (const note of this.notes.values()) {
       // Count only outbound links that resolve to existing notes (consistent with inbound)
@@ -835,7 +953,7 @@ export class VaultCache implements VaultCacheInterface {
       });
     }
 
-    results.sort((a, b) => (b.inbound + b.outbound) - (a.inbound + a.outbound));
+    results.sort((a, b) => b.inbound + b.outbound - (a.inbound + a.outbound));
     return results.slice(0, limit);
   }
 
@@ -853,7 +971,10 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Returns the full vault link graph as nodes (file paths) and edges (source-target pairs). */
-  getVaultGraph(): { nodes: readonly string[]; edges: ReadonlyArray<{ source: string; target: string }> } {
+  getVaultGraph(): {
+    nodes: readonly string[];
+    edges: ReadonlyArray<{ source: string; target: string }>;
+  } {
     const nodes: string[] = [...this.notes.keys()];
     const edges: Array<{ source: string; target: string }> = [];
 
@@ -880,7 +1001,8 @@ export class VaultCache implements VaultCacheInterface {
     // Short-name index lookup. When multiple notes share a basename (e.g. a/note.md
     // and b/note.md), returns the first match. This mirrors Obsidian's own behavior
     // with ambiguous wikilinks — it picks one arbitrarily.
-    const shortNameCandidates = this.shortNameIndex.get(lower) ?? this.shortNameIndex.get(`${lower}.md`);
+    const shortNameCandidates =
+      this.shortNameIndex.get(lower) ?? this.shortNameIndex.get(`${lower}.md`);
     if (shortNameCandidates) {
       for (const candidate of shortNameCandidates) {
         const note = this.notes.get(candidate);
@@ -922,7 +1044,8 @@ export class VaultCache implements VaultCacheInterface {
   private rebuildIndex(): void {
     this.shortNameIndex.clear();
     for (const path of this.notes.keys()) {
-      const shortName = path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+      const shortName =
+        path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
       let bucket = this.shortNameIndex.get(shortName);
       if (!bucket) {
         bucket = new Set<string>();

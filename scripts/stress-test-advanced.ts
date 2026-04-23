@@ -13,7 +13,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { loadConfig } from "../src/config.js";
 import { ObsidianClient } from "../src/obsidian.js";
 import { VaultCache } from "../src/cache.js";
-import { ObsidianApiError, ObsidianConnectionError, ObsidianAuthError } from "../src/errors.js";
+import {
+  ObsidianApiError,
+  ObsidianConnectionError,
+  ObsidianAuthError,
+} from "../src/errors.js";
 
 // --- Constants ---
 
@@ -37,14 +41,19 @@ function loadDotenv(): void {
       let key = trimmed.slice(0, eqIndex).trim();
       if (key.startsWith("export ")) key = key.slice(7).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
       if (key.length > 0 && process.env[key] === undefined) {
         process.env[key] = value;
       }
     }
-  } catch { /* no .env is fine */ }
+  } catch {
+    /* no .env is fine */
+  }
 }
 
 function pick<T>(arr: readonly T[]): T {
@@ -73,7 +82,12 @@ class Stats {
   private readonly startTime = Date.now();
   private readonly toolCoverage = new Set<string>();
 
-  record(op: string, latencyMs: number, isError: boolean, errorMsg?: string): void {
+  record(
+    op: string,
+    latencyMs: number,
+    isError: boolean,
+    errorMsg?: string,
+  ): void {
     let bucket = this.buckets.get(op);
     if (!bucket) {
       bucket = { count: 0, errors: 0, latencies: [], errorMessages: new Map() };
@@ -85,7 +99,10 @@ class Stats {
       bucket.errors++;
       if (errorMsg) {
         const short = errorMsg.slice(0, 80);
-        bucket.errorMessages.set(short, (bucket.errorMessages.get(short) ?? 0) + 1);
+        bucket.errorMessages.set(
+          short,
+          (bucket.errorMessages.get(short) ?? 0) + 1,
+        );
       }
     }
     this.toolCoverage.add(op);
@@ -130,16 +147,22 @@ class Stats {
 
   printReport(): void {
     write("");
-    write("  Operation                       Count    Errors   p50      p95      p99      max");
+    write(
+      "  Operation                       Count    Errors   p50      p95      p99      max",
+    );
     write("  " + "-".repeat(88));
-    const sortedOps = [...this.buckets.entries()].sort((a, b) => b[1].count - a[1].count);
+    const sortedOps = [...this.buckets.entries()].sort(
+      (a, b) => b[1].count - a[1].count,
+    );
     for (const [op, bucket] of sortedOps) {
       const sorted = bucket.latencies.slice().sort((a, b) => a - b);
       const p50 = this.percentile(sorted, 50).toFixed(0);
       const p95 = this.percentile(sorted, 95).toFixed(0);
       const p99 = this.percentile(sorted, 99).toFixed(0);
       const max = (sorted[sorted.length - 1] ?? 0).toFixed(0);
-      write(`  ${op.padEnd(30)} ${String(bucket.count).padStart(6)}    ${String(bucket.errors).padStart(6)}   ${p50.padStart(4)}ms   ${p95.padStart(4)}ms   ${p99.padStart(4)}ms   ${max.padStart(4)}ms`);
+      write(
+        `  ${op.padEnd(30)} ${String(bucket.count).padStart(6)}    ${String(bucket.errors).padStart(6)}   ${p50.padStart(4)}ms   ${p95.padStart(4)}ms   ${p99.padStart(4)}ms   ${max.padStart(4)}ms`,
+      );
     }
 
     // Error breakdown
@@ -194,7 +217,9 @@ interface ScenarioResult {
 // SCENARIO 1: Heading Mismatch Recovery Rate (3 min)
 // =====================================================================
 
-async function scenario1HeadingMismatch(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario1HeadingMismatch(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 1: Heading Mismatch Recovery Rate";
   const stats = new Stats();
   const durationMs = 3 * 60 * 1000;
@@ -202,7 +227,9 @@ async function scenario1HeadingMismatch(client: ObsidianClient): Promise<Scenari
   const headings = ["H1", "H2", "H3", "H4", "H5"];
   const startTime = Date.now();
 
-  write(`  Setting up ${String(fileCount)} files with ${String(headings.length)} headings each...`);
+  write(
+    `  Setting up ${String(fileCount)} files with ${String(headings.length)} headings each...`,
+  );
 
   // Create files with structured headings
   const files: string[] = [];
@@ -213,7 +240,9 @@ async function scenario1HeadingMismatch(client: ObsidianClient): Promise<Scenari
     await client.putContent(f, content);
   }
 
-  write(`  Running concurrent writer + patcher for ${String(durationMs / 1000)}s...`);
+  write(
+    `  Running concurrent writer + patcher for ${String(durationMs / 1000)}s...`,
+  );
 
   const deadline = Date.now() + durationMs;
   let writerOps = 0;
@@ -235,7 +264,9 @@ async function scenario1HeadingMismatch(client: ObsidianClient): Promise<Scenari
         // Remove H4
         newContent = `# ${headings[0]}\n\nH1 content\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[4]}\n\nH5 content\n`;
       }
-      await timedOp(stats, "heading:write", () => client.putContent(file, newContent));
+      await timedOp(stats, "heading:write", () =>
+        client.putContent(file, newContent),
+      );
       writerOps++;
       // Small delay to create interleaving
       await sleep(50);
@@ -267,7 +298,8 @@ async function scenario1HeadingMismatch(client: ObsidianClient): Promise<Scenari
   const patchErrors = stats.totalErrors;
   const total = patchSuccess + patchErrors;
 
-  const summary = `Writer ops: ${String(writerOps)}, Patcher ops: ${String(patcherOps)}, ` +
+  const summary =
+    `Writer ops: ${String(writerOps)}, Patcher ops: ${String(patcherOps)}, ` +
     `Total: ${String(total)}, Passed: ${String(patchSuccess)}, Failed: ${String(patchErrors)}, ` +
     `Duration: ${fmt(duration)}`;
 
@@ -281,7 +313,9 @@ async function scenario1HeadingMismatch(client: ObsidianClient): Promise<Scenari
 // SCENARIO 2: Cache Stampede (1 min)
 // =====================================================================
 
-async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario2CacheStampede(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 2: Cache Stampede";
   const stats = new Stats();
   const startTime = Date.now();
@@ -291,7 +325,10 @@ async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioR
   for (let i = 0; i < 5; i++) {
     const f = `${STRESS_PREFIX}stampede_${String(i)}.md`;
     seedFiles.push(f);
-    await client.putContent(f, `# Stampede ${String(i)}\n\n[[${STRESS_PREFIX}stampede_${String((i + 1) % 5)}.md]]\n`);
+    await client.putContent(
+      f,
+      `# Stampede ${String(i)}\n\n[[${STRESS_PREFIX}stampede_${String((i + 1) % 5)}.md]]\n`,
+    );
   }
 
   write("  Phase 1: 20 concurrent waiters + 1 initializer...");
@@ -303,17 +340,21 @@ async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioR
   // Fire 20 concurrent waiters + 1 initializer
   const waiterResults1 = await Promise.allSettled([
     ...Array.from({ length: 20 }, (_, i) =>
-      timedOp(stats, "stampede:wait_p1", () => cache1.waitForInitialization(10_000))
+      timedOp(stats, "stampede:wait_p1", () =>
+        cache1.waitForInitialization(10_000),
+      ),
     ),
     timedOp(stats, "stampede:init_p1", () => cache1.initialize()),
   ]);
 
-  const waitersResolved1 = waiterResults1
-    .filter((r) => r.status === "fulfilled")
-    .length;
+  const waitersResolved1 = waiterResults1.filter(
+    (r) => r.status === "fulfilled",
+  ).length;
   const noteCount1 = cache1.noteCount;
 
-  write(`    ${String(waitersResolved1)}/21 resolved, ${String(noteCount1)} notes cached`);
+  write(
+    `    ${String(waitersResolved1)}/21 resolved, ${String(noteCount1)} notes cached`,
+  );
 
   write("  Phase 2: invalidateAll + 20 more waiters + re-initialize...");
 
@@ -322,17 +363,21 @@ async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioR
 
   const waiterResults2 = await Promise.allSettled([
     ...Array.from({ length: 20 }, () =>
-      timedOp(stats, "stampede:wait_p2", () => cache1.waitForInitialization(10_000))
+      timedOp(stats, "stampede:wait_p2", () =>
+        cache1.waitForInitialization(10_000),
+      ),
     ),
     timedOp(stats, "stampede:init_p2", () => cache1.initialize()),
   ]);
 
-  const waitersResolved2 = waiterResults2
-    .filter((r) => r.status === "fulfilled")
-    .length;
+  const waitersResolved2 = waiterResults2.filter(
+    (r) => r.status === "fulfilled",
+  ).length;
   const noteCount2 = cache1.noteCount;
 
-  write(`    ${String(waitersResolved2)}/21 resolved, ${String(noteCount2)} notes cached`);
+  write(
+    `    ${String(waitersResolved2)}/21 resolved, ${String(noteCount2)} notes cached`,
+  );
 
   cache1.stopAutoRefresh();
 
@@ -341,7 +386,8 @@ async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioR
   const cacheConsistent = noteCount1 >= 0 && noteCount2 >= 0;
   const passed = noCrash && cacheConsistent;
 
-  const summary = `Phase 1: ${String(waitersResolved1)}/21 resolved (${String(noteCount1)} notes), ` +
+  const summary =
+    `Phase 1: ${String(waitersResolved1)}/21 resolved (${String(noteCount1)} notes), ` +
     `Phase 2: ${String(waitersResolved2)}/21 resolved (${String(noteCount2)} notes), ` +
     `No crashes: ${String(noCrash)}, Duration: ${fmt(duration)}`;
 
@@ -352,7 +398,9 @@ async function scenario2CacheStampede(client: ObsidianClient): Promise<ScenarioR
 // SCENARIO 3: Large Vault Scale (3 min)
 // =====================================================================
 
-async function scenario3LargeVaultScale(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario3LargeVaultScale(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 3: Large Vault Scale";
   const stats = new Stats();
   const startTime = Date.now();
@@ -382,7 +430,9 @@ async function scenario3LargeVaultScale(client: ObsidianClient): Promise<Scenari
           }
         }
         const content = `# Note ${String(globalIdx)}\n\nSome content about topic ${String(globalIdx)}.\n\n## Links\n\n${links.join("\n")}\n`;
-        return timedOp(stats, "scale:create", () => client.putContent(f, content));
+        return timedOp(stats, "scale:create", () =>
+          client.putContent(f, content),
+        );
       }),
     );
   }
@@ -399,33 +449,45 @@ async function scenario3LargeVaultScale(client: ObsidianClient): Promise<Scenari
   await timedOp(stats, "scale:cache_build", () => cache.initialize());
   const buildTime = Date.now() - buildStart;
 
-  write(`  Cache built in ${fmt(buildTime)}: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
+  write(
+    `  Cache built in ${fmt(buildTime)}: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`,
+  );
 
   // Run 50 concurrent graph queries
   write("  Running 50 concurrent graph queries...");
   const queryResults = await Promise.allSettled([
     ...Array.from({ length: 15 }, () =>
-      timedOp(stats, "scale:getBacklinks", () => Promise.resolve(cache.getBacklinks(pick(files))))
+      timedOp(stats, "scale:getBacklinks", () =>
+        Promise.resolve(cache.getBacklinks(pick(files))),
+      ),
     ),
     ...Array.from({ length: 15 }, () =>
-      timedOp(stats, "scale:getForwardLinks", () => Promise.resolve(cache.getForwardLinks(pick(files))))
+      timedOp(stats, "scale:getForwardLinks", () =>
+        Promise.resolve(cache.getForwardLinks(pick(files))),
+      ),
     ),
     ...Array.from({ length: 10 }, () =>
-      timedOp(stats, "scale:getOrphanNotes", () => Promise.resolve(cache.getOrphanNotes()))
+      timedOp(stats, "scale:getOrphanNotes", () =>
+        Promise.resolve(cache.getOrphanNotes()),
+      ),
     ),
     ...Array.from({ length: 10 }, () =>
-      timedOp(stats, "scale:getMostConnected", () => Promise.resolve(cache.getMostConnectedNotes(10)))
+      timedOp(stats, "scale:getMostConnected", () =>
+        Promise.resolve(cache.getMostConnectedNotes(10)),
+      ),
     ),
   ]);
-  const querySuccess = queryResults.filter((r) => r.status === "fulfilled").length;
+  const querySuccess = queryResults.filter(
+    (r) => r.status === "fulfilled",
+  ).length;
 
   // invalidateAll mid-query burst
   write("  Testing invalidateAll during query burst...");
   const invalidateResults = await Promise.allSettled([
     ...Array.from({ length: 20 }, () =>
       timedOp(stats, "scale:query_during_invalidate", () =>
-        Promise.resolve(cache.getBacklinks(pick(files)))
-      )
+        Promise.resolve(cache.getBacklinks(pick(files))),
+      ),
     ),
     (async () => {
       await sleep(10);
@@ -436,19 +498,22 @@ async function scenario3LargeVaultScale(client: ObsidianClient): Promise<Scenari
       (async () => {
         await sleep(20);
         return timedOp(stats, "scale:query_after_invalidate", () =>
-          Promise.resolve(cache.getBacklinks(pick(files)))
+          Promise.resolve(cache.getBacklinks(pick(files))),
         );
-      })()
+      })(),
     ),
   ]);
 
-  const invalidateErrors = invalidateResults.filter((r) => r.status === "rejected").length;
+  const invalidateErrors = invalidateResults.filter(
+    (r) => r.status === "rejected",
+  ).length;
   cache.stopAutoRefresh();
 
   const duration = Date.now() - startTime;
   const passed = querySuccess === 50 && invalidateErrors === 0;
 
-  const summary = `Files: ${String(fileCount)}, Cache build: ${fmt(buildTime)}, ` +
+  const summary =
+    `Files: ${String(fileCount)}, Cache build: ${fmt(buildTime)}, ` +
     `Queries: ${String(querySuccess)}/50, Invalidation errors: ${String(invalidateErrors)}, ` +
     `Duration: ${fmt(duration)}`;
 
@@ -459,17 +524,22 @@ async function scenario3LargeVaultScale(client: ObsidianClient): Promise<Scenari
 // SCENARIO 4: Write Contention Torture (3 min)
 // =====================================================================
 
-async function scenario4WriteContention(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario4WriteContention(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 4: Write Contention Torture";
   const stats = new Stats();
   const durationMs = 3 * 60 * 1000;
   const startTime = Date.now();
   const file = `${STRESS_PREFIX}contention.md`;
 
-  const initialContent = "# Main\n\n## Section A\n\nA content\n\n## Section B\n\nB content\n";
+  const initialContent =
+    "# Main\n\n## Section A\n\nA content\n\n## Section B\n\nB content\n";
   await client.putContent(file, initialContent);
 
-  write(`  Running 5 concurrent workers on single file for ${String(durationMs / 1000)}s...`);
+  write(
+    `  Running 5 concurrent workers on single file for ${String(durationMs / 1000)}s...`,
+  );
 
   const deadline = Date.now() + durationMs;
   const markersSent = new Set<string>();
@@ -482,7 +552,7 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
       const marker = `MARKER_${String(id)}_${uid()}`;
       markersSent.add(marker);
       await timedOp(stats, `contention:append_w${String(id)}`, () =>
-        client.appendContent(file, `\n${marker}\n`)
+        client.appendContent(file, `\n${marker}\n`),
       );
       await sleep(100);
     }
@@ -496,7 +566,7 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
           operation: "append",
           targetType: "heading",
           target: "Main",
-        })
+        }),
       );
       await sleep(150);
     }
@@ -509,7 +579,10 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
         const content = await client.getFileContents(file, "markdown");
         if (typeof content === "string") {
           // Replace "A content" with "A content_mod_{uid}"
-          const modified = content.replace(/A content[^\n]*/, `A content_mod_${uid()}`);
+          const modified = content.replace(
+            /A content[^\n]*/,
+            `A content_mod_${uid()}`,
+          );
           await client.putContent(file, modified);
         }
       });
@@ -521,7 +594,7 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
   const readWorker = async (): Promise<void> => {
     while (Date.now() < deadline) {
       const result = await timedOp(stats, "contention:read", () =>
-        client.getFileContents(file, "markdown")
+        client.getFileContents(file, "markdown"),
       );
       if (result.ok && typeof result.value === "string") {
         readOps++;
@@ -559,7 +632,10 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
   }
 
   const duration = Date.now() - startTime;
-  const markerRate = markersSent.size > 0 ? (markersFound / markersSent.size * 100).toFixed(1) : "0";
+  const markerRate =
+    markersSent.size > 0
+      ? ((markersFound / markersSent.size) * 100).toFixed(1)
+      : "0";
 
   // Due to search_replace worker overwriting the file, some markers WILL be lost.
   // That's expected behavior with concurrent overwrites. The test passes if:
@@ -569,7 +645,8 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
   const errorRate = stats.totalOps > 0 ? stats.totalErrors / stats.totalOps : 0;
   const passed = !corruptionDetected && stats.totalOps > 50 && errorRate < 0.5;
 
-  const summary = `Total ops: ${String(stats.totalOps)}, Reads: ${String(readOps)}, ` +
+  const summary =
+    `Total ops: ${String(stats.totalOps)}, Reads: ${String(readOps)}, ` +
     `Markers sent: ${String(markersSent.size)}, Markers found: ${String(markersFound)} (${markerRate}%), ` +
     `Corruption: ${String(corruptionDetected)}, Error rate: ${(errorRate * 100).toFixed(1)}%, ` +
     `Duration: ${fmt(duration)}`;
@@ -581,7 +658,9 @@ async function scenario4WriteContention(client: ObsidianClient): Promise<Scenari
 // SCENARIO 5: Periodic Notes Date Sweep (2 min)
 // =====================================================================
 
-async function scenario5PeriodicDateSweep(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario5PeriodicDateSweep(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 5: Periodic Notes Date Sweep";
   const stats = new Stats();
   const startTime = Date.now();
@@ -590,11 +669,15 @@ async function scenario5PeriodicDateSweep(client: ObsidianClient): Promise<Scena
   const year = 2019;
   const month = 1;
   // Include edge case dates: 1, 9, 10, 28, 29, 30, 31, plus regular ones
-  const days = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-                16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+  const days = [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30,
+  ];
   const period = "daily";
 
-  write(`  Sweeping ${String(days.length)} dates in January ${String(year)}...`);
+  write(
+    `  Sweeping ${String(days.length)} dates in January ${String(year)}...`,
+  );
 
   let successfulCycles = 0;
   const failuresPerOp = new Map<string, number>();
@@ -609,43 +692,76 @@ async function scenario5PeriodicDateSweep(client: ObsidianClient): Promise<Scena
 
     // PUT
     const putResult = await timedOp(stats, "periodic:put", () =>
-      client.putPeriodicNoteForDate(period, year, month, day, `# ${dateLabel}\n\nCreated by stress test.\n`)
+      client.putPeriodicNoteForDate(
+        period,
+        year,
+        month,
+        day,
+        `# ${dateLabel}\n\nCreated by stress test.\n`,
+      ),
     );
-    if (!putResult.ok) { recordFailure("put"); cycleOk = false; }
+    if (!putResult.ok) {
+      recordFailure("put");
+      cycleOk = false;
+    }
 
     // GET
     if (cycleOk) {
       const getResult = await timedOp(stats, "periodic:get", () =>
-        client.getPeriodicNoteForDate(period, year, month, day, "markdown")
+        client.getPeriodicNoteForDate(period, year, month, day, "markdown"),
       );
-      if (!getResult.ok) { recordFailure("get"); cycleOk = false; }
+      if (!getResult.ok) {
+        recordFailure("get");
+        cycleOk = false;
+      }
     }
 
     // APPEND
     if (cycleOk) {
       const appendResult = await timedOp(stats, "periodic:append", () =>
-        client.appendPeriodicNoteForDate(period, year, month, day, `\nAppended at ${uid()}\n`)
+        client.appendPeriodicNoteForDate(
+          period,
+          year,
+          month,
+          day,
+          `\nAppended at ${uid()}\n`,
+        ),
       );
-      if (!appendResult.ok) { recordFailure("append"); cycleOk = false; }
+      if (!appendResult.ok) {
+        recordFailure("append");
+        cycleOk = false;
+      }
     }
 
     // PATCH under heading
     if (cycleOk) {
       const patchResult = await timedOp(stats, "periodic:patch", () =>
-        client.patchPeriodicNoteForDate(period, year, month, day, `\nPatched at ${uid()}\n`, {
-          operation: "append",
-          targetType: "heading",
-          target: dateLabel,
-        })
+        client.patchPeriodicNoteForDate(
+          period,
+          year,
+          month,
+          day,
+          `\nPatched at ${uid()}\n`,
+          {
+            operation: "append",
+            targetType: "heading",
+            target: dateLabel,
+          },
+        ),
       );
-      if (!patchResult.ok) { recordFailure("patch"); cycleOk = false; }
+      if (!patchResult.ok) {
+        recordFailure("patch");
+        cycleOk = false;
+      }
     }
 
     // DELETE
     const deleteResult = await timedOp(stats, "periodic:delete", () =>
-      client.deletePeriodicNoteForDate(period, year, month, day)
+      client.deletePeriodicNoteForDate(period, year, month, day),
     );
-    if (!deleteResult.ok) { recordFailure("delete"); }
+    if (!deleteResult.ok) {
+      recordFailure("delete");
+    }
 
     if (cycleOk) successfulCycles++;
   }
@@ -666,7 +782,8 @@ async function scenario5PeriodicDateSweep(client: ObsidianClient): Promise<Scena
   // a pass — it means the plugin can't create notes for arbitrary past dates,
   // which is expected behavior. The test validates no unhandled crashes occur.
   const passed = true; // No crashes = pass; failure details are in the report
-  const summary = `Dates: ${String(days.length)}, Successful cycles: ${String(successfulCycles)}/${String(days.length)}, ` +
+  const summary =
+    `Dates: ${String(days.length)}, Successful cycles: ${String(successfulCycles)}/${String(days.length)}, ` +
     `Total ops: ${String(stats.totalOps)}, Errors: ${String(stats.totalErrors)}, ` +
     `Duration: ${fmt(duration)}.${failureDetails}`;
 
@@ -677,7 +794,9 @@ async function scenario5PeriodicDateSweep(client: ObsidianClient): Promise<Scena
 // SCENARIO 6: Error Cascade Recovery (1 min)
 // =====================================================================
 
-async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioResult> {
+async function scenario6ErrorCascade(
+  client: ObsidianClient,
+): Promise<ScenarioResult> {
   const name = "Scenario 6: Error Cascade Recovery";
   const stats = new Stats();
   const startTime = Date.now();
@@ -685,7 +804,10 @@ async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioRe
 
   // Create a valid file for mixed-path tests
   const validFile = `${STRESS_PREFIX}error_valid.md`;
-  await client.putContent(validFile, "# Valid File\n\nContent for error cascade testing.\n");
+  await client.putContent(
+    validFile,
+    "# Valid File\n\nContent for error cascade testing.\n",
+  );
 
   // a) 20 concurrent GET requests to non-existent files
   write("  a) 20 concurrent GETs to non-existent files...");
@@ -693,14 +815,17 @@ async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioRe
     Array.from({ length: 20 }, (_, i) =>
       timedOp(stats, "error:get_404", async () => {
         try {
-          await client.getFileContents(`${STRESS_PREFIX}nonexistent_${String(i)}_${uid()}.md`, "markdown");
+          await client.getFileContents(
+            `${STRESS_PREFIX}nonexistent_${String(i)}_${uid()}.md`,
+            "markdown",
+          );
         } catch (err: unknown) {
           if (err instanceof ObsidianApiError && err.statusCode === 404) {
             return; // Expected 404 — graceful
           }
           throw err; // Unexpected error type
         }
-      })
+      }),
     ),
   );
   const getUnhandled = getResults.filter((r) => r.status === "rejected").length;
@@ -712,11 +837,15 @@ async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioRe
   const deleteResults = await Promise.allSettled(
     Array.from({ length: 20 }, (_, i) =>
       timedOp(stats, "error:delete_idempotent", () =>
-        client.deleteFile(`${STRESS_PREFIX}nonexistent_del_${String(i)}_${uid()}.md`)
-      )
+        client.deleteFile(
+          `${STRESS_PREFIX}nonexistent_del_${String(i)}_${uid()}.md`,
+        ),
+      ),
     ),
   );
-  const deleteUnhandled = deleteResults.filter((r) => r.status === "rejected").length;
+  const deleteUnhandled = deleteResults.filter(
+    (r) => r.status === "rejected",
+  ).length;
   unhandledExceptions += deleteUnhandled;
   write(`    ${String(20 - deleteUnhandled)}/20 handled gracefully`);
 
@@ -745,10 +874,12 @@ async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioRe
           }
           throw err;
         }
-      })
+      }),
     ),
   );
-  const patchUnhandled = patchResults.filter((r) => r.status === "rejected").length;
+  const patchUnhandled = patchResults.filter(
+    (r) => r.status === "rejected",
+  ).length;
   unhandledExceptions += patchUnhandled;
   write(`    ${String(10 - patchUnhandled)}/10 handled gracefully`);
 
@@ -789,23 +920,32 @@ async function scenario6ErrorCascade(client: ObsidianClient): Promise<ScenarioRe
   ];
   const batchResults = await Promise.allSettled(
     batchPaths.map((p) =>
-      timedOp(stats, "error:batch_mixed", () => client.getFileContents(p, "markdown"))
+      timedOp(stats, "error:batch_mixed", () =>
+        client.getFileContents(p, "markdown"),
+      ),
     ),
   );
-  const batchUnhandled = batchResults.filter((r) => r.status === "rejected").length;
+  const batchUnhandled = batchResults.filter(
+    (r) => r.status === "rejected",
+  ).length;
   unhandledExceptions += batchUnhandled;
   const batchOk = batchResults.filter((r) => r.status === "fulfilled").length;
-  write(`    ${String(batchOk)}/${String(batchPaths.length)} settled without unhandled exceptions`);
+  write(
+    `    ${String(batchOk)}/${String(batchPaths.length)} settled without unhandled exceptions`,
+  );
 
   // Verify system is still healthy after error cascade
   write("  Verifying system health post-cascade...");
-  const healthResult = await timedOp(stats, "error:health_check", () => client.getServerStatus());
+  const healthResult = await timedOp(stats, "error:health_check", () =>
+    client.getServerStatus(),
+  );
   write(`    Health check: ${healthResult.ok ? "PASS" : "FAIL"}`);
 
   const duration = Date.now() - startTime;
-  const passed = unhandledExceptions === 0 && (healthResult.ok === true);
+  const passed = unhandledExceptions === 0 && healthResult.ok === true;
 
-  const summary = `Unhandled exceptions: ${String(unhandledExceptions)}, ` +
+  const summary =
+    `Unhandled exceptions: ${String(unhandledExceptions)}, ` +
     `Total ops: ${String(stats.totalOps)}, Errors (expected): ${String(stats.totalErrors)}, ` +
     `Health check: ${healthResult.ok ? "PASS" : "FAIL"}, Duration: ${fmt(duration)}`;
 
@@ -826,7 +966,9 @@ async function cleanup(client: ObsidianClient): Promise<void> {
   const batchSize = 20;
   for (let i = 0; i < stressFiles.length; i += batchSize) {
     const batch = stressFiles.slice(i, i + batchSize);
-    await Promise.allSettled(batch.map((f) => client.deleteFile(f).catch(() => {})));
+    await Promise.allSettled(
+      batch.map((f) => client.deleteFile(f).catch(() => {})),
+    );
   }
   write(`  Cleaned up ${String(stressFiles.length)} files`);
 }
@@ -855,9 +997,14 @@ async function main(): Promise<void> {
 
   // Safety guard
   const { files } = await client.listFilesInVault();
-  if (files.length > VAULT_FILE_LIMIT && process.env["SMOKE_TEST_CONFIRM"] !== "true") {
-    write(`[error] Vault has ${String(files.length)} files (limit: ${String(VAULT_FILE_LIMIT)}). ` +
-      `Use a test vault or set SMOKE_TEST_CONFIRM=true to override.`);
+  if (
+    files.length > VAULT_FILE_LIMIT &&
+    process.env["SMOKE_TEST_CONFIRM"] !== "true"
+  ) {
+    write(
+      `[error] Vault has ${String(files.length)} files (limit: ${String(VAULT_FILE_LIMIT)}). ` +
+        `Use a test vault or set SMOKE_TEST_CONFIRM=true to override.`,
+    );
     process.exit(1);
   }
 
@@ -865,7 +1012,10 @@ async function main(): Promise<void> {
   await cleanup(client);
 
   const globalStart = Date.now();
-  const scenarios: Array<{ fn: (client: ObsidianClient) => Promise<ScenarioResult>; budget: string }> = [
+  const scenarios: Array<{
+    fn: (client: ObsidianClient) => Promise<ScenarioResult>;
+    budget: string;
+  }> = [
     { fn: scenario1HeadingMismatch, budget: "3 min" },
     { fn: scenario2CacheStampede, budget: "1 min" },
     { fn: scenario3LargeVaultScale, budget: "3 min" },
@@ -940,11 +1090,17 @@ async function main(): Promise<void> {
   };
 
   write(`  Total duration:    ${fmt(globalDuration)}`);
-  write(`  Scenarios:         ${String(scenariosPassed)} passed, ${String(scenariosFailed)} failed out of ${String(results.length)}`);
+  write(
+    `  Scenarios:         ${String(scenariosPassed)} passed, ${String(scenariosFailed)} failed out of ${String(results.length)}`,
+  );
   write(`  Total operations:  ${String(totalOps)}`);
   write(`  Total passed:      ${String(totalPassed)}`);
-  write(`  Total errors:      ${String(totalErrors)} (${totalOps > 0 ? ((totalErrors / totalOps) * 100).toFixed(2) : "0"}%)`);
-  write(`  Heap:              ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1)}MB`);
+  write(
+    `  Total errors:      ${String(totalErrors)} (${totalOps > 0 ? ((totalErrors / totalOps) * 100).toFixed(2) : "0"}%)`,
+  );
+  write(
+    `  Heap:              ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1)}MB`,
+  );
   write("");
 
   if (allLatencies.length > 0) {
@@ -959,7 +1115,9 @@ async function main(): Promise<void> {
   write("  Scenario Results:");
   for (const r of results) {
     const icon = r.passed ? "PASS" : "FAIL";
-    write(`    [${icon}] ${r.name} (${fmt(r.duration)}, ${String(r.stats.totalOps)} ops)`);
+    write(
+      `    [${icon}] ${r.name} (${fmt(r.duration)}, ${String(r.stats.totalOps)} ops)`,
+    );
   }
   write("");
 

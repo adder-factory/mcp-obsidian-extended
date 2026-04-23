@@ -39,7 +39,13 @@ describe("formatSchema", () => {
 // periodSchema
 // ---------------------------------------------------------------------------
 describe("periodSchema", () => {
-  const validPeriods = ["daily", "weekly", "monthly", "quarterly", "yearly"] as const;
+  const validPeriods = [
+    "daily",
+    "weekly",
+    "monthly",
+    "quarterly",
+    "yearly",
+  ] as const;
 
   for (const period of validPeriods) {
     it(`accepts "${period}"`, () => {

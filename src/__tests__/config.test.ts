@@ -40,7 +40,12 @@ beforeEach(() => {
   savedEnv = { ...process.env };
   // Clear all OBSIDIAN_* and TOOL_* env vars
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith("OBSIDIAN_") || key.startsWith("TOOL_") || key === "INCLUDE_TOOLS" || key === "EXCLUDE_TOOLS") {
+    if (
+      key.startsWith("OBSIDIAN_") ||
+      key.startsWith("TOOL_") ||
+      key === "INCLUDE_TOOLS" ||
+      key === "EXCLUDE_TOOLS"
+    ) {
       delete process.env[key];
     }
   }
@@ -150,7 +155,10 @@ describe("loadConfig — env overrides", () => {
 
   it("overrides excludeTools from EXCLUDE_TOOLS", () => {
     process.env["EXCLUDE_TOOLS"] = "delete_file,delete_active_file";
-    expect(loadConfig().excludeTools).toEqual(["delete_file", "delete_active_file"]);
+    expect(loadConfig().excludeTools).toEqual([
+      "delete_file",
+      "delete_active_file",
+    ]);
   });
 
   it("overrides cacheTtl from OBSIDIAN_CACHE_TTL", () => {
@@ -185,16 +193,22 @@ describe("loadConfig — config file", () => {
   it("loads values from a config file", () => {
     const configPath = resolve("./obsidian-mcp.config.json");
     mockedExistsSync.mockImplementation((p) => String(p) === configPath);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      host: "10.0.0.1",
-      port: 9999,
-      scheme: "http",
-      debug: true,
-      tools: { mode: "consolidated", preset: "safe" },
-      reliability: { timeout: 5000, verifyWrites: true, maxResponseChars: 1000 },
-      tls: { verifySsl: true },
-      cache: { ttl: 30000, enabled: false },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        host: "10.0.0.1",
+        port: 9999,
+        scheme: "http",
+        debug: true,
+        tools: { mode: "consolidated", preset: "safe" },
+        reliability: {
+          timeout: 5000,
+          verifyWrites: true,
+          maxResponseChars: 1000,
+        },
+        tls: { verifySsl: true },
+        cache: { ttl: 30000, enabled: false },
+      }),
+    );
 
     const config = loadConfig();
     expect(config.host).toBe("10.0.0.1");
@@ -214,10 +228,12 @@ describe("loadConfig — config file", () => {
   it("env vars override config file values", () => {
     const configPath = resolve("./obsidian-mcp.config.json");
     mockedExistsSync.mockImplementation((p) => String(p) === configPath);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      host: "10.0.0.1",
-      port: 9999,
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        host: "10.0.0.1",
+        port: 9999,
+      }),
+    );
 
     process.env["OBSIDIAN_HOST"] = "override-host";
     const config = loadConfig();
@@ -228,9 +244,11 @@ describe("loadConfig — config file", () => {
   it("warns and uses empty config on invalid config file JSON types", () => {
     const configPath = resolve("./obsidian-mcp.config.json");
     mockedExistsSync.mockImplementation((p) => String(p) === configPath);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      port: "not-a-number", // should be number
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        port: "not-a-number", // should be number
+      }),
+    );
 
     const config = loadConfig();
     // Falls back to default since validation failed
@@ -241,11 +259,15 @@ describe("loadConfig — config file", () => {
     process.env["OBSIDIAN_CONFIG"] = "/nonexistent/config.json";
     mockedExistsSync.mockReturnValue(false);
 
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     loadConfig();
 
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
-    expect(calls.some((c) => c.includes("OBSIDIAN_CONFIG path does not exist"))).toBe(true);
+    expect(
+      calls.some((c) => c.includes("OBSIDIAN_CONFIG path does not exist")),
+    ).toBe(true);
   });
 
   it("handles corrupted config file gracefully", () => {
@@ -339,8 +361,26 @@ describe("getRedactedConfig", () => {
 // parseBoolean (tested through loadConfig env overrides)
 // ---------------------------------------------------------------------------
 describe("parseBoolean — via env vars", () => {
-  const booleanTrueValues = ["true", "1", "yes", "on", "TRUE", "True", "YES", "ON"];
-  const booleanFalseValues = ["false", "0", "no", "off", "FALSE", "False", "NO", "OFF"];
+  const booleanTrueValues = [
+    "true",
+    "1",
+    "yes",
+    "on",
+    "TRUE",
+    "True",
+    "YES",
+    "ON",
+  ];
+  const booleanFalseValues = [
+    "false",
+    "0",
+    "no",
+    "off",
+    "FALSE",
+    "False",
+    "NO",
+    "OFF",
+  ];
 
   for (const val of booleanTrueValues) {
     it(`parses "${val}" as true`, () => {
@@ -482,10 +522,12 @@ describe("saveConfigToFile", () => {
 
   it("deep-merges into existing config file", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({
-      host: "old-host",
-      tools: { mode: "granular", preset: "full" },
-    }));
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        host: "old-host",
+        tools: { mode: "granular", preset: "full" },
+      }),
+    );
 
     saveConfigToFile("/tmp/test.json", {
       tools: { preset: "safe" },
@@ -515,23 +557,33 @@ describe("saveConfigToFile", () => {
 // ---------------------------------------------------------------------------
 describe("setDebugEnabled and log", () => {
   it("suppresses debug messages by default", () => {
-    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     log("debug", "should not appear");
     // The spy was already set up, check that no debug call was made
-    const debugCalls = spy.mock.calls.filter((c) => String(c[0]).includes("should not appear"));
+    const debugCalls = spy.mock.calls.filter((c) =>
+      String(c[0]).includes("should not appear"),
+    );
     expect(debugCalls).toHaveLength(0);
   });
 
   it("outputs debug messages after setDebugEnabled(true)", () => {
-    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     setDebugEnabled(true);
     log("debug", "visible debug");
-    const debugCalls = spy.mock.calls.filter((c) => String(c[0]).includes("visible debug"));
+    const debugCalls = spy.mock.calls.filter((c) =>
+      String(c[0]).includes("visible debug"),
+    );
     expect(debugCalls).toHaveLength(1);
   });
 
   it("always outputs info, warn, and error messages", () => {
-    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     log("info", "info-msg");
     log("warn", "warn-msg");
     log("error", "error-msg");
@@ -543,7 +595,9 @@ describe("setDebugEnabled and log", () => {
   });
 
   it("formats log messages with level prefix", () => {
-    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     log("warn", "test message");
     expect(spy).toHaveBeenCalledWith("[warn] test message\n");
   });

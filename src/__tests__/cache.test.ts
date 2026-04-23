@@ -78,14 +78,20 @@ describe("parseLinks — wikilinks", () => {
 // ---------------------------------------------------------------------------
 describe("parseLinks — markdown links", () => {
   it("extracts [text](path.md) links", () => {
-    const links = parseLinks("See [my link](notes/target.md) here", "folder/current.md");
+    const links = parseLinks(
+      "See [my link](notes/target.md) here",
+      "folder/current.md",
+    );
     expect(links).toHaveLength(1);
     expect(links[0]?.target).toBe("folder/notes/target.md");
     expect(links[0]?.type).toBe("markdown");
   });
 
   it("resolves relative paths with ../", () => {
-    const links = parseLinks("See [link](../other/note.md) here", "folder/sub/current.md");
+    const links = parseLinks(
+      "See [link](../other/note.md) here",
+      "folder/sub/current.md",
+    );
     expect(links).toHaveLength(1);
     expect(links[0]?.target).toBe("folder/other/note.md");
   });
@@ -134,7 +140,10 @@ describe("parseLinks — markdown links", () => {
   });
 
   it("extracts link with both #anchor and relative path", () => {
-    const links = parseLinks("[text](../sibling/note.md#section)", "folder/sub/current.md");
+    const links = parseLinks(
+      "[text](../sibling/note.md#section)",
+      "folder/sub/current.md",
+    );
     expect(links).toHaveLength(1);
     expect(links[0]?.target).toBe("folder/sibling/note.md");
   });
@@ -145,12 +154,18 @@ describe("parseLinks — markdown links", () => {
   });
 
   it("does not match external URLs ending in .md", () => {
-    const links = parseLinks("[spec](https://github.com/user/repo/spec.md)", "test.md");
+    const links = parseLinks(
+      "[spec](https://github.com/user/repo/spec.md)",
+      "test.md",
+    );
     expect(links).toHaveLength(0);
   });
 
   it("does not match obsidian:// protocol links", () => {
-    const links = parseLinks("[link](obsidian://open?vault=test&file=note.md)", "test.md");
+    const links = parseLinks(
+      "[link](obsidian://open?vault=test&file=note.md)",
+      "test.md",
+    );
     expect(links).toHaveLength(0);
   });
 
@@ -236,13 +251,10 @@ function makeNoteJson(path: string, content: string, mtime = 1000): NoteJson {
 // ---------------------------------------------------------------------------
 describe("VaultCache — initialize", () => {
   it("fetches all .md files and builds cache", async () => {
-    const client = createMockClient(
-      ["note1.md", "note2.md", "image.png"],
-      {
-        "note1.md": makeNoteJson("note1.md", "Content of note1 [[note2]]"),
-        "note2.md": makeNoteJson("note2.md", "Content of note2"),
-      },
-    );
+    const client = createMockClient(["note1.md", "note2.md", "image.png"], {
+      "note1.md": makeNoteJson("note1.md", "Content of note1 [[note2]]"),
+      "note2.md": makeNoteJson("note2.md", "Content of note2"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -252,12 +264,9 @@ describe("VaultCache — initialize", () => {
   });
 
   it("skips non-md files", async () => {
-    const client = createMockClient(
-      ["note.md", "image.png", "data.json"],
-      {
-        "note.md": makeNoteJson("note.md", "hello"),
-      },
-    );
+    const client = createMockClient(["note.md", "image.png", "data.json"], {
+      "note.md": makeNoteJson("note.md", "hello"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -265,13 +274,10 @@ describe("VaultCache — initialize", () => {
   });
 
   it("handles individual file fetch failures gracefully", async () => {
-    const client = createMockClient(
-      ["good.md", "bad.md"],
-      {
-        "good.md": makeNoteJson("good.md", "good content"),
-        // "bad.md" is not in noteContents, so getFileContents will throw
-      },
-    );
+    const client = createMockClient(["good.md", "bad.md"], {
+      "good.md": makeNoteJson("good.md", "good content"),
+      // "bad.md" is not in noteContents, so getFileContents will throw
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -287,7 +293,7 @@ describe("VaultCache — initialize", () => {
         "docs/sub/deep.md": makeNoteJson("docs/sub/deep.md", "deep content"),
       },
       {
-        "docs": ["guide.md", "sub/"],
+        docs: ["guide.md", "sub/"],
         "docs/sub": ["deep.md"],
       },
     );
@@ -306,7 +312,7 @@ describe("VaultCache — initialize", () => {
       {
         "note.md": makeNoteJson("note.md", "content"),
       },
-      { "empty": [] },
+      { empty: [] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -339,7 +345,7 @@ describe("VaultCache — initialize", () => {
       },
       // "loop" lists "./" as a child — a self-reference cycle. With prefix
       // prepending, "./" becomes "loop/./" which normalizes to "loop" (already visited).
-      { "loop": ["./"] },
+      { loop: ["./"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -351,10 +357,9 @@ describe("VaultCache — initialize", () => {
 
   it("stops recursion at max depth to prevent path-extending cycles", async () => {
     // Each directory lists a child directory, creating ever-deeper paths
-    const client = createMockClient(
-      ["a/", "note.md"],
-      { "note.md": makeNoteJson("note.md", "content") },
-    );
+    const client = createMockClient(["a/", "note.md"], {
+      "note.md": makeNoteJson("note.md", "content"),
+    });
     // Every listFilesInDir returns another subdirectory, simulating a symlink cycle
     vi.mocked(client.listFilesInDir).mockImplementation(async () => {
       return { files: ["deeper/"] };
@@ -371,12 +376,9 @@ describe("VaultCache — initialize", () => {
   });
 
   it("rethrows ObsidianAuthError from subdirectory traversal", async () => {
-    const client = createMockClient(
-      ["secret/", "note.md"],
-      {
-        "note.md": makeNoteJson("note.md", "content"),
-      },
-    );
+    const client = createMockClient(["secret/", "note.md"], {
+      "note.md": makeNoteJson("note.md", "content"),
+    });
     // listFilesInDir throws ObsidianAuthError for "secret"
     vi.mocked(client.listFilesInDir).mockRejectedValue(new ObsidianAuthError());
 
@@ -385,12 +387,9 @@ describe("VaultCache — initialize", () => {
   });
 
   it("rethrows ObsidianConnectionError from subdirectory traversal", async () => {
-    const client = createMockClient(
-      ["sub/", "note.md"],
-      {
-        "note.md": makeNoteJson("note.md", "content"),
-      },
-    );
+    const client = createMockClient(["sub/", "note.md"], {
+      "note.md": makeNoteJson("note.md", "content"),
+    });
     vi.mocked(client.listFilesInDir).mockRejectedValue(
       new ObsidianConnectionError("Connection refused"),
     );
@@ -401,7 +400,9 @@ describe("VaultCache — initialize", () => {
 
   it("skips directory entries with path traversal segments", async () => {
     const client = {
-      listFilesInVault: vi.fn(async () => ({ files: ["../escape/", "note.md"] })),
+      listFilesInVault: vi.fn(async () => ({
+        files: ["../escape/", "note.md"],
+      })),
       listFilesInDir: vi.fn(),
       getFileContents: vi.fn(async () => makeNoteJson("note.md", "content")),
     } as unknown as ObsidianClient;
@@ -431,7 +432,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "hello") },
-      { "folder": ["note.md"] },
+      { folder: ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -456,8 +457,13 @@ describe("VaultCache — getNote", () => {
   it("falls back to filename-based lookup", async () => {
     const client = createMockClient(
       ["deep/"],
-      { "deep/folder/MyNote.md": makeNoteJson("deep/folder/MyNote.md", "content") },
-      { "deep": ["folder/"], "deep/folder": ["MyNote.md"] },
+      {
+        "deep/folder/MyNote.md": makeNoteJson(
+          "deep/folder/MyNote.md",
+          "content",
+        ),
+      },
+      { deep: ["folder/"], "deep/folder": ["MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -472,7 +478,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["Folder/"],
       { "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "content") },
-      { "Folder": ["MyNote.md"] },
+      { Folder: ["MyNote.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -486,7 +492,7 @@ describe("VaultCache — getNote", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
-      { "folder": ["note.md"] },
+      { folder: ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -503,13 +509,10 @@ describe("VaultCache — getNote", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — accessors", () => {
   it("getAllNotes returns all cached notes", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "aa"),
-        "b.md": makeNoteJson("b.md", "bb"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "aa"),
+      "b.md": makeNoteJson("b.md", "bb"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -517,27 +520,23 @@ describe("VaultCache — accessors", () => {
   });
 
   it("getFileList returns all cached paths", async () => {
-    const client = createMockClient(
-      ["x.md", "y.md"],
-      {
-        "x.md": makeNoteJson("x.md", ""),
-        "y.md": makeNoteJson("y.md", ""),
-      },
-    );
+    const client = createMockClient(["x.md", "y.md"], {
+      "x.md": makeNoteJson("x.md", ""),
+      "y.md": makeNoteJson("y.md", ""),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
-    expect(cache.getFileList()).toEqual(expect.arrayContaining(["x.md", "y.md"]));
+    expect(cache.getFileList()).toEqual(
+      expect.arrayContaining(["x.md", "y.md"]),
+    );
   });
 
   it("linkCount returns total number of links", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "[[b]] [[c]]"),
-        "b.md": makeNoteJson("b.md", "[[a]]"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]] [[c]]"),
+      "b.md": makeNoteJson("b.md", "[[a]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -550,13 +549,10 @@ describe("VaultCache — accessors", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — invalidate", () => {
   it("removes a single note from cache", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "aa"),
-        "b.md": makeNoteJson("b.md", "bb"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "aa"),
+      "b.md": makeNoteJson("b.md", "bb"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -572,7 +568,7 @@ describe("VaultCache — invalidate", () => {
     const client = createMockClient(
       ["folder/"],
       { "folder/note.md": makeNoteJson("folder/note.md", "content") },
-      { "folder": ["note.md"] },
+      { folder: ["note.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -591,13 +587,10 @@ describe("VaultCache — invalidate", () => {
 
 describe("VaultCache — invalidateAll", () => {
   it("clears the entire cache", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "aa"),
-        "b.md": makeNoteJson("b.md", "bb"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "aa"),
+      "b.md": makeNoteJson("b.md", "bb"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -615,14 +608,11 @@ describe("VaultCache — invalidateAll", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — getBacklinks", () => {
   it("returns all notes linking to a given file", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md", "c.md"],
-      {
-        "a.md": makeNoteJson("a.md", "Link to [[b]]"),
-        "b.md": makeNoteJson("b.md", "No links here"),
-        "c.md": makeNoteJson("c.md", "Also links to [[b]]"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md", "c.md"], {
+      "a.md": makeNoteJson("a.md", "Link to [[b]]"),
+      "b.md": makeNoteJson("b.md", "No links here"),
+      "c.md": makeNoteJson("c.md", "Also links to [[b]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -635,13 +625,10 @@ describe("VaultCache — getBacklinks", () => {
   });
 
   it("returns empty array when no backlinks exist", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "No links"),
-        "b.md": makeNoteJson("b.md", "Also no links"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "No links"),
+      "b.md": makeNoteJson("b.md", "Also no links"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -656,7 +643,7 @@ describe("VaultCache — getBacklinks", () => {
         "folder/a.md": makeNoteJson("folder/a.md", "Link to [[b]]"),
         "folder/b.md": makeNoteJson("folder/b.md", "Target note"),
       },
-      { "folder": ["a.md", "b.md"] },
+      { folder: ["a.md", "b.md"] },
     );
 
     const cache = new VaultCache(client, 600000);
@@ -671,12 +658,9 @@ describe("VaultCache — getBacklinks", () => {
   it("finds backlinks even for notes not in cache (unresolved targets)", async () => {
     // When a note links to [[nonexistent]], the link target stays unresolved as "nonexistent.md".
     // getBacklinks for that unresolved target should still find the linking note.
-    const client = createMockClient(
-      ["a.md"],
-      {
-        "a.md": makeNoteJson("a.md", "Link to [[nonexistent]]"),
-      },
-    );
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "Link to [[nonexistent]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -687,13 +671,10 @@ describe("VaultCache — getBacklinks", () => {
   });
 
   it("includes context from the linking note", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "Important context [[b]] surrounding link"),
-        "b.md": makeNoteJson("b.md", "target"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "Important context [[b]] surrounding link"),
+      "b.md": makeNoteJson("b.md", "target"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -708,13 +689,10 @@ describe("VaultCache — getBacklinks", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — getForwardLinks", () => {
   it("returns outbound links from a note", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "Links to [[b]] and [[c]]"),
-        "b.md": makeNoteJson("b.md", "no links"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "Links to [[b]] and [[c]]"),
+      "b.md": makeNoteJson("b.md", "no links"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -725,10 +703,9 @@ describe("VaultCache — getForwardLinks", () => {
   });
 
   it("returns empty array for note with no links", async () => {
-    const client = createMockClient(
-      ["a.md"],
-      { "a.md": makeNoteJson("a.md", "no links here") },
-    );
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "no links here"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -746,14 +723,11 @@ describe("VaultCache — getForwardLinks", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — getOrphanNotes", () => {
   it("returns notes with zero inbound links", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md", "orphan.md"],
-      {
-        "a.md": makeNoteJson("a.md", "[[b]]"),
-        "b.md": makeNoteJson("b.md", "[[a]]"),
-        "orphan.md": makeNoteJson("orphan.md", "nobody links to me"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md", "orphan.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]]"),
+      "b.md": makeNoteJson("b.md", "[[a]]"),
+      "orphan.md": makeNoteJson("orphan.md", "nobody links to me"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -765,13 +739,10 @@ describe("VaultCache — getOrphanNotes", () => {
   });
 
   it("returns all notes when none have inbound links", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "no links"),
-        "b.md": makeNoteJson("b.md", "no links either"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "no links"),
+      "b.md": makeNoteJson("b.md", "no links either"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -784,15 +755,12 @@ describe("VaultCache — getOrphanNotes", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — getMostConnectedNotes", () => {
   it("returns notes sorted by total connections (inbound + outbound)", async () => {
-    const client = createMockClient(
-      ["hub.md", "a.md", "b.md", "c.md"],
-      {
-        "hub.md": makeNoteJson("hub.md", "[[a]] [[b]] [[c]]"),
-        "a.md": makeNoteJson("a.md", "[[hub]]"),
-        "b.md": makeNoteJson("b.md", "[[hub]]"),
-        "c.md": makeNoteJson("c.md", "no outbound"),
-      },
-    );
+    const client = createMockClient(["hub.md", "a.md", "b.md", "c.md"], {
+      "hub.md": makeNoteJson("hub.md", "[[a]] [[b]] [[c]]"),
+      "a.md": makeNoteJson("a.md", "[[hub]]"),
+      "b.md": makeNoteJson("b.md", "[[hub]]"),
+      "c.md": makeNoteJson("c.md", "no outbound"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -803,14 +771,11 @@ describe("VaultCache — getMostConnectedNotes", () => {
   });
 
   it("respects the limit parameter", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md", "c.md"],
-      {
-        "a.md": makeNoteJson("a.md", "[[b]] [[c]]"),
-        "b.md": makeNoteJson("b.md", "[[a]]"),
-        "c.md": makeNoteJson("c.md", ""),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md", "c.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]] [[c]]"),
+      "b.md": makeNoteJson("b.md", "[[a]]"),
+      "c.md": makeNoteJson("c.md", ""),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -825,13 +790,10 @@ describe("VaultCache — getMostConnectedNotes", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — getVaultGraph", () => {
   it("returns consistent nodes and edges", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "[[b]]"),
-        "b.md": makeNoteJson("b.md", "[[a]]"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]]"),
+      "b.md": makeNoteJson("b.md", "[[a]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -895,7 +857,9 @@ describe("VaultCache — autoRefresh", () => {
 
   it("calls unref on the timer", () => {
     const mockUnref = vi.fn();
-    const mockTimer = { unref: mockUnref } as unknown as ReturnType<typeof setInterval>;
+    const mockTimer = { unref: mockUnref } as unknown as ReturnType<
+      typeof setInterval
+    >;
     vi.spyOn(globalThis, "setInterval").mockReturnValue(mockTimer);
 
     const client = createMockClient([], {});
@@ -917,10 +881,9 @@ describe("VaultCache — autoRefresh", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — refresh", () => {
   it("calls initialize when not initialized", async () => {
-    const client = createMockClient(
-      ["a.md"],
-      { "a.md": makeNoteJson("a.md", "hello") },
-    );
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "hello"),
+    });
 
     const cache = new VaultCache(client, 600000);
     expect(cache.getIsInitialized()).toBe(false);
@@ -966,7 +929,9 @@ describe("VaultCache — refresh", () => {
 
     const client = {
       listFilesInVault: vi.fn(async () => ({ files: ["a.md"] })),
-      getFileContents: vi.fn(async () => makeNoteJson("a.md", noteContent, noteMtime)),
+      getFileContents: vi.fn(async () =>
+        makeNoteJson("a.md", noteContent, noteMtime),
+      ),
     } as unknown as ObsidianClient;
 
     const cache = new VaultCache(client, 600000);
@@ -1005,7 +970,8 @@ describe("VaultCache — refresh", () => {
 
   it("handles refresh failure gracefully", async () => {
     const client = {
-      listFilesInVault: vi.fn()
+      listFilesInVault: vi
+        .fn()
         .mockResolvedValueOnce({ files: ["a.md"] })
         .mockRejectedValueOnce(new Error("network error")),
       getFileContents: vi.fn(async () => makeNoteJson("a.md", "content")),
@@ -1022,7 +988,7 @@ describe("VaultCache — refresh", () => {
   });
 
   it("refresh discovers new nested files and prunes deleted ones", async () => {
-    const dirFiles: Record<string, string[]> = { "folder": ["a.md"] };
+    const dirFiles: Record<string, string[]> = { folder: ["a.md"] };
     const notes: Record<string, NoteJson> = {
       "folder/a.md": makeNoteJson("folder/a.md", "A"),
     };
@@ -1067,7 +1033,9 @@ describe("VaultCache — waitForInitialization", () => {
     const client = createMockClient();
     const cache = new VaultCache(client, 600000);
     // Force isInitialized via a successful build
-    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({ files: [] });
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({
+      files: [],
+    });
     await cache.initialize();
     const result = await cache.waitForInitialization(100);
     expect(result).toBe(true);
@@ -1083,7 +1051,9 @@ describe("VaultCache — waitForInitialization", () => {
 
   it("waits for in-flight build to complete", async () => {
     const client = createMockClient();
-    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({ files: [] });
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValue({
+      files: [],
+    });
     const cache = new VaultCache(client, 600000);
     // Start initialization but don't await it
     const initPromise = cache.initialize();
@@ -1192,12 +1162,16 @@ describe("parseLinks — markdown link edge cases", () => {
 describe("VaultCache — initialization retries", () => {
   it("retries on connection error and eventually fails", async () => {
     const client = {
-      listFilesInVault: vi.fn().mockRejectedValue(new Error("connection refused")),
+      listFilesInVault: vi
+        .fn()
+        .mockRejectedValue(new Error("connection refused")),
       getFileContents: vi.fn(),
     } as unknown as ObsidianClient;
 
     const cache = new VaultCache(client, 600000);
-    await expect(cache.initialize()).rejects.toThrow("Cache initialization failed after 3 attempts");
+    await expect(cache.initialize()).rejects.toThrow(
+      "Cache initialization failed after 3 attempts",
+    );
   });
 
   it("does not retry on auth error", async () => {
@@ -1257,7 +1231,9 @@ describe("VaultCache — initialization retries", () => {
     } as unknown as ObsidianClient;
 
     const cache = new VaultCache(client, 600000);
-    await expect(cache.initialize()).rejects.toThrow("Cache initialization failed");
+    await expect(cache.initialize()).rejects.toThrow(
+      "Cache initialization failed",
+    );
   });
 
   it("skips if already initialized", async () => {
@@ -1295,7 +1271,9 @@ describe("VaultCache — initialization retries", () => {
 describe("VaultCache — refresh edge cases", () => {
   it("skips if already refreshing", async () => {
     let resolveRefresh: (() => void) | undefined;
-    const blockingPromise = new Promise<void>((resolve) => { resolveRefresh = resolve; });
+    const blockingPromise = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
 
     const client = {
       listFilesInVault: vi.fn(async () => {
@@ -1307,7 +1285,9 @@ describe("VaultCache — refresh edge cases", () => {
 
     const cache = new VaultCache(client, 600000);
     // Initialize first
-    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: ["a.md"] });
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      { files: ["a.md"] },
+    );
     await cache.initialize();
 
     // Now set up a blocking refresh
@@ -1334,8 +1314,12 @@ describe("VaultCache — refresh edge cases", () => {
 
     const cache = new VaultCache(client, 600000);
     // Force initialized state with known generation
-    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ files: ["a.md"] });
-    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeNoteJson("a.md", "original"));
+    (client.listFilesInVault as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      { files: ["a.md"] },
+    );
+    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      makeNoteJson("a.md", "original"),
+    );
     await cache.initialize();
 
     // Refresh will trigger invalidateAll, generation will change
@@ -1347,7 +1331,8 @@ describe("VaultCache — refresh edge cases", () => {
   it("handles file fetch failures during refresh gracefully", async () => {
     const client = {
       listFilesInVault: vi.fn(async () => ({ files: ["a.md", "b.md"] })),
-      getFileContents: vi.fn()
+      getFileContents: vi
+        .fn()
         .mockResolvedValueOnce(makeNoteJson("a.md", "aa"))
         .mockResolvedValueOnce(makeNoteJson("b.md", "bb"))
         // Refresh: a.md succeeds with new mtime, b.md fails
@@ -1373,7 +1358,9 @@ describe("VaultCache — refresh edge cases", () => {
 
     const cache = new VaultCache(client, 600000);
     // Init with mtime=1000
-    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(makeNoteJson("a.md", "original", 1000));
+    (client.getFileContents as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      makeNoteJson("a.md", "original", 1000),
+    );
     await cache.initialize();
     expect(cache.getNote("a.md")?.content).toBe("original");
 
@@ -1382,7 +1369,9 @@ describe("VaultCache — refresh edge cases", () => {
     const origRefresh = cache.refresh.bind(cache);
     const refreshWithInvalidation = async (): Promise<void> => {
       // Invalidate during refresh by hooking into the mock
-      (client.getFileContents as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      (
+        client.getFileContents as ReturnType<typeof vi.fn>
+      ).mockImplementationOnce(async () => {
         cache.invalidate("a.md");
         return makeNoteJson("a.md", "stale-from-refresh", 2000);
       });
@@ -1397,7 +1386,8 @@ describe("VaultCache — refresh edge cases", () => {
   it("handles unexpected response format during refresh", async () => {
     const client = {
       listFilesInVault: vi.fn(async () => ({ files: ["a.md"] })),
-      getFileContents: vi.fn()
+      getFileContents: vi
+        .fn()
         .mockResolvedValueOnce(makeNoteJson("a.md", "original", 1000))
         // During refresh: returns string instead of NoteJson
         .mockResolvedValueOnce("raw string content"),
@@ -1437,7 +1427,9 @@ describe("VaultCache — waitForInitialization edge cases", () => {
 
   it("times out when build takes too long", async () => {
     let resolveInit: (() => void) | undefined;
-    const blockingPromise = new Promise<void>((resolve) => { resolveInit = resolve; });
+    const blockingPromise = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
 
     const client = {
       listFilesInVault: vi.fn(async () => {
@@ -1462,13 +1454,17 @@ describe("VaultCache — waitForInitialization edge cases", () => {
 
   it("handles build failure during wait and returns false", async () => {
     const client = {
-      listFilesInVault: vi.fn().mockRejectedValue(new Error("connection refused")),
+      listFilesInVault: vi
+        .fn()
+        .mockRejectedValue(new Error("connection refused")),
       getFileContents: vi.fn(),
     } as unknown as ObsidianClient;
 
     const cache = new VaultCache(client, 600000);
     // Start init without awaiting — it will fail
-    const initPromise = cache.initialize().catch(() => { /* expected */ });
+    const initPromise = cache.initialize().catch(() => {
+      /* expected */
+    });
 
     // Wait should eventually return false because build fails
     const result = await cache.waitForInitialization(5000);
@@ -1521,10 +1517,9 @@ describe("VaultCache — invalidate edge cases", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — link resolution edge cases", () => {
   it("resolves normalized case-insensitive full path match", async () => {
-    const client = createMockClient(
-      ["Folder/MyNote.md"],
-      { "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "[[folder/mynote]]") },
-    );
+    const client = createMockClient(["Folder/MyNote.md"], {
+      "Folder/MyNote.md": makeNoteJson("Folder/MyNote.md", "[[folder/mynote]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -1539,7 +1534,10 @@ describe("VaultCache — link resolution edge cases", () => {
     const client = createMockClient(
       ["deep/nested/target.md", "other/linker.md"],
       {
-        "deep/nested/target.md": makeNoteJson("deep/nested/target.md", "Target"),
+        "deep/nested/target.md": makeNoteJson(
+          "deep/nested/target.md",
+          "Target",
+        ),
         "other/linker.md": makeNoteJson("other/linker.md", "[[target]]"),
       },
     );
@@ -1553,10 +1551,9 @@ describe("VaultCache — link resolution edge cases", () => {
   });
 
   it("handles link to non-existent note (unresolved)", async () => {
-    const client = createMockClient(
-      ["a.md"],
-      { "a.md": makeNoteJson("a.md", "[[nonexistent]]") },
-    );
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "[[nonexistent]]"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -1568,12 +1565,9 @@ describe("VaultCache — link resolution edge cases", () => {
 
   it("handles normalized link to note that exists", async () => {
     // normalizeLinkTarget adds .md — test path without .md extension
-    const client = createMockClient(
-      ["notes/readme.md"],
-      {
-        "notes/readme.md": makeNoteJson("notes/readme.md", "Content"),
-      },
-    );
+    const client = createMockClient(["notes/readme.md"], {
+      "notes/readme.md": makeNoteJson("notes/readme.md", "Content"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -1589,13 +1583,10 @@ describe("VaultCache — link resolution edge cases", () => {
 // ---------------------------------------------------------------------------
 describe("VaultCache — normalizeLinkTarget coverage", () => {
   it("adds .md to targets that lack it", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "[[b]]"),
-        "b.md": makeNoteJson("b.md", "target"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "[[b]]"),
+      "b.md": makeNoteJson("b.md", "target"),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -1606,13 +1597,13 @@ describe("VaultCache — normalizeLinkTarget coverage", () => {
   });
 
   it("handles backslash paths in link targets", async () => {
-    const client = createMockClient(
-      ["folder/note.md", "linker.md"],
-      {
-        "folder/note.md": makeNoteJson("folder/note.md", "target"),
-        "linker.md": makeNoteJson("linker.md", String.raw`[text](folder\note.md)`),
-      },
-    );
+    const client = createMockClient(["folder/note.md", "linker.md"], {
+      "folder/note.md": makeNoteJson("folder/note.md", "target"),
+      "linker.md": makeNoteJson(
+        "linker.md",
+        String.raw`[text](folder\note.md)`,
+      ),
+    });
 
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
@@ -1634,13 +1625,10 @@ describe("VaultCache — getEdgeCount", () => {
   });
 
   it("counts resolved edges", async () => {
-    const client = createMockClient(
-      ["a.md", "b.md"],
-      {
-        "a.md": makeNoteJson("a.md", "see [[b]]"),
-        "b.md": makeNoteJson("b.md", "see [[a]]"),
-      },
-    );
+    const client = createMockClient(["a.md", "b.md"], {
+      "a.md": makeNoteJson("a.md", "see [[b]]"),
+      "b.md": makeNoteJson("b.md", "see [[a]]"),
+    });
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
     // a→b and b→a = 2 edges, matches getVaultGraph().edges.length
@@ -1649,12 +1637,9 @@ describe("VaultCache — getEdgeCount", () => {
   });
 
   it("excludes unresolved links", async () => {
-    const client = createMockClient(
-      ["a.md"],
-      {
-        "a.md": makeNoteJson("a.md", "see [[nonexistent]]"),
-      },
-    );
+    const client = createMockClient(["a.md"], {
+      "a.md": makeNoteJson("a.md", "see [[nonexistent]]"),
+    });
     const cache = new VaultCache(client, 600000);
     await cache.initialize();
     // Link to nonexistent note should not count as an edge

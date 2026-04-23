@@ -40,7 +40,11 @@ import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
 import type { VaultCache } from "../cache.js";
-import { ObsidianApiError, ObsidianConnectionError, ObsidianAuthError } from "../errors.js";
+import {
+  ObsidianApiError,
+  ObsidianConnectionError,
+  ObsidianAuthError,
+} from "../errors.js";
 import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 // ---------------------------------------------------------------------------
@@ -112,7 +116,12 @@ function makeMockServer(): {
 /** Creates a partial mock of ObsidianClient with all methods as vi.fn(). */
 function makeMockClient(): ObsidianClient {
   return {
-    getServerStatus: vi.fn().mockResolvedValue({ ok: true, service: "Obsidian REST API", authenticated: true, versions: {} }),
+    getServerStatus: vi.fn().mockResolvedValue({
+      ok: true,
+      service: "Obsidian REST API",
+      authenticated: true,
+      versions: {},
+    }),
     listFilesInVault: vi.fn().mockResolvedValue({ files: [] }),
     listFilesInDir: vi.fn().mockResolvedValue({ files: [] }),
     getFileContents: vi.fn().mockResolvedValue("# File content"),
@@ -136,7 +145,9 @@ function makeMockClient(): ObsidianClient {
     appendPeriodicNote: vi.fn().mockResolvedValue(undefined),
     patchPeriodicNote: vi.fn().mockResolvedValue(undefined),
     deletePeriodicNote: vi.fn().mockResolvedValue(undefined),
-    getPeriodicNoteForDate: vi.fn().mockResolvedValue("# Periodic note for date"),
+    getPeriodicNoteForDate: vi
+      .fn()
+      .mockResolvedValue("# Periodic note for date"),
     putPeriodicNoteForDate: vi.fn().mockResolvedValue(undefined),
     appendPeriodicNoteForDate: vi.fn().mockResolvedValue(undefined),
     patchPeriodicNoteForDate: vi.fn().mockResolvedValue(undefined),
@@ -145,7 +156,10 @@ function makeMockClient(): ObsidianClient {
 }
 
 /** Creates a mock VaultCache with configurable initialization state. */
-function makeMockCache(initialized = true, willInitialize = initialized): VaultCache {
+function makeMockCache(
+  initialized = true,
+  willInitialize = initialized,
+): VaultCache {
   return {
     getIsInitialized: vi.fn().mockReturnValue(initialized),
     waitForInitialization: vi.fn().mockResolvedValue(willInitialize),
@@ -213,7 +227,12 @@ describe("registerAllTools — granular mode", () => {
     const { server, getRegistered } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
-    const count = registerAllTools(server as never, client, cache, makeConfig());
+    const count = registerAllTools(
+      server as never,
+      client,
+      cache,
+      makeConfig(),
+    );
     expect(count).toBe(39);
     expect(getRegistered()).toHaveLength(39);
   });
@@ -224,7 +243,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolPreset: "read-only" }),
     );
     expect(count).toBe(19);
@@ -236,7 +257,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolPreset: "minimal" }),
     );
     expect(count).toBe(8);
@@ -247,7 +270,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolPreset: "safe" }),
     );
     expect(count).toBe(35);
@@ -258,8 +283,12 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
-      makeConfig({ excludeTools: ["configure", "get_server_status", "refresh_cache"] }),
+      server as never,
+      client,
+      cache,
+      makeConfig({
+        excludeTools: ["configure", "get_server_status", "refresh_cache"],
+      }),
     );
     const registered = getRegistered();
     expect(registered).toContain("configure");
@@ -272,7 +301,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ includeTools: ["list_files_in_vault", "simple_search"] }),
     );
     const registered = getRegistered();
@@ -293,7 +324,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ excludeTools: ["delete_file", "delete_active_file"] }),
     );
     const registered = getRegistered();
@@ -311,7 +344,9 @@ describe("registerAllTools — granular mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolPreset: "minimal", includeTools: ["delete_file"] }),
     );
     // delete_file is not in the minimal preset, so including it has no effect
@@ -325,7 +360,9 @@ describe("registerAllTools — consolidated mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolMode: "consolidated" }),
     );
     expect(count).toBe(11);
@@ -336,7 +373,9 @@ describe("registerAllTools — consolidated mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const count = registerAllTools(
-      server as never, client, cache,
+      server as never,
+      client,
+      cache,
       makeConfig({ toolMode: "consolidated", toolPreset: "minimal" }),
     );
     // vault, search, status, configure (preset) + vault_analysis (protected)
@@ -348,8 +387,13 @@ describe("registerAllTools — consolidated mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
-      makeConfig({ toolMode: "consolidated", excludeTools: ["configure", "status", "vault_analysis"] }),
+      server as never,
+      client,
+      cache,
+      makeConfig({
+        toolMode: "consolidated",
+        excludeTools: ["configure", "status", "vault_analysis"],
+      }),
     );
     const registered = getRegistered();
     expect(registered).toContain("configure");
@@ -362,8 +406,13 @@ describe("registerAllTools — consolidated mode", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never, client, cache,
-      makeConfig({ toolMode: "consolidated", includeTools: ["vault", "search"] }),
+      server as never,
+      client,
+      cache,
+      makeConfig({
+        toolMode: "consolidated",
+        includeTools: ["vault", "search"],
+      }),
     );
     const registered = getRegistered();
     expect(registered).toContain("vault");
@@ -400,7 +449,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("list_files_in_vault", () => {
     it("calls client.listFilesInVault and returns json result", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["a.md", "b.md"] });
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["a.md", "b.md"],
+      });
       const result = await getTool("list_files_in_vault").handler({});
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(getText(result)).toContain("a.md");
@@ -409,7 +460,9 @@ describe("granular tools — registration and basic behavior", () => {
 
     it("returns errorResult on connection error", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInVault).mockRejectedValue(new ObsidianConnectionError("refused"));
+      vi.mocked(client.listFilesInVault).mockRejectedValue(
+        new ObsidianConnectionError("refused"),
+      );
       const result = await getTool("list_files_in_vault").handler({});
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONNECTION ERROR");
@@ -422,16 +475,24 @@ describe("granular tools — registration and basic behavior", () => {
   describe("list_files_in_dir", () => {
     it("calls client.listFilesInDir with the given dirPath", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInDir).mockResolvedValue({ files: ["dir/note.md"] });
-      const result = await getTool("list_files_in_dir").handler({ dirPath: "dir" });
+      vi.mocked(client.listFilesInDir).mockResolvedValue({
+        files: ["dir/note.md"],
+      });
+      const result = await getTool("list_files_in_dir").handler({
+        dirPath: "dir",
+      });
       expect(client.listFilesInDir).toHaveBeenCalledWith("dir");
       expect(getText(result)).toContain("dir/note.md");
     });
 
     it("returns errorResult on API 404", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInDir).mockRejectedValue(new ObsidianApiError("not found", 404));
-      const result = await getTool("list_files_in_dir").handler({ dirPath: "missing" });
+      vi.mocked(client.listFilesInDir).mockRejectedValue(
+        new ObsidianApiError("not found", 404),
+      );
+      const result = await getTool("list_files_in_dir").handler({
+        dirPath: "missing",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("NOT FOUND");
     });
@@ -444,7 +505,9 @@ describe("granular tools — registration and basic behavior", () => {
     it("returns text for markdown format", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("# Hello");
-      const result = await getTool("get_file_contents").handler({ path: "note.md" });
+      const result = await getTool("get_file_contents").handler({
+        path: "note.md",
+      });
       expect(client.getFileContents).toHaveBeenCalledWith("note.md", undefined);
       expect(getText(result)).toBe("# Hello");
       expect(result.isError).toBeFalsy();
@@ -460,14 +523,21 @@ describe("granular tools — registration and basic behavior", () => {
         stat: { ctime: 0, mtime: 1000, size: 10 },
       };
       vi.mocked(client.getFileContents).mockResolvedValue(noteJson);
-      const result = await getTool("get_file_contents").handler({ path: "note.md", format: "json" });
+      const result = await getTool("get_file_contents").handler({
+        path: "note.md",
+        format: "json",
+      });
       expect(getText(result)).toContain('"path": "note.md"');
     });
 
     it("returns errorResult on auth error", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianAuthError());
-      const result = await getTool("get_file_contents").handler({ path: "note.md" });
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianAuthError(),
+      );
+      const result = await getTool("get_file_contents").handler({
+        path: "note.md",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("AUTH ERROR");
     });
@@ -479,7 +549,10 @@ describe("granular tools — registration and basic behavior", () => {
   describe("put_content", () => {
     it("calls client.putContent and returns success message", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("put_content").handler({ path: "test.md", content: "hello" });
+      const result = await getTool("put_content").handler({
+        path: "test.md",
+        content: "hello",
+      });
       expect(client.putContent).toHaveBeenCalledWith("test.md", "hello");
       expect(getText(result)).toContain("Written: test.md");
     });
@@ -487,7 +560,10 @@ describe("granular tools — registration and basic behavior", () => {
     it("returns errorResult on failure", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.putContent).mockRejectedValue(new Error("write failed"));
-      const result = await getTool("put_content").handler({ path: "test.md", content: "x" });
+      const result = await getTool("put_content").handler({
+        path: "test.md",
+        content: "x",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -498,7 +574,10 @@ describe("granular tools — registration and basic behavior", () => {
   describe("append_content", () => {
     it("calls client.appendContent and returns success", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("append_content").handler({ path: "note.md", content: "extra" });
+      const result = await getTool("append_content").handler({
+        path: "note.md",
+        content: "extra",
+      });
       expect(client.appendContent).toHaveBeenCalledWith("note.md", "extra");
       expect(getText(result)).toContain("Appended to: note.md");
     });
@@ -558,7 +637,10 @@ describe("granular tools — registration and basic behavior", () => {
         caseSensitive: true,
         replaceAll: true,
       });
-      expect(client.putContent).toHaveBeenCalledWith("note.md", "Hello Obsidian");
+      expect(client.putContent).toHaveBeenCalledWith(
+        "note.md",
+        "Hello Obsidian",
+      );
       expect(getText(result)).toContain("Replaced in: note.md");
     });
 
@@ -603,13 +685,22 @@ describe("granular tools — registration and basic behavior", () => {
         caseSensitive: true,
         replaceAll: false,
       });
-      expect(client.putContent).toHaveBeenCalledWith("note.md", "price: $10.00");
+      expect(client.putContent).toHaveBeenCalledWith(
+        "note.md",
+        "price: $10.00",
+      );
       expect(getText(result)).toContain("Replaced in");
     });
 
     it("returns errorResult when getFileContents returns non-string", async () => {
       const { client, getTool } = setup();
-      const noteJson: NoteJson = { content: "", frontmatter: {}, path: "x.md", tags: [], stat: { ctime: 0, mtime: 0, size: 0 } };
+      const noteJson: NoteJson = {
+        content: "",
+        frontmatter: {},
+        path: "x.md",
+        tags: [],
+        stat: { ctime: 0, mtime: 0, size: 0 },
+      };
       vi.mocked(client.getFileContents).mockResolvedValue(noteJson);
       const result = await getTool("search_replace").handler({
         path: "note.md",
@@ -634,7 +725,10 @@ describe("granular tools — registration and basic behavior", () => {
         caseSensitive: false,
         replaceAll: true,
       });
-      expect(client.putContent).toHaveBeenCalledWith("note.md", "Hello Obsidian");
+      expect(client.putContent).toHaveBeenCalledWith(
+        "note.md",
+        "Hello Obsidian",
+      );
     });
   });
 
@@ -647,7 +741,10 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(client.getFileContents)
         .mockResolvedValueOnce("# Content")
         .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
-      const result = await getTool("move_file").handler({ source: "old.md", destination: "new.md" });
+      const result = await getTool("move_file").handler({
+        source: "old.md",
+        destination: "new.md",
+      });
       expect(getText(result)).toContain("Moved");
       expect(client.putContent).toHaveBeenCalledWith("new.md", "# Content");
       expect(client.deleteFile).toHaveBeenCalledWith("old.md");
@@ -655,7 +752,10 @@ describe("granular tools — registration and basic behavior", () => {
 
     it("returns no-op when source and destination are the same", async () => {
       const { getTool } = setup();
-      const result = await getTool("move_file").handler({ source: "same.md", destination: "same.md" });
+      const result = await getTool("move_file").handler({
+        source: "same.md",
+        destination: "same.md",
+      });
       expect(getText(result)).toContain("No-op");
       expect(result.isError).toBeFalsy();
     });
@@ -665,15 +765,23 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(client.getFileContents)
         .mockResolvedValueOnce("# Source")
         .mockResolvedValueOnce("# Destination exists");
-      const result = await getTool("move_file").handler({ source: "old.md", destination: "existing.md" });
+      const result = await getTool("move_file").handler({
+        source: "old.md",
+        destination: "existing.md",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONFLICT");
     });
 
     it("returns error when source does not exist", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianApiError("Not found", 404));
-      const result = await getTool("move_file").handler({ source: "missing.md", destination: "new.md" });
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianApiError("Not found", 404),
+      );
+      const result = await getTool("move_file").handler({
+        source: "missing.md",
+        destination: "new.md",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -696,7 +804,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("put_active_file", () => {
     it("calls client.putActiveFile with content", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("put_active_file").handler({ content: "new content" });
+      const result = await getTool("put_active_file").handler({
+        content: "new content",
+      });
       expect(client.putActiveFile).toHaveBeenCalledWith("new content");
       expect(getText(result)).toContain("Active file updated");
     });
@@ -708,7 +818,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("append_active_file", () => {
     it("calls client.appendActiveFile", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("append_active_file").handler({ content: "appended" });
+      const result = await getTool("append_active_file").handler({
+        content: "appended",
+      });
       expect(client.appendActiveFile).toHaveBeenCalledWith("appended");
       expect(getText(result)).toContain("Appended to active file");
     });
@@ -756,7 +868,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("list_commands", () => {
     it("returns command list", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listCommands).mockResolvedValue({ commands: [{ id: "cmd:1", name: "Toggle" }] });
+      vi.mocked(client.listCommands).mockResolvedValue({
+        commands: [{ id: "cmd:1", name: "Toggle" }],
+      });
       const result = await getTool("list_commands").handler({});
       expect(getText(result)).toContain("Toggle");
     });
@@ -768,7 +882,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("execute_command", () => {
     it("calls client.executeCommand with commandId", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("execute_command").handler({ commandId: "editor:toggle-bold" });
+      const result = await getTool("execute_command").handler({
+        commandId: "editor:toggle-bold",
+      });
       expect(client.executeCommand).toHaveBeenCalledWith("editor:toggle-bold");
       expect(getText(result)).toContain("Executed: editor:toggle-bold");
     });
@@ -780,7 +896,10 @@ describe("granular tools — registration and basic behavior", () => {
   describe("open_file", () => {
     it("calls client.openFile with path and newLeaf", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("open_file").handler({ path: "note.md", newLeaf: true });
+      const result = await getTool("open_file").handler({
+        path: "note.md",
+        newLeaf: true,
+      });
       expect(client.openFile).toHaveBeenCalledWith("note.md", true);
       expect(getText(result)).toContain("Opened: note.md");
     });
@@ -792,8 +911,13 @@ describe("granular tools — registration and basic behavior", () => {
   describe("simple_search", () => {
     it("calls client.simpleSearch with query and contextLength", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.simpleSearch).mockResolvedValue([{ filename: "match.md", score: 1 }]);
-      const result = await getTool("simple_search").handler({ query: "hello", contextLength: 200 });
+      vi.mocked(client.simpleSearch).mockResolvedValue([
+        { filename: "match.md", score: 1 },
+      ]);
+      const result = await getTool("simple_search").handler({
+        query: "hello",
+        contextLength: 200,
+      });
       expect(client.simpleSearch).toHaveBeenCalledWith("hello", 200);
       expect(getText(result)).toContain("match.md");
     });
@@ -829,7 +953,9 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.getPeriodicNote with period and format", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getPeriodicNote).mockResolvedValue("# Daily");
-      const result = await getTool("get_periodic_note").handler({ period: "daily" });
+      const result = await getTool("get_periodic_note").handler({
+        period: "daily",
+      });
       expect(client.getPeriodicNote).toHaveBeenCalledWith("daily", undefined);
       expect(getText(result)).toBe("# Daily");
     });
@@ -841,7 +967,10 @@ describe("granular tools — registration and basic behavior", () => {
   describe("put_periodic_note", () => {
     it("calls client.putPeriodicNote", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("put_periodic_note").handler({ period: "weekly", content: "# Week" });
+      const result = await getTool("put_periodic_note").handler({
+        period: "weekly",
+        content: "# Week",
+      });
       expect(client.putPeriodicNote).toHaveBeenCalledWith("weekly", "# Week");
       expect(getText(result)).toContain("Updated weekly note");
     });
@@ -853,7 +982,10 @@ describe("granular tools — registration and basic behavior", () => {
   describe("append_periodic_note", () => {
     it("calls client.appendPeriodicNote", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("append_periodic_note").handler({ period: "daily", content: "- item" });
+      const result = await getTool("append_periodic_note").handler({
+        period: "daily",
+        content: "- item",
+      });
       expect(client.appendPeriodicNote).toHaveBeenCalledWith("daily", "- item");
       expect(getText(result)).toContain("Appended to daily note");
     });
@@ -872,15 +1004,19 @@ describe("granular tools — registration and basic behavior", () => {
         targetType: "frontmatter",
         target: "status",
       });
-      expect(client.patchPeriodicNote).toHaveBeenCalledWith("monthly", "value", {
-        operation: "replace",
-        targetType: "frontmatter",
-        target: "status",
-        targetDelimiter: undefined,
-        trimTargetWhitespace: undefined,
-        createIfMissing: undefined,
-        contentType: undefined,
-      });
+      expect(client.patchPeriodicNote).toHaveBeenCalledWith(
+        "monthly",
+        "value",
+        {
+          operation: "replace",
+          targetType: "frontmatter",
+          target: "status",
+          targetDelimiter: undefined,
+          trimTargetWhitespace: undefined,
+          createIfMissing: undefined,
+          contentType: undefined,
+        },
+      );
       expect(getText(result)).toContain("Patched monthly note");
     });
   });
@@ -891,7 +1027,9 @@ describe("granular tools — registration and basic behavior", () => {
   describe("delete_periodic_note", () => {
     it("calls client.deletePeriodicNote", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("delete_periodic_note").handler({ period: "yearly" });
+      const result = await getTool("delete_periodic_note").handler({
+        period: "yearly",
+      });
       expect(client.deletePeriodicNote).toHaveBeenCalledWith("yearly");
       expect(getText(result)).toContain("Deleted yearly note");
     });
@@ -905,9 +1043,18 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getPeriodicNoteForDate).mockResolvedValue("# Jan 5");
       const result = await getTool("get_periodic_note_for_date").handler({
-        period: "daily", year: 2025, month: 1, day: 5,
+        period: "daily",
+        year: 2025,
+        month: 1,
+        day: 5,
       });
-      expect(client.getPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 1, 5, undefined);
+      expect(client.getPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        1,
+        5,
+        undefined,
+      );
       expect(getText(result)).toBe("# Jan 5");
     });
   });
@@ -919,9 +1066,19 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.putPeriodicNoteForDate with correct args", async () => {
       const { client, getTool } = setup();
       const result = await getTool("put_periodic_note_for_date").handler({
-        period: "daily", year: 2025, month: 3, day: 14, content: "# Pi Day",
+        period: "daily",
+        year: 2025,
+        month: 3,
+        day: 14,
+        content: "# Pi Day",
       });
-      expect(client.putPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 3, 14, "# Pi Day");
+      expect(client.putPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        3,
+        14,
+        "# Pi Day",
+      );
       expect(getText(result)).toContain("2025-3-14");
     });
   });
@@ -933,9 +1090,19 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.appendPeriodicNoteForDate", async () => {
       const { client, getTool } = setup();
       const result = await getTool("append_periodic_note_for_date").handler({
-        period: "daily", year: 2025, month: 6, day: 1, content: "extra",
+        period: "daily",
+        year: 2025,
+        month: 6,
+        day: 1,
+        content: "extra",
       });
-      expect(client.appendPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 6, 1, "extra");
+      expect(client.appendPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        6,
+        1,
+        "extra",
+      );
       expect(getText(result)).toContain("Appended to daily note for 2025-6-1");
     });
   });
@@ -947,14 +1114,30 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.patchPeriodicNoteForDate with patch options", async () => {
       const { client, getTool } = setup();
       const result = await getTool("patch_periodic_note_for_date").handler({
-        period: "daily", year: 2025, month: 1, day: 1, content: "val",
-        operation: "append", targetType: "heading", target: "Tasks",
+        period: "daily",
+        year: 2025,
+        month: 1,
+        day: 1,
+        content: "val",
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
       });
       expect(client.patchPeriodicNoteForDate).toHaveBeenCalledWith(
-        "daily", 2025, 1, 1, "val",
-        { operation: "append", targetType: "heading", target: "Tasks",
-          targetDelimiter: undefined, trimTargetWhitespace: undefined,
-          createIfMissing: undefined, contentType: undefined },
+        "daily",
+        2025,
+        1,
+        1,
+        "val",
+        {
+          operation: "append",
+          targetType: "heading",
+          target: "Tasks",
+          targetDelimiter: undefined,
+          trimTargetWhitespace: undefined,
+          createIfMissing: undefined,
+          contentType: undefined,
+        },
       );
       expect(getText(result)).toContain("Patched daily note for 2025-1-1");
     });
@@ -967,9 +1150,17 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.deletePeriodicNoteForDate", async () => {
       const { client, getTool } = setup();
       const result = await getTool("delete_periodic_note_for_date").handler({
-        period: "daily", year: 2025, month: 12, day: 31,
+        period: "daily",
+        year: 2025,
+        month: 12,
+        day: 31,
       });
-      expect(client.deletePeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 12, 31);
+      expect(client.deletePeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        12,
+        31,
+      );
       expect(getText(result)).toContain("Deleted daily note for 2025-12-31");
     });
   });
@@ -981,7 +1172,10 @@ describe("granular tools — registration and basic behavior", () => {
     it("calls client.getServerStatus and returns json", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getServerStatus).mockResolvedValue({
-        ok: true, service: "Obsidian Local REST API", authenticated: true, versions: { obsidian: "1.7" },
+        ok: true,
+        service: "Obsidian Local REST API",
+        authenticated: true,
+        versions: { obsidian: "1.7" },
       });
       const result = await getTool("get_server_status").handler({});
       expect(getText(result)).toContain("Obsidian Local REST API");
@@ -1020,7 +1214,8 @@ describe("granular tools — registration and basic behavior", () => {
       if (Array.isArray(parsed)) {
         // One success, one error entry
         const hasError = parsed.some((item) => {
-          if (item !== null && typeof item === "object" && "error" in item) return true;
+          if (item !== null && typeof item === "object" && "error" in item)
+            return true;
           return false;
         });
         expect(hasError).toBe(true);
@@ -1037,10 +1232,32 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       vi.mocked(cache.getAllNotes).mockReturnValue([
-        { path: "old.md", content: "", frontmatter: {}, tags: [], stat: { ctime: 0, mtime: 100, size: 0 }, links: [], cachedAt: 0 },
-        { path: "new.md", content: "", frontmatter: {}, tags: [], stat: { ctime: 0, mtime: 999, size: 0 }, links: [], cachedAt: 0 },
+        {
+          path: "old.md",
+          content: "",
+          frontmatter: {},
+          tags: [],
+          stat: { ctime: 0, mtime: 100, size: 0 },
+          links: [],
+          cachedAt: 0,
+        },
+        {
+          path: "new.md",
+          content: "",
+          frontmatter: {},
+          tags: [],
+          stat: { ctime: 0, mtime: 999, size: 0 },
+          links: [],
+          cachedAt: 0,
+        },
       ] as never);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
       const result = await getTool("get_recent_changes").handler({ limit: 5 });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
@@ -1054,11 +1271,23 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["note.md"] });
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["note.md"],
+      });
       vi.mocked(client.getFileContents).mockResolvedValue({
-        content: "", frontmatter: {}, path: "note.md", tags: [], stat: { ctime: 0, mtime: 500, size: 0 },
+        content: "",
+        frontmatter: {},
+        path: "note.md",
+        tags: [],
+        stat: { ctime: 0, mtime: 500, size: 0 },
       } as NoteJson);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: false }),
+      );
       const result = await getTool("get_recent_changes").handler({ limit: 5 });
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
@@ -1078,7 +1307,10 @@ describe("granular tools — registration and basic behavior", () => {
           "Other/note.md",
         ],
       });
-      const result = await getTool("get_recent_periodic_notes").handler({ period: "daily", limit: 5 });
+      const result = await getTool("get_recent_periodic_notes").handler({
+        period: "daily",
+        limit: 5,
+      });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed)) {
@@ -1109,14 +1341,24 @@ describe("granular tools — registration and basic behavior", () => {
   describe("configure — set action (immediate settings)", () => {
     it("sets debug=true and calls saveConfigToFile", async () => {
       const { getTool } = setup({ configFilePath: "/tmp/test-config.json" });
-      const result = await getTool("configure").handler({ action: "set", setting: "debug", value: "true" });
-      expect(saveConfigToFile).toHaveBeenCalledWith("/tmp/test-config.json", { debug: true });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: "true",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith("/tmp/test-config.json", {
+        debug: true,
+      });
       expect(getText(result)).toContain("effective immediately");
     });
 
     it("returns errorResult for unknown setting", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "unknownSetting", value: "foo" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "unknownSetting",
+        value: "foo",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Unknown setting");
     });
@@ -1130,49 +1372,75 @@ describe("granular tools — registration and basic behavior", () => {
 
     it("returns errorResult when value is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "debug" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Value is required");
     });
 
     it("returns errorResult for invalid debug value", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "debug", value: "maybe" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: "maybe",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Invalid value");
     });
 
     it("sets timeout and saves to file (requires restart)", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "timeout", value: "60000" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { timeout: 60000 } },
-      );
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value: "60000",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { timeout: 60000 },
+      });
       expect(getText(result)).toContain("Restart the server");
     });
 
     it("rejects invalid timeout (non-numeric)", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "timeout", value: "abc" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value: "abc",
+      });
       expect(result.isError).toBe(true);
     });
 
     it("sets toolMode — requires restart", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "toolMode", value: "consolidated" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolMode",
+        value: "consolidated",
+      });
       expect(getText(result)).toContain("Restart the server");
     });
 
     it("rejects invalid toolMode value", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "toolMode", value: "unknown" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolMode",
+        value: "unknown",
+      });
       expect(result.isError).toBe(true);
     });
 
     it("sets toolPreset — requires restart", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "toolPreset", value: "read-only" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolPreset",
+        value: "read-only",
+      });
       expect(getText(result)).toContain("Restart the server");
     });
   });
@@ -1183,14 +1451,22 @@ describe("granular tools — registration and basic behavior", () => {
   describe("configure — reset action", () => {
     it("resets debug to default", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "reset", setting: "debug" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), { debug: false });
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "debug",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        debug: false,
+      });
       expect(getText(result)).toContain("reset to default");
     });
 
     it("returns errorResult for unknown setting", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "reset", setting: "unknownKey" });
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "unknownKey",
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -1215,7 +1491,9 @@ describe("granular tools — registration and basic behavior", () => {
 
     it("uses granular tool names in granular mode", async () => {
       const { getTool } = setup();
-      const text = getText(await getTool("configure").handler({ action: "skill" }));
+      const text = getText(
+        await getTool("configure").handler({ action: "skill" }),
+      );
       expect(text).toContain("get_file_contents");
       expect(text).not.toContain("Consolidated Mode Action Reference");
     });
@@ -1232,8 +1510,16 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.getBacklinks).mockReturnValue([
         { source: "linker.md", context: "...see [[target.md]]..." },
       ]);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ path: "target.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_backlinks").handler({
+        path: "target.md",
+      });
       expect(cache.getBacklinks).toHaveBeenCalledWith("target.md");
       expect(getText(result)).toContain("linker.md");
     });
@@ -1242,8 +1528,16 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
-      const result = await getTool("get_backlinks").handler({ path: "target.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: false }),
+      );
+      const result = await getTool("get_backlinks").handler({
+        path: "target.md",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is disabled");
     });
@@ -1252,8 +1546,16 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ path: "target.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_backlinks").handler({
+        path: "target.md",
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is rebuilding");
       expect(cache.initialize).toHaveBeenCalled();
@@ -1265,23 +1567,43 @@ describe("granular tools — registration and basic behavior", () => {
       const cache = makeMockCache(false);
       // getIsInitialized returns false, but waitForInitialization returns true (simulates becoming ready)
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
-      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_backlinks").handler({ path: "target.md" });
+      vi.mocked(cache.getBacklinks).mockReturnValue([
+        { source: "ref.md", context: "ctx" },
+      ]);
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_backlinks").handler({
+        path: "target.md",
+      });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
 
     it("returns error and triggers rebuild when cache build fails", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false, false);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
       const result = await getTool("get_backlinks").handler({ path: "x.md" });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is rebuilding");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
       expect(cache.initialize).toHaveBeenCalled();
     });
   });
@@ -1295,13 +1617,30 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue(["orphan.md"]);
-      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([{ path: "hub.md", inbound: 5, outbound: 3 }]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([
+        { path: "hub.md", inbound: 5, outbound: 3 },
+      ]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(1);
-      vi.mocked(cache.getFileList).mockReturnValue(["subdir/note.md", "root.md"]);
-      Object.defineProperty(cache, "noteCount", { get: vi.fn().mockReturnValue(10) });
-      Object.defineProperty(cache, "linkCount", { get: vi.fn().mockReturnValue(5) });
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      vi.mocked(cache.getFileList).mockReturnValue([
+        "subdir/note.md",
+        "root.md",
+      ]);
+      Object.defineProperty(cache, "noteCount", {
+        get: vi.fn().mockReturnValue(10),
+      });
+      Object.defineProperty(cache, "linkCount", {
+        get: vi.fn().mockReturnValue(5),
+      });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_vault_structure").handler({
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
       const parsed: unknown = JSON.parse(getText(result));
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
@@ -1316,18 +1655,36 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_vault_structure").handler({
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
 
     it("returns errorResult when cache disabled", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
-      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: false }),
+      );
+      const result = await getTool("get_vault_structure").handler({
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is disabled");
     });
@@ -1336,8 +1693,16 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_vault_structure").handler({ limit: 10 });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_vault_structure").handler({
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1353,30 +1718,63 @@ describe("granular tools — registration and basic behavior", () => {
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
       vi.mocked(cache.getBacklinks).mockReturnValue([]);
       vi.mocked(cache.getForwardLinks).mockReturnValue([]);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ path: "x.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_note_connections").handler({
+        path: "x.md",
+      });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
 
     it("returns backlinks and forward links from cache", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "a.md", context: "see [[target]]" }]);
-      vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ path: "target.md" });
+      vi.mocked(cache.getBacklinks).mockReturnValue([
+        { source: "a.md", context: "see [[target]]" },
+      ]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([
+        { target: "b.md", type: "wikilink", context: "[[b]]" },
+      ]);
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_note_connections").handler({
+        path: "target.md",
+      });
       const parsed: unknown = JSON.parse(getText(result));
-      expect(parsed).toMatchObject({ backlinks: [{ source: "a.md" }], forwardLinks: [{ target: "b.md" }] });
+      expect(parsed).toMatchObject({
+        backlinks: [{ source: "a.md" }],
+        forwardLinks: [{ target: "b.md" }],
+      });
     });
 
     it("returns errorResult when cache disabled", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
-      const result = await getTool("get_note_connections").handler({ path: "x.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: false }),
+      );
+      const result = await getTool("get_note_connections").handler({
+        path: "x.md",
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -1384,8 +1782,16 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
-      const result = await getTool("get_note_connections").handler({ path: "x.md" });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      const result = await getTool("get_note_connections").handler({
+        path: "x.md",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1398,7 +1804,13 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
       const result = await getTool("refresh_cache").handler({});
       expect(cache.refresh).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
@@ -1409,7 +1821,13 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: false }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: false }),
+      );
       const result = await getTool("refresh_cache").handler({});
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is disabled");
@@ -1420,7 +1838,13 @@ describe("granular tools — registration and basic behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       vi.mocked(cache.refresh).mockRejectedValue(new Error("network error"));
-      registerGranularTools(server as never, client, cache, () => true, makeConfig({ enableCache: true }));
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
       const result = await getTool("refresh_cache").handler({});
       expect(result.isError).toBe(true);
     });
@@ -1434,7 +1858,13 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getRegistered } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache();
-      registerGranularTools(server as never, client, cache, (name) => name === "list_files_in_vault", makeConfig());
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        (name) => name === "list_files_in_vault",
+        makeConfig(),
+      );
       const registered = getRegistered();
       expect(registered).toEqual(["list_files_in_vault"]);
     });
@@ -1455,7 +1885,13 @@ describe("consolidated tools — registration and behavior", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     const config = makeConfig({ toolMode: "consolidated", ...configOverrides });
-    registerConsolidatedTools(server as never, client, cache, () => true, config);
+    registerConsolidatedTools(
+      server as never,
+      client,
+      cache,
+      () => true,
+      config,
+    );
     return { client, cache, getTool };
   }
 
@@ -1466,7 +1902,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.listFilesInVault", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["x.md"] });
-      const result = await getTool("vault").handler({ action: "list", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(getText(result)).toContain("x.md");
     });
@@ -1475,13 +1916,24 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — list_dir action", () => {
     it("calls client.listFilesInDir with path", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("vault").handler({ action: "list_dir", path: "mydir", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "list_dir",
+        path: "mydir",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.listFilesInDir).toHaveBeenCalledWith("mydir");
     });
 
     it("returns errorResult when path is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({ action: "list_dir", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "list_dir",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("path is required");
     });
@@ -1491,14 +1943,25 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.getFileContents with path and format", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("# Content");
-      const result = await getTool("vault").handler({ action: "get", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "get",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.getFileContents).toHaveBeenCalledWith("note.md", undefined);
       expect(getText(result)).toBe("# Content");
     });
 
     it("returns errorResult when path is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({ action: "get", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "get",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1506,19 +1969,38 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — put action", () => {
     it("calls client.putContent", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler({ action: "put", path: "note.md", content: "body", useRegex: false, caseSensitive: true, replaceAll: true });
+      await getTool("vault").handler({
+        action: "put",
+        path: "note.md",
+        content: "body",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.putContent).toHaveBeenCalledWith("note.md", "body");
     });
 
     it("returns errorResult when path missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({ action: "put", content: "body", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "put",
+        content: "body",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
     });
 
     it("returns errorResult when content missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({ action: "put", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "put",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1526,7 +2008,14 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — append action", () => {
     it("calls client.appendContent", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler({ action: "append", path: "note.md", content: "extra", useRegex: false, caseSensitive: true, replaceAll: true });
+      await getTool("vault").handler({
+        action: "append",
+        path: "note.md",
+        content: "extra",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.appendContent).toHaveBeenCalledWith("note.md", "extra");
     });
   });
@@ -1535,14 +2024,24 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.patchContent with all patch options", async () => {
       const { client, getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "patch", path: "note.md", content: "text",
-        operation: "append", targetType: "heading", target: "Section",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "patch",
+        path: "note.md",
+        content: "text",
+        operation: "append",
+        targetType: "heading",
+        target: "Section",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(client.patchContent).toHaveBeenCalledWith("note.md", "text", {
-        operation: "append", targetType: "heading", target: "Section",
-        targetDelimiter: undefined, trimTargetWhitespace: undefined,
-        createIfMissing: undefined, contentType: undefined,
+        operation: "append",
+        targetType: "heading",
+        target: "Section",
+        targetDelimiter: undefined,
+        trimTargetWhitespace: undefined,
+        createIfMissing: undefined,
+        contentType: undefined,
       });
       expect(getText(result)).toContain("Patched: note.md");
     });
@@ -1550,9 +2049,14 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns errorResult when operation missing", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "patch", path: "note.md", content: "text",
-        targetType: "heading", target: "Section",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "patch",
+        path: "note.md",
+        content: "text",
+        targetType: "heading",
+        target: "Section",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -1561,13 +2065,24 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — delete action", () => {
     it("calls client.deleteFile", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler({ action: "delete", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true });
+      await getTool("vault").handler({
+        action: "delete",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(client.deleteFile).toHaveBeenCalledWith("note.md");
     });
 
     it("returns errorResult when path missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({ action: "delete", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "delete",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1577,8 +2092,13 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("old text");
       const result = await getTool("vault").handler({
-        action: "search_replace", path: "note.md", search: "old", replace: "new",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "search_replace",
+        path: "note.md",
+        search: "old",
+        replace: "new",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalledWith("note.md", "new text");
       expect(getText(result)).toContain("Replaced in");
@@ -1588,8 +2108,13 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("unchanged");
       const result = await getTool("vault").handler({
-        action: "search_replace", path: "note.md", search: "xyz", replace: "abc",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "search_replace",
+        path: "note.md",
+        search: "xyz",
+        replace: "abc",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(client.putContent).not.toHaveBeenCalled();
       expect(getText(result)).toContain("No matches found");
@@ -1598,8 +2123,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns errorResult when search is missing", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "search_replace", path: "note.md", replace: "new",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "search_replace",
+        path: "note.md",
+        replace: "new",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -1607,8 +2136,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns errorResult when replace is missing", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "search_replace", path: "note.md", search: "old",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "search_replace",
+        path: "note.md",
+        search: "old",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -1624,8 +2157,12 @@ describe("consolidated tools — registration and behavior", () => {
         .mockResolvedValueOnce("# Content")
         .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
       const result = await getTool("vault").handler({
-        action: "move", source: "old.md", destination: "new.md",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "move",
+        source: "old.md",
+        destination: "new.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(getText(result)).toContain("Moved");
       expect(client.putContent).toHaveBeenCalledWith("new.md", "# Content");
@@ -1635,8 +2172,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns error when source is missing", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "move", destination: "new.md",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "move",
+        destination: "new.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("source is required");
@@ -1645,8 +2185,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns error when destination is missing", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
-        action: "move", source: "old.md",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "move",
+        source: "old.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("destination is required");
@@ -1658,8 +2201,12 @@ describe("consolidated tools — registration and behavior", () => {
         .mockResolvedValueOnce("# Source")
         .mockResolvedValueOnce("# Existing");
       const result = await getTool("vault").handler({
-        action: "move", source: "old.md", destination: "existing.md",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "move",
+        source: "old.md",
+        destination: "existing.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONFLICT");
@@ -1673,8 +2220,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks put in read-only preset", async () => {
       const { getTool } = setup({ toolPreset: "read-only" });
       const result = await getTool("vault").handler({
-        action: "put", path: "note.md", content: "body",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "put",
+        path: "note.md",
+        content: "body",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1683,15 +2234,24 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks append in read-only preset", async () => {
       const { getTool } = setup({ toolPreset: "read-only" });
       const result = await getTool("vault").handler({
-        action: "append", path: "note.md", content: "x",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "append",
+        path: "note.md",
+        content: "x",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
 
     it("allows list in read-only preset", async () => {
       const { client, getTool } = setup({ toolPreset: "read-only" });
-      const result = await getTool("vault").handler({ action: "list", useRegex: false, caseSensitive: true, replaceAll: true });
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBeFalsy();
       expect(client.listFilesInVault).toHaveBeenCalled();
     });
@@ -1704,7 +2264,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks delete in safe preset", async () => {
       const { getTool } = setup({ toolPreset: "safe" });
       const result = await getTool("vault").handler({
-        action: "delete", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "delete",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1713,8 +2277,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("allows put in safe preset", async () => {
       const { client, getTool } = setup({ toolPreset: "safe" });
       const result = await getTool("vault").handler({
-        action: "put", path: "note.md", content: "body",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "put",
+        path: "note.md",
+        content: "body",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
@@ -1728,7 +2296,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks delete in minimal preset", async () => {
       const { getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("vault").handler({
-        action: "delete", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "delete",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1737,8 +2309,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks put in minimal preset", async () => {
       const { getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("vault").handler({
-        action: "put", path: "note.md", content: "body",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "put",
+        path: "note.md",
+        content: "body",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1747,8 +2323,13 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks search_replace in minimal preset", async () => {
       const { getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("vault").handler({
-        action: "search_replace", path: "note.md", search: "a", replace: "b",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "search_replace",
+        path: "note.md",
+        search: "a",
+        replace: "b",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1758,7 +2339,10 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup({ toolPreset: "minimal" });
       vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["a.md"] });
       const result = await getTool("vault").handler({
-        action: "list", useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBeFalsy();
     });
@@ -1767,7 +2351,11 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup({ toolPreset: "minimal" });
       vi.mocked(client.getFileContents).mockResolvedValue("# Hello");
       const result = await getTool("vault").handler({
-        action: "get", path: "note.md", useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "get",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(result.isError).toBeFalsy();
     });
@@ -1775,8 +2363,12 @@ describe("consolidated tools — registration and behavior", () => {
     it("allows append in minimal preset", async () => {
       const { client, getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("vault").handler({
-        action: "append", path: "note.md", content: "more",
-        useRegex: false, caseSensitive: true, replaceAll: true,
+        action: "append",
+        path: "note.md",
+        content: "more",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
       });
       expect(client.appendContent).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
@@ -1790,7 +2382,9 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks jsonlogic in minimal preset", async () => {
       const { getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("search").handler({
-        type: "jsonlogic", jsonQuery: { glob: ["*.md"] }, contextLength: 100,
+        type: "jsonlogic",
+        jsonQuery: { glob: ["*.md"] },
+        contextLength: 100,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1799,7 +2393,9 @@ describe("consolidated tools — registration and behavior", () => {
     it("blocks dataview in minimal preset", async () => {
       const { getTool } = setup({ toolPreset: "minimal" });
       const result = await getTool("search").handler({
-        type: "dataview", query: "LIST FROM \"\"", contextLength: 100,
+        type: "dataview",
+        query: 'LIST FROM ""',
+        contextLength: 100,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("not allowed");
@@ -1809,7 +2405,9 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup({ toolPreset: "minimal" });
       vi.mocked(client.simpleSearch).mockResolvedValue([]);
       const result = await getTool("search").handler({
-        type: "simple", query: "test", contextLength: 100,
+        type: "simple",
+        query: "test",
+        contextLength: 100,
       });
       expect(result.isError).toBeFalsy();
     });
@@ -1844,7 +2442,10 @@ describe("consolidated tools — registration and behavior", () => {
   describe("active_file — append", () => {
     it("calls client.appendActiveFile", async () => {
       const { client, getTool } = setup();
-      await getTool("active_file").handler({ action: "append", content: "more" });
+      await getTool("active_file").handler({
+        action: "append",
+        content: "more",
+      });
       expect(client.appendActiveFile).toHaveBeenCalledWith("more");
     });
   });
@@ -1853,12 +2454,19 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.patchActiveFile", async () => {
       const { client, getTool } = setup();
       const result = await getTool("active_file").handler({
-        action: "patch", content: "val",
-        operation: "append", targetType: "heading", target: "Section",
+        action: "patch",
+        content: "val",
+        operation: "append",
+        targetType: "heading",
+        target: "Section",
       });
       expect(client.patchActiveFile).toHaveBeenCalledWith("val", {
-        operation: "append", targetType: "heading", target: "Section",
-        targetDelimiter: undefined, trimTargetWhitespace: undefined, contentType: undefined,
+        operation: "append",
+        targetType: "heading",
+        target: "Section",
+        targetDelimiter: undefined,
+        trimTargetWhitespace: undefined,
+        contentType: undefined,
       });
       expect(getText(result)).toContain("Active file patched");
     });
@@ -1866,7 +2474,10 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns errorResult when operation missing", async () => {
       const { getTool } = setup();
       const result = await getTool("active_file").handler({
-        action: "patch", content: "val", targetType: "heading", target: "Section",
+        action: "patch",
+        content: "val",
+        targetType: "heading",
+        target: "Section",
       });
       expect(result.isError).toBe(true);
     });
@@ -1898,7 +2509,9 @@ describe("consolidated tools — registration and behavior", () => {
   describe("commands — list", () => {
     it("calls client.listCommands", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listCommands).mockResolvedValue({ commands: [{ id: "x", name: "X" }] });
+      vi.mocked(client.listCommands).mockResolvedValue({
+        commands: [{ id: "x", name: "X" }],
+      });
       const result = await getTool("commands").handler({ action: "list" });
       expect(getText(result)).toContain('"name": "X"');
     });
@@ -1907,7 +2520,10 @@ describe("consolidated tools — registration and behavior", () => {
   describe("commands — execute", () => {
     it("calls client.executeCommand with commandId", async () => {
       const { client, getTool } = setup();
-      await getTool("commands").handler({ action: "execute", commandId: "editor:bold" });
+      await getTool("commands").handler({
+        action: "execute",
+        commandId: "editor:bold",
+      });
       expect(client.executeCommand).toHaveBeenCalledWith("editor:bold");
     });
 
@@ -1935,13 +2551,20 @@ describe("consolidated tools — registration and behavior", () => {
   describe("search — simple", () => {
     it("calls client.simpleSearch", async () => {
       const { client, getTool } = setup();
-      await getTool("search").handler({ type: "simple", query: "hello", contextLength: 100 });
+      await getTool("search").handler({
+        type: "simple",
+        query: "hello",
+        contextLength: 100,
+      });
       expect(client.simpleSearch).toHaveBeenCalledWith("hello", 100);
     });
 
     it("returns errorResult when query missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("search").handler({ type: "simple", contextLength: 100 });
+      const result = await getTool("search").handler({
+        type: "simple",
+        contextLength: 100,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1950,13 +2573,20 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.complexSearch with jsonQuery", async () => {
       const { client, getTool } = setup();
       const jsonQuery = { glob: [{ var: "path" }, "*.md"] };
-      await getTool("search").handler({ type: "jsonlogic", jsonQuery, contextLength: 100 });
+      await getTool("search").handler({
+        type: "jsonlogic",
+        jsonQuery,
+        contextLength: 100,
+      });
       expect(client.complexSearch).toHaveBeenCalledWith(jsonQuery);
     });
 
     it("returns errorResult when jsonQuery missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("search").handler({ type: "jsonlogic", contextLength: 100 });
+      const result = await getTool("search").handler({
+        type: "jsonlogic",
+        contextLength: 100,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1964,13 +2594,20 @@ describe("consolidated tools — registration and behavior", () => {
   describe("search — dataview", () => {
     it("calls client.dataviewSearch with query", async () => {
       const { client, getTool } = setup();
-      await getTool("search").handler({ type: "dataview", query: 'LIST FROM ""', contextLength: 100 });
+      await getTool("search").handler({
+        type: "dataview",
+        query: 'LIST FROM ""',
+        contextLength: 100,
+      });
       expect(client.dataviewSearch).toHaveBeenCalledWith('LIST FROM ""');
     });
 
     it("returns errorResult when query missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("search").handler({ type: "dataview", contextLength: 100 });
+      const result = await getTool("search").handler({
+        type: "dataview",
+        contextLength: 100,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -1982,7 +2619,10 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.getPeriodicNote for current period", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getPeriodicNote).mockResolvedValue("# Today");
-      const result = await getTool("periodic_note").handler({ action: "get", period: "daily" });
+      const result = await getTool("periodic_note").handler({
+        action: "get",
+        period: "daily",
+      });
       expect(client.getPeriodicNote).toHaveBeenCalledWith("daily", undefined);
       expect(getText(result)).toBe("# Today");
     });
@@ -1991,11 +2631,23 @@ describe("consolidated tools — registration and behavior", () => {
   describe("periodic_note — get (by date)", () => {
     it("calls client.getPeriodicNoteForDate when year/month/day all present", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getPeriodicNoteForDate).mockResolvedValue("# Specific day");
+      vi.mocked(client.getPeriodicNoteForDate).mockResolvedValue(
+        "# Specific day",
+      );
       const result = await getTool("periodic_note").handler({
-        action: "get", period: "daily", year: 2025, month: 3, day: 14,
+        action: "get",
+        period: "daily",
+        year: 2025,
+        month: 3,
+        day: 14,
       });
-      expect(client.getPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 3, 14, undefined);
+      expect(client.getPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        3,
+        14,
+        undefined,
+      );
       expect(getText(result)).toBe("# Specific day");
     });
   });
@@ -2003,13 +2655,20 @@ describe("consolidated tools — registration and behavior", () => {
   describe("periodic_note — put (current)", () => {
     it("calls client.putPeriodicNote", async () => {
       const { client, getTool } = setup();
-      await getTool("periodic_note").handler({ action: "put", period: "weekly", content: "# Week" });
+      await getTool("periodic_note").handler({
+        action: "put",
+        period: "weekly",
+        content: "# Week",
+      });
       expect(client.putPeriodicNote).toHaveBeenCalledWith("weekly", "# Week");
     });
 
     it("returns errorResult when content missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("periodic_note").handler({ action: "put", period: "daily" });
+      const result = await getTool("periodic_note").handler({
+        action: "put",
+        period: "daily",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -2018,25 +2677,51 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.putPeriodicNoteForDate", async () => {
       const { client, getTool } = setup();
       await getTool("periodic_note").handler({
-        action: "put", period: "daily", year: 2025, month: 1, day: 1, content: "# New Year",
+        action: "put",
+        period: "daily",
+        year: 2025,
+        month: 1,
+        day: 1,
+        content: "# New Year",
       });
-      expect(client.putPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 1, 1, "# New Year");
+      expect(client.putPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        1,
+        1,
+        "# New Year",
+      );
     });
   });
 
   describe("periodic_note — append", () => {
     it("calls client.appendPeriodicNote for current period", async () => {
       const { client, getTool } = setup();
-      await getTool("periodic_note").handler({ action: "append", period: "daily", content: "item" });
+      await getTool("periodic_note").handler({
+        action: "append",
+        period: "daily",
+        content: "item",
+      });
       expect(client.appendPeriodicNote).toHaveBeenCalledWith("daily", "item");
     });
 
     it("calls client.appendPeriodicNoteForDate when date given", async () => {
       const { client, getTool } = setup();
       await getTool("periodic_note").handler({
-        action: "append", period: "daily", year: 2025, month: 6, day: 15, content: "item",
+        action: "append",
+        period: "daily",
+        year: 2025,
+        month: 6,
+        day: 15,
+        content: "item",
       });
-      expect(client.appendPeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 6, 15, "item");
+      expect(client.appendPeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        6,
+        15,
+        "item",
+      );
     });
   });
 
@@ -2044,13 +2729,21 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.patchPeriodicNote for current period", async () => {
       const { client, getTool } = setup();
       const result = await getTool("periodic_note").handler({
-        action: "patch", period: "daily", content: "val",
-        operation: "replace", targetType: "frontmatter", target: "status",
+        action: "patch",
+        period: "daily",
+        content: "val",
+        operation: "replace",
+        targetType: "frontmatter",
+        target: "status",
       });
       expect(client.patchPeriodicNote).toHaveBeenCalledWith("daily", "val", {
-        operation: "replace", targetType: "frontmatter", target: "status",
-        targetDelimiter: undefined, trimTargetWhitespace: undefined,
-        createIfMissing: undefined, contentType: undefined,
+        operation: "replace",
+        targetType: "frontmatter",
+        target: "status",
+        targetDelimiter: undefined,
+        trimTargetWhitespace: undefined,
+        createIfMissing: undefined,
+        contentType: undefined,
       });
       expect(getText(result)).toContain("Patched daily note");
     });
@@ -2058,8 +2751,15 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.patchPeriodicNoteForDate when date provided", async () => {
       const { client, getTool } = setup();
       await getTool("periodic_note").handler({
-        action: "patch", period: "daily", year: 2025, month: 3, day: 1, content: "val",
-        operation: "append", targetType: "heading", target: "Tasks",
+        action: "patch",
+        period: "daily",
+        year: 2025,
+        month: 3,
+        day: 1,
+        content: "val",
+        operation: "append",
+        targetType: "heading",
+        target: "Tasks",
       });
       expect(client.patchPeriodicNoteForDate).toHaveBeenCalled();
     });
@@ -2067,8 +2767,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("returns errorResult when operation missing", async () => {
       const { getTool } = setup();
       const result = await getTool("periodic_note").handler({
-        action: "patch", period: "daily", content: "val",
-        targetType: "heading", target: "Section",
+        action: "patch",
+        period: "daily",
+        content: "val",
+        targetType: "heading",
+        target: "Section",
       });
       expect(result.isError).toBe(true);
     });
@@ -2077,27 +2780,45 @@ describe("consolidated tools — registration and behavior", () => {
   describe("periodic_note — delete", () => {
     it("calls client.deletePeriodicNote for current period", async () => {
       const { client, getTool } = setup();
-      await getTool("periodic_note").handler({ action: "delete", period: "daily" });
+      await getTool("periodic_note").handler({
+        action: "delete",
+        period: "daily",
+      });
       expect(client.deletePeriodicNote).toHaveBeenCalledWith("daily");
     });
 
     it("calls client.deletePeriodicNoteForDate when date given", async () => {
       const { client, getTool } = setup();
       await getTool("periodic_note").handler({
-        action: "delete", period: "daily", year: 2025, month: 12, day: 31,
+        action: "delete",
+        period: "daily",
+        year: 2025,
+        month: 12,
+        day: 31,
       });
-      expect(client.deletePeriodicNoteForDate).toHaveBeenCalledWith("daily", 2025, 12, 31);
+      expect(client.deletePeriodicNoteForDate).toHaveBeenCalledWith(
+        "daily",
+        2025,
+        12,
+        31,
+      );
     });
 
     it("blocks delete in safe preset", async () => {
       const { getTool } = setup({ toolPreset: "safe" });
-      const result = await getTool("periodic_note").handler({ action: "delete", period: "daily" });
+      const result = await getTool("periodic_note").handler({
+        action: "delete",
+        period: "daily",
+      });
       expect(result.isError).toBe(true);
     });
 
     it("blocks delete in read-only preset", async () => {
       const { getTool } = setup({ toolPreset: "read-only" });
-      const result = await getTool("periodic_note").handler({ action: "delete", period: "daily" });
+      const result = await getTool("periodic_note").handler({
+        action: "delete",
+        period: "daily",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -2109,7 +2830,10 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.getServerStatus", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getServerStatus).mockResolvedValue({
-        ok: true, service: "Obsidian REST API", authenticated: true, versions: {},
+        ok: true,
+        service: "Obsidian REST API",
+        authenticated: true,
+        versions: {},
       });
       const result = await getTool("status").handler({});
       expect(client.getServerStatus).toHaveBeenCalled();
@@ -2118,7 +2842,9 @@ describe("consolidated tools — registration and behavior", () => {
 
     it("returns errorResult on connection error", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getServerStatus).mockRejectedValue(new ObsidianConnectionError("refused"));
+      vi.mocked(client.getServerStatus).mockRejectedValue(
+        new ObsidianConnectionError("refused"),
+      );
       const result = await getTool("status").handler({});
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONNECTION ERROR");
@@ -2134,7 +2860,9 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(client.getFileContents)
         .mockResolvedValueOnce("# Note 1")
         .mockResolvedValueOnce("# Note 2");
-      const result = await getTool("batch_get").handler({ paths: ["a.md", "b.md"] });
+      const result = await getTool("batch_get").handler({
+        paths: ["a.md", "b.md"],
+      });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed)) {
@@ -2147,7 +2875,9 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(client.getFileContents)
         .mockResolvedValueOnce("# Note")
         .mockRejectedValueOnce(new ObsidianApiError("not found", 404));
-      const result = await getTool("batch_get").handler({ paths: ["ok.md", "missing.md"] });
+      const result = await getTool("batch_get").handler({
+        paths: ["ok.md", "missing.md"],
+      });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed)) {
@@ -2168,11 +2898,36 @@ describe("consolidated tools — registration and behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       vi.mocked(cache.getAllNotes).mockReturnValue([
-        { path: "old.md", content: "", frontmatter: {}, tags: [], stat: { ctime: 0, mtime: 100, size: 0 }, links: [], cachedAt: 0 },
-        { path: "new.md", content: "", frontmatter: {}, tags: [], stat: { ctime: 0, mtime: 999, size: 0 }, links: [], cachedAt: 0 },
+        {
+          path: "old.md",
+          content: "",
+          frontmatter: {},
+          tags: [],
+          stat: { ctime: 0, mtime: 100, size: 0 },
+          links: [],
+          cachedAt: 0,
+        },
+        {
+          path: "new.md",
+          content: "",
+          frontmatter: {},
+          tags: [],
+          stat: { ctime: 0, mtime: 999, size: 0 },
+          links: [],
+          cachedAt: 0,
+        },
       ] as never);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("recent").handler({ type: "changes", limit: 5 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 5,
+      });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -2185,12 +2940,27 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["note.md"] });
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["note.md"],
+      });
       vi.mocked(client.getFileContents).mockResolvedValue({
-        content: "", frontmatter: {}, path: "note.md", tags: [], stat: { ctime: 0, mtime: 500, size: 0 },
+        content: "",
+        frontmatter: {},
+        path: "note.md",
+        tags: [],
+        stat: { ctime: 0, mtime: 500, size: 0 },
       } as NoteJson);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("recent").handler({ type: "changes", limit: 5 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 5,
+      });
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
     });
@@ -2206,7 +2976,11 @@ describe("consolidated tools — registration and behavior", () => {
           "Daily Notes/2025-01-01.md",
         ],
       });
-      const result = await getTool("recent").handler({ type: "periodic_notes", period: "weekly", limit: 10 });
+      const result = await getTool("recent").handler({
+        type: "periodic_notes",
+        period: "weekly",
+        limit: 10,
+      });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed)) {
@@ -2217,7 +2991,10 @@ describe("consolidated tools — registration and behavior", () => {
 
     it("returns errorResult when period missing for periodic_notes type", async () => {
       const { getTool } = setup();
-      const result = await getTool("recent").handler({ type: "periodic_notes", limit: 10 });
+      const result = await getTool("recent").handler({
+        type: "periodic_notes",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("period is required");
     });
@@ -2238,14 +3015,24 @@ describe("consolidated tools — registration and behavior", () => {
   describe("configure — consolidated set", () => {
     it("sets debug=false", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "debug", value: "false" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), { debug: false });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: "false",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        debug: false,
+      });
       expect(getText(result)).toContain("effective immediately");
     });
 
     it("returns errorResult for unknown setting", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "badKey", value: "x" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "badKey",
+        value: "x",
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -2257,39 +3044,56 @@ describe("consolidated tools — registration and behavior", () => {
 
     it("returns errorResult when value omitted", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "debug" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+      });
       expect(result.isError).toBe(true);
     });
 
     it("rejects invalid maxResponseChars (negative)", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "maxResponseChars", value: "-1" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "-1",
+      });
       expect(result.isError).toBe(true);
     });
 
     it("sets maxResponseChars=0 (disabled)", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "maxResponseChars", value: "0" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { maxResponseChars: 0 } },
-      );
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "0",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 0 },
+      });
       expect(result.isError).toBeFalsy();
     });
 
     it("sets verifyWrites=true", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "verifyWrites", value: "true" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { verifyWrites: true } },
-      );
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "verifyWrites",
+        value: "true",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { verifyWrites: true },
+      });
       expect(result.isError).toBeFalsy();
     });
 
     it("rejects invalid toolPreset value", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "set", setting: "toolPreset", value: "invalid" });
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolPreset",
+        value: "invalid",
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -2297,53 +3101,66 @@ describe("consolidated tools — registration and behavior", () => {
   describe("configure — consolidated reset", () => {
     it("resets timeout to 30000", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "reset", setting: "timeout" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { timeout: 30000 } },
-      );
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "timeout",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { timeout: 30000 },
+      });
       expect(getText(result)).toContain("reset to default");
     });
 
     it("resets verifyWrites to false", async () => {
       const { getTool } = setup();
-      await getTool("configure").handler({ action: "reset", setting: "verifyWrites" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { verifyWrites: false } },
-      );
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "verifyWrites",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { verifyWrites: false },
+      });
     });
 
     it("resets maxResponseChars to 500000", async () => {
       const { getTool } = setup();
-      await getTool("configure").handler({ action: "reset", setting: "maxResponseChars" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { reliability: { maxResponseChars: 500000 } },
-      );
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "maxResponseChars",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 500000 },
+      });
     });
 
     it("resets toolMode to granular", async () => {
       const { getTool } = setup();
-      await getTool("configure").handler({ action: "reset", setting: "toolMode" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { tools: { mode: "granular" } },
-      );
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "toolMode",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        tools: { mode: "granular" },
+      });
     });
 
     it("resets toolPreset to full", async () => {
       const { getTool } = setup();
-      await getTool("configure").handler({ action: "reset", setting: "toolPreset" });
-      expect(saveConfigToFile).toHaveBeenCalledWith(
-        expect.any(String),
-        { tools: { preset: "full" } },
-      );
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "toolPreset",
+      });
+      expect(saveConfigToFile).toHaveBeenCalledWith(expect.any(String), {
+        tools: { preset: "full" },
+      });
     });
 
     it("returns errorResult for unknown setting", async () => {
       const { getTool } = setup();
-      const result = await getTool("configure").handler({ action: "reset", setting: "unknownKey" });
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "unknownKey",
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -2360,7 +3177,9 @@ describe("consolidated tools — registration and behavior", () => {
   describe("configure — consolidated skill", () => {
     it("uses consolidated tool names and includes action reference", async () => {
       const { getTool } = setup();
-      const text = getText(await getTool("configure").handler({ action: "skill" }));
+      const text = getText(
+        await getTool("configure").handler({ action: "skill" }),
+      );
       expect(text).toContain("vault action: get");
       expect(text).toContain("Consolidated Mode Action Reference");
     });
@@ -2374,9 +3193,21 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "see [[target]]" }]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
+      vi.mocked(cache.getBacklinks).mockReturnValue([
+        { source: "ref.md", context: "see [[target]]" },
+      ]);
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        path: "target.md",
+        limit: 10,
+      });
       expect(cache.getBacklinks).toHaveBeenCalledWith("target.md");
       expect(getText(result)).toContain("ref.md");
     });
@@ -2385,8 +3216,17 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "backlinks", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -2394,8 +3234,18 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: false }));
-      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: false }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        path: "x.md",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is disabled");
     });
@@ -2404,8 +3254,18 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "x.md", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        path: "x.md",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is rebuilding");
       expect(cache.initialize).toHaveBeenCalled();
@@ -2416,12 +3276,26 @@ describe("consolidated tools — registration and behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(false);
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
-      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "ref.md", context: "ctx" }]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "backlinks", path: "target.md", limit: 10 });
+      vi.mocked(cache.getBacklinks).mockReturnValue([
+        { source: "ref.md", context: "ctx" },
+      ]);
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        path: "target.md",
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
       expect(getText(result)).toContain("ref.md");
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
   });
 
@@ -2432,31 +3306,71 @@ describe("consolidated tools — registration and behavior", () => {
       const cache = makeMockCache(false);
       vi.mocked(cache.waitForInitialization).mockResolvedValue(true);
       vi.mocked(cache.getBacklinks).mockReturnValue([]);
-      vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "connections", path: "x.md", limit: 10 });
+      vi.mocked(cache.getForwardLinks).mockReturnValue([
+        { target: "b.md", type: "wikilink", context: "[[b]]" },
+      ]);
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "connections",
+        path: "x.md",
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
 
     it("returns backlinks and forward links", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      vi.mocked(cache.getBacklinks).mockReturnValue([{ source: "a.md", context: "ctx" }]);
-      vi.mocked(cache.getForwardLinks).mockReturnValue([{ target: "b.md", type: "wikilink", context: "[[b]]" }]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "connections", path: "center.md", limit: 10 });
+      vi.mocked(cache.getBacklinks).mockReturnValue([
+        { source: "a.md", context: "ctx" },
+      ]);
+      vi.mocked(cache.getForwardLinks).mockReturnValue([
+        { target: "b.md", type: "wikilink", context: "[[b]]" },
+      ]);
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "connections",
+        path: "center.md",
+        limit: 10,
+      });
       const parsed: unknown = JSON.parse(getText(result));
-      expect(parsed).toMatchObject({ backlinks: [{ source: "a.md" }], forwardLinks: [{ target: "b.md" }] });
+      expect(parsed).toMatchObject({
+        backlinks: [{ source: "a.md" }],
+        forwardLinks: [{ target: "b.md" }],
+      });
     });
 
     it("returns errorResult when path missing", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "connections", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "connections",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -2471,10 +3385,21 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "structure",
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
-      expect(cache.waitForInitialization).toHaveBeenCalledWith(CACHE_INIT_TIMEOUT_MS);
+      expect(cache.waitForInitialization).toHaveBeenCalledWith(
+        CACHE_INIT_TIMEOUT_MS,
+      );
     });
 
     it("returns vault structure stats", async () => {
@@ -2482,11 +3407,22 @@ describe("consolidated tools — registration and behavior", () => {
       const client = makeMockClient();
       const cache = makeMockCache(true);
       vi.mocked(cache.getOrphanNotes).mockReturnValue(["orphan.md"]);
-      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([{ path: "hub.md", inbound: 7, outbound: 2 }]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([
+        { path: "hub.md", inbound: 7, outbound: 2 },
+      ]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(1);
       vi.mocked(cache.getFileList).mockReturnValue(["folder/note.md"]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "structure",
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
       const parsed: unknown = JSON.parse(getText(result));
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
@@ -2496,8 +3432,17 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false, false);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "structure",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Cache is rebuilding");
       expect(cache.initialize).toHaveBeenCalled();
@@ -2507,8 +3452,17 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(false);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "structure",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
     });
 
@@ -2522,8 +3476,21 @@ describe("consolidated tools — registration and behavior", () => {
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(0);
       vi.mocked(cache.getFileList).mockReturnValue([]);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", toolPreset: "read-only", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "structure", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({
+          toolMode: "consolidated",
+          toolPreset: "read-only",
+          enableCache: true,
+        }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "structure",
+        limit: 10,
+      });
       expect(result.isError).toBeFalsy();
     });
   });
@@ -2533,8 +3500,17 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "refresh", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "refresh",
+        limit: 10,
+      });
       expect(cache.refresh).toHaveBeenCalled();
       expect(getText(result)).toContain("Cache refreshed");
     });
@@ -2543,8 +3519,21 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", toolPreset: "read-only", enableCache: true }));
-      const result = await getTool("vault_analysis").handler({ action: "refresh", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({
+          toolMode: "consolidated",
+          toolPreset: "read-only",
+          enableCache: true,
+        }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "refresh",
+        limit: 10,
+      });
       expect(cache.refresh).toHaveBeenCalled();
       expect(getText(result)).toContain("Cache refreshed");
     });
@@ -2553,8 +3542,17 @@ describe("consolidated tools — registration and behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      registerConsolidatedTools(server as never, client, cache, () => true, makeConfig({ toolMode: "consolidated", enableCache: false }));
-      const result = await getTool("vault_analysis").handler({ action: "refresh", limit: 10 });
+      registerConsolidatedTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: false }),
+      );
+      const result = await getTool("vault_analysis").handler({
+        action: "refresh",
+        limit: 10,
+      });
       expect(result.isError).toBe(true);
     });
   });
@@ -2565,40 +3563,77 @@ describe("consolidated tools — registration and behavior", () => {
   describe("error propagation via buildErrorMessage", () => {
     it("connection error produces CONNECTION ERROR prefix", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInVault).mockRejectedValue(new ObsidianConnectionError("ECONNREFUSED"));
-      const result = await getTool("vault").handler({ action: "list", useRegex: false, caseSensitive: true, replaceAll: true });
+      vi.mocked(client.listFilesInVault).mockRejectedValue(
+        new ObsidianConnectionError("ECONNREFUSED"),
+      );
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONNECTION ERROR");
     });
 
     it("auth error produces AUTH ERROR prefix", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInVault).mockRejectedValue(new ObsidianAuthError());
-      const result = await getTool("vault").handler({ action: "list", useRegex: false, caseSensitive: true, replaceAll: true });
+      vi.mocked(client.listFilesInVault).mockRejectedValue(
+        new ObsidianAuthError(),
+      );
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("AUTH ERROR");
     });
 
     it("400 API error produces BAD REQUEST message", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianApiError("malformed", 400));
-      const result = await getTool("vault").handler({ action: "get", path: "x.md", useRegex: false, caseSensitive: true, replaceAll: true });
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianApiError("malformed", 400),
+      );
+      const result = await getTool("vault").handler({
+        action: "get",
+        path: "x.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("BAD REQUEST");
     });
 
     it("405 API error produces NOT SUPPORTED message", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.getFileContents).mockRejectedValue(new ObsidianApiError("not supported", 405));
-      const result = await getTool("vault").handler({ action: "get", path: "x.md", useRegex: false, caseSensitive: true, replaceAll: true });
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianApiError("not supported", 405),
+      );
+      const result = await getTool("vault").handler({
+        action: "get",
+        path: "x.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("NOT SUPPORTED");
     });
 
     it("generic Error produces ERROR prefix", async () => {
       const { client, getTool } = setup();
-      vi.mocked(client.listFilesInVault).mockRejectedValue(new Error("unexpected"));
-      const result = await getTool("vault").handler({ action: "list", useRegex: false, caseSensitive: true, replaceAll: true });
+      vi.mocked(client.listFilesInVault).mockRejectedValue(
+        new Error("unexpected"),
+      );
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("ERROR: unexpected");
     });

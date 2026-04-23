@@ -33,14 +33,19 @@ function loadDotenv(): void {
       let key = trimmed.slice(0, eqIndex).trim();
       if (key.startsWith("export ")) key = key.slice(7).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
       if (key.length > 0 && process.env[key] === undefined) {
         process.env[key] = value;
       }
     }
-  } catch { /* no .env is fine */ }
+  } catch {
+    /* no .env is fine */
+  }
 }
 
 const STRESS_PREFIX = "_stress_test_";
@@ -69,10 +74,16 @@ interface StressResult {
 }
 
 /** Test 1: Concurrent writes to different files — tests write lock independence. */
-async function testConcurrentWritesDifferentFiles(client: ObsidianClient): Promise<StressResult> {
+async function testConcurrentWritesDifferentFiles(
+  client: ObsidianClient,
+): Promise<StressResult> {
   const count = 20;
-  const files = Array.from({ length: count }, (_, i) => `${STRESS_PREFIX}concurrent_${String(i)}.md`);
-  const content = (i: number): string => `# Concurrent Write ${String(i)}\n\nWritten at ${new Date().toISOString()}\n`;
+  const files = Array.from(
+    { length: count },
+    (_, i) => `${STRESS_PREFIX}concurrent_${String(i)}.md`,
+  );
+  const content = (i: number): string =>
+    `# Concurrent Write ${String(i)}\n\nWritten at ${new Date().toISOString()}\n`;
 
   const [, duration] = await timed(async () => {
     await Promise.all(files.map((f, i) => client.putContent(f, content(i))));
@@ -98,7 +109,9 @@ async function testConcurrentWritesDifferentFiles(client: ObsidianClient): Promi
 }
 
 /** Test 2: Concurrent writes to the SAME file — tests write lock serialization. */
-async function testConcurrentWritesSameFile(client: ObsidianClient): Promise<StressResult> {
+async function testConcurrentWritesSameFile(
+  client: ObsidianClient,
+): Promise<StressResult> {
   const file = `${STRESS_PREFIX}same_file.md`;
   const count = 10;
   await client.putContent(file, "# Start\n");
@@ -106,13 +119,14 @@ async function testConcurrentWritesSameFile(client: ObsidianClient): Promise<Str
   const [, duration] = await timed(async () => {
     await Promise.all(
       Array.from({ length: count }, (_, i) =>
-        client.appendContent(file, `\nLine ${String(i)}\n`)
+        client.appendContent(file, `\nLine ${String(i)}\n`),
       ),
     );
   });
 
   const result = await client.getFileContents(file, "markdown");
-  const lineCount = typeof result === "string" ? (result.match(/Line \d+/g) ?? []).length : 0;
+  const lineCount =
+    typeof result === "string" ? (result.match(/Line \d+/g) ?? []).length : 0;
   await client.deleteFile(file).catch(() => {});
 
   return {
@@ -127,7 +141,10 @@ async function testConcurrentWritesSameFile(client: ObsidianClient): Promise<Str
 /** Test 3: Rapid sequential reads — throughput benchmark. */
 async function testRapidReads(client: ObsidianClient): Promise<StressResult> {
   const file = `${STRESS_PREFIX}read_target.md`;
-  await client.putContent(file, "# Read Target\n\nContent for rapid read testing.\n".repeat(10));
+  await client.putContent(
+    file,
+    "# Read Target\n\nContent for rapid read testing.\n".repeat(10),
+  );
 
   const count = 50;
   const [, duration] = await timed(async () => {
@@ -148,7 +165,9 @@ async function testRapidReads(client: ObsidianClient): Promise<StressResult> {
 }
 
 /** Test 4: Concurrent reads — parallel throughput. */
-async function testConcurrentReads(client: ObsidianClient): Promise<StressResult> {
+async function testConcurrentReads(
+  client: ObsidianClient,
+): Promise<StressResult> {
   const file = `${STRESS_PREFIX}concurrent_read.md`;
   await client.putContent(file, "# Concurrent Read Target\n\nContent.\n");
 
@@ -156,7 +175,9 @@ async function testConcurrentReads(client: ObsidianClient): Promise<StressResult
   let successes = 0;
   const [, duration] = await timed(async () => {
     const results = await Promise.allSettled(
-      Array.from({ length: count }, () => client.getFileContents(file, "markdown")),
+      Array.from({ length: count }, () =>
+        client.getFileContents(file, "markdown"),
+      ),
     );
     successes = results.filter((r) => r.status === "fulfilled").length;
   });
@@ -173,10 +194,23 @@ async function testConcurrentReads(client: ObsidianClient): Promise<StressResult
 }
 
 /** Test 5: Concurrent searches — tests search timeout handling. */
-async function testConcurrentSearches(client: ObsidianClient): Promise<StressResult> {
+async function testConcurrentSearches(
+  client: ObsidianClient,
+): Promise<StressResult> {
   const count = 10;
   let successes = 0;
-  const queries = ["test", "obsidian", "note", "markdown", "link", "file", "content", "search", "vault", "stress"];
+  const queries = [
+    "test",
+    "obsidian",
+    "note",
+    "markdown",
+    "link",
+    "file",
+    "content",
+    "search",
+    "vault",
+    "stress",
+  ];
 
   const [, duration] = await timed(async () => {
     const results = await Promise.allSettled(
@@ -204,7 +238,10 @@ async function testCrudCycle(client: ObsidianClient): Promise<StressResult> {
       const file = `${STRESS_PREFIX}crud_${String(i)}.md`;
       await client.putContent(file, `# CRUD ${String(i)}\n`);
       const content = await client.getFileContents(file, "markdown");
-      if (typeof content === "string" && content.includes(`CRUD ${String(i)}`)) {
+      if (
+        typeof content === "string" &&
+        content.includes(`CRUD ${String(i)}`)
+      ) {
         successes++;
       }
       await client.deleteFile(file);
@@ -221,11 +258,23 @@ async function testCrudCycle(client: ObsidianClient): Promise<StressResult> {
 }
 
 /** Test 7: Cache rebuild under load — stress the cache while reading. */
-async function testCacheRebuildUnderLoad(client: ObsidianClient): Promise<StressResult> {
+async function testCacheRebuildUnderLoad(
+  client: ObsidianClient,
+): Promise<StressResult> {
   // Create some files for the cache to index
   const fileCount = 10;
-  const files = Array.from({ length: fileCount }, (_, i) => `${STRESS_PREFIX}cache_${String(i)}.md`);
-  await Promise.all(files.map((f, i) => client.putContent(f, `# Cache File ${String(i)}\n\n[[${files[(i + 1) % fileCount] ?? ""}]]\n`)));
+  const files = Array.from(
+    { length: fileCount },
+    (_, i) => `${STRESS_PREFIX}cache_${String(i)}.md`,
+  );
+  await Promise.all(
+    files.map((f, i) =>
+      client.putContent(
+        f,
+        `# Cache File ${String(i)}\n\n[[${files[(i + 1) % fileCount] ?? ""}]]\n`,
+      ),
+    ),
+  );
 
   const cache = new VaultCache(client, 60_000);
   client.setCache(cache);
@@ -235,8 +284,12 @@ async function testCacheRebuildUnderLoad(client: ObsidianClient): Promise<Stress
     // Build cache 3 times while doing concurrent reads
     for (let round = 0; round < 3; round++) {
       await Promise.all([
-        cache.initialize().then(() => { rebuildCount++; }),
-        ...files.map((f) => client.getFileContents(f, "markdown").catch(() => {})),
+        cache.initialize().then(() => {
+          rebuildCount++;
+        }),
+        ...files.map((f) =>
+          client.getFileContents(f, "markdown").catch(() => {}),
+        ),
       ]);
     }
   });
@@ -269,7 +322,9 @@ async function testLargeFile(client: ObsidianClient): Promise<StressResult> {
     const [, wt] = await timed(() => client.putContent(file, content));
     writeTime = wt;
 
-    const [result, rt] = await timed(() => client.getFileContents(file, "markdown"));
+    const [result, rt] = await timed(() =>
+      client.getFileContents(file, "markdown"),
+    );
     readTime = rt;
     readSize = typeof result === "string" ? result.length : 0;
   });
@@ -286,7 +341,9 @@ async function testLargeFile(client: ObsidianClient): Promise<StressResult> {
 }
 
 /** Test 9: Error recovery — verify graceful handling of 404s and bad requests. */
-async function testErrorRecovery(client: ObsidianClient): Promise<StressResult> {
+async function testErrorRecovery(
+  client: ObsidianClient,
+): Promise<StressResult> {
   let handled = 0;
   const tests = 5;
 
@@ -309,13 +366,17 @@ async function testErrorRecovery(client: ObsidianClient): Promise<StressResult> 
     try {
       await client.deleteFile("_nonexistent_delete_12345.md");
       handled++;
-    } catch { /* unexpected */ }
+    } catch {
+      /* unexpected */
+    }
 
     // Valid operation after errors — should still work
     try {
       await client.listFilesInVault();
       handled++;
-    } catch { /* unexpected */ }
+    } catch {
+      /* unexpected */
+    }
 
     // Search with empty query
     try {
@@ -336,7 +397,9 @@ async function testErrorRecovery(client: ObsidianClient): Promise<StressResult> 
 }
 
 /** Test 10: Mixed concurrent workload — reads, writes, searches simultaneously. */
-async function testMixedWorkload(client: ObsidianClient): Promise<StressResult> {
+async function testMixedWorkload(
+  client: ObsidianClient,
+): Promise<StressResult> {
   const file = `${STRESS_PREFIX}mixed.md`;
   await client.putContent(file, "# Mixed Workload\n\nInitial content.\n");
 
@@ -346,10 +409,14 @@ async function testMixedWorkload(client: ObsidianClient): Promise<StressResult> 
   const [, duration] = await timed(async () => {
     const ops = await Promise.allSettled([
       // Reads
-      ...Array.from({ length: 5 }, () => client.getFileContents(file, "markdown")),
+      ...Array.from({ length: 5 }, () =>
+        client.getFileContents(file, "markdown"),
+      ),
       ...Array.from({ length: 3 }, () => client.getFileContents(file, "json")),
       // Writes
-      ...Array.from({ length: 4 }, (_, i) => client.appendContent(file, `\nMixed line ${String(i)}\n`)),
+      ...Array.from({ length: 4 }, (_, i) =>
+        client.appendContent(file, `\nMixed line ${String(i)}\n`),
+      ),
       // Searches
       ...Array.from({ length: 4 }, () => client.simpleSearch("mixed")),
       // Listings
@@ -378,10 +445,16 @@ async function cleanup(client: ObsidianClient): Promise<void> {
   const { files } = await client.listFilesInVault();
   const stressFiles = files.filter((f) => f.includes(STRESS_PREFIX));
   for (const f of stressFiles) {
-    try { await client.deleteFile(f); } catch { /* ignore */ }
+    try {
+      await client.deleteFile(f);
+    } catch {
+      /* ignore */
+    }
   }
   if (stressFiles.length > 0) {
-    write(`  Cleaned up ${String(stressFiles.length)} leftover stress test files`);
+    write(
+      `  Cleaned up ${String(stressFiles.length)} leftover stress test files`,
+    );
   }
 }
 
@@ -405,7 +478,9 @@ async function main(): Promise<void> {
   // Safety guard
   const { files } = await client.listFilesInVault();
   if (files.length > VAULT_FILE_LIMIT) {
-    write(`[error] Vault has ${String(files.length)} files — too many for stress testing. Use a test vault.`);
+    write(
+      `[error] Vault has ${String(files.length)} files — too many for stress testing. Use a test vault.`,
+    );
     process.exit(1);
   }
 
@@ -434,7 +509,13 @@ async function main(): Promise<void> {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       write(`  \u2717 Test threw: ${msg}`);
-      results.push({ name: "unknown", passed: false, duration: 0, ops: 0, details: msg });
+      results.push({
+        name: "unknown",
+        passed: false,
+        duration: 0,
+        ops: 0,
+        details: msg,
+      });
     }
   }
 
@@ -450,8 +531,12 @@ async function main(): Promise<void> {
   const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
 
   write("");
-  write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(results.length)} tests`);
-  write(`Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${fmt(totalDuration / totalOps)}/op avg)`);
+  write(
+    `Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(results.length)} tests`,
+  );
+  write(
+    `Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${fmt(totalDuration / totalOps)}/op avg)`,
+  );
   write("");
 
   process.exit(failed > 0 ? 1 : 0);

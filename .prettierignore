@@ -1,0 +1,7 @@
+.adder-pipeline/
+.github/workflows/pipeline.yml
+knip.json
+
+# Tool-generated (managed by external tools, not ours to format)
+.claude/
+.codegraph/

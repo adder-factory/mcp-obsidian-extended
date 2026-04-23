@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/__tests__/**/*.test.ts",
+    "scripts/**/*.{js,ts,mjs}"
+  ],
+  "ignore": [".adder-pipeline/**", ".github/**", "stryker.conf.mjs"],
+  "ignoreBinaries": ["gitleaks", "semgrep", "mcpb", "sonar-scanner", "snyk"],
+  "ignoreDependencies": ["esbuild", "postject"],
+  "ignoreExportsUsedInFile": {
+    "interface": true,
+    "type": true
+  }
+}

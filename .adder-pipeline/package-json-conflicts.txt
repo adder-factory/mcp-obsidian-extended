@@ -1,0 +1,14 @@
+# package.json script conflicts
+# These keys exist with different values than the pipeline expects.
+# Installer left your current values intact.
+# To accept the pipeline defaults, remove the keys and re-run
+# install.sh, or re-run with --force to overwrite.
+
+"verify:all":
+  current:  "npm run build && npm run lint && npm audit && npx knip && npx madge --circular --extensions ts src/"
+  expected: "npm run pre-pr -- --skip-qwen"
+
+"security:all":
+  current:  "npx snyk test && npx snyk code test && npx semgrep --config auto src/"
+  expected: "gitleaks detect --source . --verbose --redact --no-banner && semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off --quiet ."
+

@@ -46,7 +46,10 @@ export const patchOptionFields = {
   targetType: patchTargetTypeSchema,
   target: z.string().describe("Target heading/block/field"),
   targetDelimiter: z.string().optional().describe("Heading delimiter"),
-  trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+  trimTargetWhitespace: z
+    .boolean()
+    .optional()
+    .describe("Trim target whitespace"),
   createIfMissing: z.boolean().optional().describe("Create target if missing"),
   contentType: patchContentTypeSchema.optional(),
 } as const;
@@ -57,7 +60,10 @@ export const patchOptionFieldsNoCim = {
   targetType: patchTargetTypeSchema,
   target: z.string().describe("Target heading/block/field"),
   targetDelimiter: z.string().optional().describe("Heading delimiter"),
-  trimTargetWhitespace: z.boolean().optional().describe("Trim target whitespace"),
+  trimTargetWhitespace: z
+    .boolean()
+    .optional()
+    .describe("Trim target whitespace"),
   contentType: patchContentTypeSchema.optional(),
 } as const;
 

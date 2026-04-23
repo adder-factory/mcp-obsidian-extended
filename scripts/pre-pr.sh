@@ -84,6 +84,18 @@ gate_tests() {
   banner "STEP 9 / Tests + coverage threshold"
   # Coverage threshold is enforced by the test runner config
   # (Vitest/Jest's coverageThreshold). The gate doesn't hardcode it.
+  #
+  # Convention: the project's `test` script must be plain (e.g.
+  # "test": "vitest run" or "test": "jest"), WITHOUT a hardcoded
+  # `--coverage` flag. The gate adds `--coverage` via `npm test --
+  # --coverage` below, which only forwards reliably to Vitest/Jest when
+  # the script doesn't already specify it. The CLAUDE.md block installed
+  # in each target repo documents this for human contributors.
+  #
+  # If a project wraps its runner in a script that doesn't forward `--`
+  # (e.g. "test": "bash scripts/my-test-runner.sh"), coverage won't be
+  # enabled here; the project is responsible for its own coverage config
+  # in that case.
   npm test --silent -- --coverage
 }
 
@@ -100,15 +112,20 @@ gate_sonar() {
     fail "SONAR_* set but sonar-project.properties missing"
     return 1
   fi
-  # `npx --no-install` errors out clearly if the package isn't a devDep,
-  # but pre-empting it lets the user see *which* package to add.
-  if ! npm ls sonarqube-scanner >/dev/null 2>&1 \
-     && ! npm ls @sonar/scan >/dev/null 2>&1; then
+  # Detect which scanner package is installed and invoke the matching binary.
+  # sonarqube-scanner is the long-standing package; @sonar/scan is the newer
+  # npm name. We check for either in devDeps, then run whichever exists.
+  local scanner_cmd=""
+  if npm ls sonarqube-scanner >/dev/null 2>&1; then
+    scanner_cmd="sonarqube-scanner"
+  elif npm ls @sonar/scan >/dev/null 2>&1; then
+    scanner_cmd="@sonar/scan"
+  else
     fail "sonarqube-scanner (or @sonar/scan) not found in project devDeps"
     printf '    Install: npm install -D sonarqube-scanner\n'
     return 1
   fi
-  npx --no-install sonarqube-scanner
+  npx --no-install "$scanner_cmd"
 }
 
 gate_gitleaks() {

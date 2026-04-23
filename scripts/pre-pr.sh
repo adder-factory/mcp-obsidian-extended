@@ -100,6 +100,14 @@ gate_sonar() {
     fail "SONAR_* set but sonar-project.properties missing"
     return 1
   fi
+  # `npx --no-install` errors out clearly if the package isn't a devDep,
+  # but pre-empting it lets the user see *which* package to add.
+  if ! npm ls sonarqube-scanner >/dev/null 2>&1 \
+     && ! npm ls @sonar/scan >/dev/null 2>&1; then
+    fail "sonarqube-scanner (or @sonar/scan) not found in project devDeps"
+    printf '    Install: npm install -D sonarqube-scanner\n'
+    return 1
+  fi
   npx --no-install sonarqube-scanner
 }
 

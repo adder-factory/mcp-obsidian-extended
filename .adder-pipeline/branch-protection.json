@@ -4,8 +4,8 @@
     "contexts": [
       "Pipeline gate",
       "SonarQube",
-      "CodeRabbit Pull Request Review",
-      "CodeAnt AI"
+      "Secrets Status Check",
+      "SAST Status Check"
     ]
   },
   "enforce_admins": false,

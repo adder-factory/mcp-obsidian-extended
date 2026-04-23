@@ -48,7 +48,9 @@ function registerVaultTools(
         try {
           return jsonResult(await client.listFilesInVault());
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "list_files_in_vault" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "list_files_in_vault" }),
+          );
         }
       },
     );
@@ -61,13 +63,20 @@ function registerVaultTools(
       "list_files_in_dir",
       {
         description: "List files in a vault directory",
-        inputSchema: z.object({ dirPath: z.string().describe("Directory path") }),
+        inputSchema: z.object({
+          dirPath: z.string().describe("Directory path"),
+        }),
       },
       async ({ dirPath }) => {
         try {
           return jsonResult(await client.listFilesInDir(dirPath));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "list_files_in_dir", path: dirPath }));
+          return errorResult(
+            buildErrorMessage(err, {
+              tool: "list_files_in_dir",
+              path: dirPath,
+            }),
+          );
         }
       },
     );
@@ -89,7 +98,9 @@ function registerVaultTools(
         try {
           return formatFileContents(await client.getFileContents(path, format));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_file_contents", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_file_contents", path }),
+          );
         }
       },
     );
@@ -109,7 +120,9 @@ function registerVaultTools(
           await client.putContent(path, content);
           return textResult(`Written: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "put_content", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "put_content", path }),
+          );
         }
       },
     );
@@ -121,7 +134,8 @@ function registerVaultTools(
     server.registerTool(
       "append_content",
       {
-        description: "Append to a vault file (not idempotent, do not retry on timeout)",
+        description:
+          "Append to a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object(pathContentFields),
       },
       async ({ path, content }) => {
@@ -129,7 +143,9 @@ function registerVaultTools(
           await client.appendContent(path, content);
           return textResult(`Appended to: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "append_content", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "append_content", path }),
+          );
         }
       },
     );
@@ -141,15 +157,36 @@ function registerVaultTools(
     server.registerTool(
       "patch_content",
       {
-        description: "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
+        description:
+          "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
         inputSchema: z.object({ ...pathContentFields, ...patchOptionFields }),
       },
-      async ({ path, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
+      async ({
+        path,
+        content,
+        operation,
+        targetType,
+        target,
+        targetDelimiter,
+        trimTargetWhitespace,
+        createIfMissing,
+        contentType,
+      }) => {
         try {
-          await client.patchContent(path, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
+          await client.patchContent(path, content, {
+            operation,
+            targetType,
+            target,
+            targetDelimiter,
+            trimTargetWhitespace,
+            createIfMissing,
+            contentType,
+          });
           return textResult(`Patched: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "patch_content", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "patch_content", path }),
+          );
         }
       },
     );
@@ -169,7 +206,9 @@ function registerVaultTools(
           await client.deleteFile(path);
           return textResult(`Deleted: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "delete_file", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "delete_file", path }),
+          );
         }
       },
     );
@@ -181,35 +220,59 @@ function registerVaultTools(
     server.registerTool(
       "search_replace",
       {
-        description: "Find and replace in a vault file (not idempotent, do not retry on timeout)",
+        description:
+          "Find and replace in a vault file (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           path: z.string().describe("File path"),
           search: z.string().describe("Text to find"),
           replace: z.string().describe("Replacement text"),
           useRegex: z.boolean().default(false).describe("Use regex matching"),
-          caseSensitive: z.boolean().default(true).describe("Case-sensitive match"),
-          replaceAll: z.boolean().default(true).describe("Replace all occurrences"),
+          caseSensitive: z
+            .boolean()
+            .default(true)
+            .describe("Case-sensitive match"),
+          replaceAll: z
+            .boolean()
+            .default(true)
+            .describe("Replace all occurrences"),
         }),
       },
-      async ({ path, search, replace, useRegex, caseSensitive, replaceAll }) => {
+      async ({
+        path,
+        search,
+        replace,
+        useRegex,
+        caseSensitive,
+        replaceAll,
+      }) => {
         try {
           const result = await client.getFileContents(path, "markdown", true);
-          if (typeof result !== "string") return errorResult("[search_replace] Expected markdown content");
+          if (typeof result !== "string")
+            return errorResult("[search_replace] Expected markdown content");
           const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
           let pattern: RegExp;
           if (useRegex) {
             // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
-            try { pattern = new RegExp(search, flags); } catch { return errorResult(`[search_replace] Invalid regex: "${search}"`); } // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+            try {
+              pattern = new RegExp(search, flags);
+            } catch {
+              return errorResult(`[search_replace] Invalid regex: "${search}"`);
+            } // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
           } else {
             // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
             pattern = new RegExp(escapeRegex(search), flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
           }
-          const updated = useRegex ? result.replace(pattern, replace) : result.replace(pattern, () => replace);
-          if (updated === result) return textResult(`No matches found for "${search}" in ${path}`);
+          const updated = useRegex
+            ? result.replace(pattern, replace)
+            : result.replace(pattern, () => replace);
+          if (updated === result)
+            return textResult(`No matches found for "${search}" in ${path}`);
           await client.putContent(path, updated);
           return textResult(`Replaced in: ${path}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "search_replace", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "search_replace", path }),
+          );
         }
       },
     );
@@ -221,7 +284,8 @@ function registerVaultTools(
     server.registerTool(
       "move_file",
       {
-        description: "Move or rename a .md vault file (not idempotent, do not retry)",
+        description:
+          "Move or rename a .md vault file (not idempotent, do not retry)",
         inputSchema: z.object({
           source: z.string().describe("Source file path"),
           destination: z.string().describe("Destination file path"),
@@ -231,7 +295,9 @@ function registerVaultTools(
         try {
           return await handleMoveFile(client, source, destination);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "move_file", path: source }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "move_file", path: source }),
+          );
         }
       },
     );
@@ -261,7 +327,9 @@ function registerActiveFileTools(
         try {
           return formatFileContents(await client.getActiveFile(format));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_active_file" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_active_file" }),
+          );
         }
       },
     );
@@ -274,14 +342,18 @@ function registerActiveFileTools(
       "put_active_file",
       {
         description: "Replace content of the open file (idempotent)",
-        inputSchema: z.object({ content: z.string().describe("New file content") }),
+        inputSchema: z.object({
+          content: z.string().describe("New file content"),
+        }),
       },
       async ({ content }) => {
         try {
           await client.putActiveFile(content);
           return textResult("Active file updated");
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "put_active_file" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "put_active_file" }),
+          );
         }
       },
     );
@@ -293,15 +365,20 @@ function registerActiveFileTools(
     server.registerTool(
       "append_active_file",
       {
-        description: "Append to the open file (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({ content: z.string().describe("Content to append") }),
+        description:
+          "Append to the open file (not idempotent, do not retry on timeout)",
+        inputSchema: z.object({
+          content: z.string().describe("Content to append"),
+        }),
       },
       async ({ content }) => {
         try {
           await client.appendActiveFile(content);
           return textResult("Appended to active file");
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "append_active_file" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "append_active_file" }),
+          );
         }
       },
     );
@@ -313,18 +390,36 @@ function registerActiveFileTools(
     server.registerTool(
       "patch_active_file",
       {
-        description: "Patch the active file at a target (not idempotent, do not retry on timeout)",
+        description:
+          "Patch the active file at a target (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           content: z.string().describe("Content to insert"),
           ...patchOptionFieldsNoCim,
         }),
       },
-      async ({ content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType }) => {
+      async ({
+        content,
+        operation,
+        targetType,
+        target,
+        targetDelimiter,
+        trimTargetWhitespace,
+        contentType,
+      }) => {
         try {
-          await client.patchActiveFile(content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, contentType });
+          await client.patchActiveFile(content, {
+            operation,
+            targetType,
+            target,
+            targetDelimiter,
+            trimTargetWhitespace,
+            contentType,
+          });
           return textResult("Active file patched");
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "patch_active_file" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "patch_active_file" }),
+          );
         }
       },
     );
@@ -341,7 +436,9 @@ function registerActiveFileTools(
           await client.deleteActiveFile();
           return textResult("Active file deleted");
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "delete_active_file" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "delete_active_file" }),
+          );
         }
       },
     );
@@ -388,7 +485,9 @@ function registerCommandAndSearchTools(
           await client.executeCommand(commandId);
           return textResult(`Executed: ${commandId}`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "execute_command" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "execute_command" }),
+          );
         }
       },
     );
@@ -427,14 +526,18 @@ function registerCommandAndSearchTools(
       {
         description: "Search vault with JsonLogic queries (glob, regexp)",
         inputSchema: z.object({
-          query: z.record(z.string(), z.unknown()).describe("JsonLogic query object"),
+          query: z
+            .record(z.string(), z.unknown())
+            .describe("JsonLogic query object"),
         }),
       },
       async ({ query }) => {
         try {
           return jsonResult(await client.complexSearch(query));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "complex_search" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "complex_search" }),
+          );
         }
       },
     );
@@ -446,14 +549,17 @@ function registerCommandAndSearchTools(
     server.registerTool(
       "dataview_search",
       {
-        description: "Query vault with Dataview TABLE queries (LIST not supported)",
+        description:
+          "Query vault with Dataview TABLE queries (LIST not supported)",
         inputSchema: z.object({ dql: z.string().describe("DQL query string") }),
       },
       async ({ dql }) => {
         try {
           return jsonResult(await client.dataviewSearch(dql));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "dataview_search" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "dataview_search" }),
+          );
         }
       },
     );
@@ -477,13 +583,20 @@ function registerPeriodicNoteTools(
       "get_periodic_note",
       {
         description: "Get the current periodic note",
-        inputSchema: z.object({ period: periodSchema, format: formatSchema.optional() }),
+        inputSchema: z.object({
+          period: periodSchema,
+          format: formatSchema.optional(),
+        }),
       },
       async ({ period, format }) => {
         try {
-          return formatFileContents(await client.getPeriodicNote(period, format));
+          return formatFileContents(
+            await client.getPeriodicNote(period, format),
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_periodic_note" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_periodic_note" }),
+          );
         }
       },
     );
@@ -496,14 +609,19 @@ function registerPeriodicNoteTools(
       "put_periodic_note",
       {
         description: "Replace current periodic note content (idempotent)",
-        inputSchema: z.object({ period: periodSchema, content: z.string().describe("Note content") }),
+        inputSchema: z.object({
+          period: periodSchema,
+          content: z.string().describe("Note content"),
+        }),
       },
       async ({ period, content }) => {
         try {
           await client.putPeriodicNote(period, content);
           return textResult(`Updated ${period} note`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "put_periodic_note" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "put_periodic_note" }),
+          );
         }
       },
     );
@@ -515,15 +633,21 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "append_periodic_note",
       {
-        description: "Append to current periodic note (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({ period: periodSchema, content: z.string().describe("Content to append") }),
+        description:
+          "Append to current periodic note (not idempotent, do not retry on timeout)",
+        inputSchema: z.object({
+          period: periodSchema,
+          content: z.string().describe("Content to append"),
+        }),
       },
       async ({ period, content }) => {
         try {
           await client.appendPeriodicNote(period, content);
           return textResult(`Appended to ${period} note`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "append_periodic_note" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "append_periodic_note" }),
+          );
         }
       },
     );
@@ -535,19 +659,40 @@ function registerPeriodicNoteTools(
     server.registerTool(
       "patch_periodic_note",
       {
-        description: "Patch current periodic note at target (not idempotent, do not retry on timeout)",
+        description:
+          "Patch current periodic note at target (not idempotent, do not retry on timeout)",
         inputSchema: z.object({
           period: periodSchema,
           content: z.string().describe("Content to insert"),
           ...patchOptionFields,
         }),
       },
-      async ({ period, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
+      async ({
+        period,
+        content,
+        operation,
+        targetType,
+        target,
+        targetDelimiter,
+        trimTargetWhitespace,
+        createIfMissing,
+        contentType,
+      }) => {
         try {
-          await client.patchPeriodicNote(period, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
+          await client.patchPeriodicNote(period, content, {
+            operation,
+            targetType,
+            target,
+            targetDelimiter,
+            trimTargetWhitespace,
+            createIfMissing,
+            contentType,
+          });
           return textResult(`Patched ${period} note`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "patch_periodic_note" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "patch_periodic_note" }),
+          );
         }
       },
     );
@@ -567,7 +712,9 @@ function registerPeriodicNoteTools(
           await client.deletePeriodicNote(period);
           return textResult(`Deleted ${period} note`);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "delete_periodic_note" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "delete_periodic_note" }),
+          );
         }
       },
     );
@@ -591,13 +738,27 @@ function registerPeriodicNoteDateTools(
       "get_periodic_note_for_date",
       {
         description: "Get periodic note for a specific date",
-        inputSchema: z.object({ period: periodSchema, ...dateFields, format: formatSchema.optional() }),
+        inputSchema: z.object({
+          period: periodSchema,
+          ...dateFields,
+          format: formatSchema.optional(),
+        }),
       },
       async ({ period, year, month, day, format }) => {
         try {
-          return formatFileContents(await client.getPeriodicNoteForDate(period, year, month, day, format));
+          return formatFileContents(
+            await client.getPeriodicNoteForDate(
+              period,
+              year,
+              month,
+              day,
+              format,
+            ),
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_periodic_note_for_date" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_periodic_note_for_date" }),
+          );
         }
       },
     );
@@ -614,10 +775,20 @@ function registerPeriodicNoteDateTools(
       },
       async ({ period, year, month, day, content }) => {
         try {
-          await client.putPeriodicNoteForDate(period, year, month, day, content);
-          return textResult(`Updated ${period} note for ${dateLabel(year, month, day)}`);
+          await client.putPeriodicNoteForDate(
+            period,
+            year,
+            month,
+            day,
+            content,
+          );
+          return textResult(
+            `Updated ${period} note for ${dateLabel(year, month, day)}`,
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "put_periodic_note_for_date" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "put_periodic_note_for_date" }),
+          );
         }
       },
     );
@@ -629,15 +800,26 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "append_periodic_note_for_date",
       {
-        description: "Append to periodic note for a date (not idempotent, do not retry on timeout)",
+        description:
+          "Append to periodic note for a date (not idempotent, do not retry on timeout)",
         inputSchema: z.object(periodDateContentFields),
       },
       async ({ period, year, month, day, content }) => {
         try {
-          await client.appendPeriodicNoteForDate(period, year, month, day, content);
-          return textResult(`Appended to ${period} note for ${dateLabel(year, month, day)}`);
+          await client.appendPeriodicNoteForDate(
+            period,
+            year,
+            month,
+            day,
+            content,
+          );
+          return textResult(
+            `Appended to ${period} note for ${dateLabel(year, month, day)}`,
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "append_periodic_note_for_date" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "append_periodic_note_for_date" }),
+          );
         }
       },
     );
@@ -649,15 +831,51 @@ function registerPeriodicNoteDateTools(
     server.registerTool(
       "patch_periodic_note_for_date",
       {
-        description: "Patch periodic note for a date (not idempotent, do not retry on timeout)",
-        inputSchema: z.object({ ...periodDateContentFields, ...patchOptionFields }),
+        description:
+          "Patch periodic note for a date (not idempotent, do not retry on timeout)",
+        inputSchema: z.object({
+          ...periodDateContentFields,
+          ...patchOptionFields,
+        }),
       },
-      async ({ period, year, month, day, content, operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType }) => {
+      async ({
+        period,
+        year,
+        month,
+        day,
+        content,
+        operation,
+        targetType,
+        target,
+        targetDelimiter,
+        trimTargetWhitespace,
+        createIfMissing,
+        contentType,
+      }) => {
         try {
-          await client.patchPeriodicNoteForDate(period, year, month, day, content, { operation, targetType, target, targetDelimiter, trimTargetWhitespace, createIfMissing, contentType });
-          return textResult(`Patched ${period} note for ${dateLabel(year, month, day)}`);
+          await client.patchPeriodicNoteForDate(
+            period,
+            year,
+            month,
+            day,
+            content,
+            {
+              operation,
+              targetType,
+              target,
+              targetDelimiter,
+              trimTargetWhitespace,
+              createIfMissing,
+              contentType,
+            },
+          );
+          return textResult(
+            `Patched ${period} note for ${dateLabel(year, month, day)}`,
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "patch_periodic_note_for_date" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "patch_periodic_note_for_date" }),
+          );
         }
       },
     );
@@ -675,9 +893,13 @@ function registerPeriodicNoteDateTools(
       async ({ period, year, month, day }) => {
         try {
           await client.deletePeriodicNoteForDate(period, year, month, day);
-          return textResult(`Deleted ${period} note for ${dateLabel(year, month, day)}`);
+          return textResult(
+            `Deleted ${period} note for ${dateLabel(year, month, day)}`,
+          );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "delete_periodic_note_for_date" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "delete_periodic_note_for_date" }),
+          );
         }
       },
     );
@@ -706,7 +928,9 @@ function registerSystemAndAnalysisTools(
         try {
           return jsonResult(await client.getServerStatus());
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_server_status" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_server_status" }),
+          );
         }
       },
     );
@@ -728,7 +952,9 @@ function registerSystemAndAnalysisTools(
         try {
           return jsonResult(await batchGetFiles(client, paths, format));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "batch_get_file_contents" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "batch_get_file_contents" }),
+          );
         }
       },
     );
@@ -741,13 +967,17 @@ function registerSystemAndAnalysisTools(
       "get_recent_changes",
       {
         description: "Get recently modified files sorted by date",
-        inputSchema: z.object({ limit: z.number().int().min(1).default(10).describe("Max results") }),
+        inputSchema: z.object({
+          limit: z.number().int().min(1).default(10).describe("Max results"),
+        }),
       },
       async ({ limit }) => {
         try {
           return await handleRecentChanges(client, cache, config, limit);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_recent_changes" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_recent_changes" }),
+          );
         }
       },
     );
@@ -769,7 +999,9 @@ function registerSystemAndAnalysisTools(
         try {
           return await handleRecentPeriodicNotes(client, period, limit);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_recent_periodic_notes" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_recent_periodic_notes" }),
+          );
         }
       },
     );
@@ -789,11 +1021,17 @@ function registerSystemAndAnalysisTools(
       },
       async ({ path }) => {
         try {
-          const notReady = await ensureCacheReady({ cache, tool: "get_backlinks", enableCache: config.enableCache });
+          const notReady = await ensureCacheReady({
+            cache,
+            tool: "get_backlinks",
+            enableCache: config.enableCache,
+          });
           if (notReady) return notReady;
           return jsonResult(cache.getBacklinks(path));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_backlinks", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_backlinks", path }),
+          );
         }
       },
     );
@@ -805,16 +1043,30 @@ function registerSystemAndAnalysisTools(
     server.registerTool(
       "get_vault_structure",
       {
-        description: "Get vault stats: note count, links, orphans, most connected",
-        inputSchema: z.object({ limit: z.number().int().min(1).default(10).describe("Top N connected") }),
+        description:
+          "Get vault stats: note count, links, orphans, most connected",
+        inputSchema: z.object({
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .default(10)
+            .describe("Top N connected"),
+        }),
       },
       async ({ limit }) => {
         try {
-          const notReady = await ensureCacheReady({ cache, tool: "get_vault_structure", enableCache: config.enableCache });
+          const notReady = await ensureCacheReady({
+            cache,
+            tool: "get_vault_structure",
+            enableCache: config.enableCache,
+          });
           if (notReady) return notReady;
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_vault_structure" }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_vault_structure" }),
+          );
         }
       },
     );
@@ -831,11 +1083,20 @@ function registerSystemAndAnalysisTools(
       },
       async ({ path }) => {
         try {
-          const notReady = await ensureCacheReady({ cache, tool: "get_note_connections", enableCache: config.enableCache });
+          const notReady = await ensureCacheReady({
+            cache,
+            tool: "get_note_connections",
+            enableCache: config.enableCache,
+          });
           if (notReady) return notReady;
-          return jsonResult({ backlinks: cache.getBacklinks(path), forwardLinks: cache.getForwardLinks(path) });
+          return jsonResult({
+            backlinks: cache.getBacklinks(path),
+            forwardLinks: cache.getForwardLinks(path),
+          });
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "get_note_connections", path }));
+          return errorResult(
+            buildErrorMessage(err, { tool: "get_note_connections", path }),
+          );
         }
       },
     );
@@ -849,12 +1110,19 @@ function registerSystemAndAnalysisTools(
       { description: "Force refresh vault cache and link graph" },
       async () => {
         try {
-          if (!config.enableCache) return errorResult("[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true");
+          if (!config.enableCache)
+            return errorResult(
+              "[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true",
+            );
           await cache.refresh();
           if (!cache.getIsInitialized()) {
-            return errorResult("[refresh_cache] Cache refresh failed — Obsidian may be unreachable");
+            return errorResult(
+              "[refresh_cache] Cache refresh failed — Obsidian may be unreachable",
+            );
           }
-          return textResult(`Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`);
+          return textResult(
+            `Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`,
+          );
         } catch (err: unknown) {
           return errorResult(buildErrorMessage(err, { tool: "refresh_cache" }));
         }
@@ -882,7 +1150,12 @@ export function registerGranularTools(
     registerCommandAndSearchTools(server, client, shouldRegister) +
     registerPeriodicNoteTools(server, client, shouldRegister) +
     registerPeriodicNoteDateTools(server, client, shouldRegister) +
-    registerSystemAndAnalysisTools(server, client, cache, shouldRegister, config)
+    registerSystemAndAnalysisTools(
+      server,
+      client,
+      cache,
+      shouldRegister,
+      config,
+    )
   );
 }
-

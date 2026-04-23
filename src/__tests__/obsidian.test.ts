@@ -40,9 +40,15 @@ describe("sanitizeFilePath", () => {
   });
 
   it("rejects paths with .. segments", () => {
-    expect(() => sanitizeFilePath("../secret.md")).toThrow("Path traversal not allowed");
-    expect(() => sanitizeFilePath("notes/../../etc/passwd")).toThrow("Path traversal not allowed");
-    expect(() => sanitizeFilePath("notes/sub/../../../bad")).toThrow("Path traversal not allowed");
+    expect(() => sanitizeFilePath("../secret.md")).toThrow(
+      "Path traversal not allowed",
+    );
+    expect(() => sanitizeFilePath("notes/../../etc/passwd")).toThrow(
+      "Path traversal not allowed",
+    );
+    expect(() => sanitizeFilePath("notes/sub/../../../bad")).toThrow(
+      "Path traversal not allowed",
+    );
   });
 
   it("allows .. in filenames (not as path segments)", () => {
@@ -52,17 +58,27 @@ describe("sanitizeFilePath", () => {
   });
 
   it("rejects absolute Unix paths", () => {
-    expect(() => sanitizeFilePath("/etc/passwd")).toThrow("Absolute paths not allowed");
-    expect(() => sanitizeFilePath("/notes/test.md")).toThrow("Absolute paths not allowed");
+    expect(() => sanitizeFilePath("/etc/passwd")).toThrow(
+      "Absolute paths not allowed",
+    );
+    expect(() => sanitizeFilePath("/notes/test.md")).toThrow(
+      "Absolute paths not allowed",
+    );
   });
 
   it("rejects absolute Windows paths", () => {
-    expect(() => sanitizeFilePath("C:\\Users\\test")).toThrow("Absolute paths not allowed");
-    expect(() => sanitizeFilePath("D:file.md")).toThrow("Absolute paths not allowed");
+    expect(() => sanitizeFilePath("C:\\Users\\test")).toThrow(
+      "Absolute paths not allowed",
+    );
+    expect(() => sanitizeFilePath("D:file.md")).toThrow(
+      "Absolute paths not allowed",
+    );
   });
 
   it("allows paths with spaces", () => {
-    expect(sanitizeFilePath("my notes/test file.md")).toBe("my notes/test file.md");
+    expect(sanitizeFilePath("my notes/test file.md")).toBe(
+      "my notes/test file.md",
+    );
   });
 
   it("allows paths with unicode characters", () => {
@@ -170,17 +186,26 @@ describe("compactify", () => {
   });
 
   it("does not recurse into opaque keys (frontmatter)", () => {
-    const data = { frontmatter: { path: "/real/path", tags: ["a"] }, path: "note.md" };
+    const data = {
+      frontmatter: { path: "/real/path", tags: ["a"] },
+      path: "note.md",
+    };
     const result = compactify(data);
     // frontmatter internals should NOT be renamed
-    expect(result).toEqual({ fm: { path: "/real/path", tags: ["a"] }, p: "note.md" });
+    expect(result).toEqual({
+      fm: { path: "/real/path", tags: ["a"] },
+      p: "note.md",
+    });
   });
 
   it("does not recurse into opaque keys (result)", () => {
     const data = { result: { content: "raw", matches: [1] }, path: "note.md" };
     const result = compactify(data);
     // result internals should NOT be renamed
-    expect(result).toEqual({ result: { content: "raw", matches: [1] }, p: "note.md" });
+    expect(result).toEqual({
+      result: { content: "raw", matches: [1] },
+      p: "note.md",
+    });
   });
 
   it("handles deeply nested objects", () => {
@@ -282,20 +307,26 @@ describe("ObsidianClient — constructor", () => {
 
   it("throws when cert file does not exist", () => {
     expect(() => {
-      new ObsidianClient(makeConfig({
-        scheme: "https",
-        certPath: "/nonexistent/cert.pem",
-      }));
+      new ObsidianClient(
+        makeConfig({
+          scheme: "https",
+          certPath: "/nonexistent/cert.pem",
+        }),
+      );
     }).toThrow("Failed to read TLS certificate");
   });
 
   it("creates client with verifySsl=true (no certPath)", () => {
-    const client = new ObsidianClient(makeConfig({ scheme: "https", verifySsl: true }));
+    const client = new ObsidianClient(
+      makeConfig({ scheme: "https", verifySsl: true }),
+    );
     expect(client).toBeInstanceOf(ObsidianClient);
   });
 
   it("creates client with verifySsl=false and no certPath (self-signed)", () => {
-    const client = new ObsidianClient(makeConfig({ scheme: "https", verifySsl: false }));
+    const client = new ObsidianClient(
+      makeConfig({ scheme: "https", verifySsl: false }),
+    );
     expect(client).toBeInstanceOf(ObsidianClient);
   });
 
@@ -313,34 +344,52 @@ describe("ObsidianClient — parseJsonResponse", () => {
   it("returns parsed JSON for valid input", () => {
     const client = new ObsidianClient(makeConfig());
     // Access private method via bracket notation
-    const parse = (client as unknown as Record<string, (body: string, path: string) => unknown>)["parseJsonResponse"];
+    const parse = (
+      client as unknown as Record<
+        string,
+        (body: string, path: string) => unknown
+      >
+    )["parseJsonResponse"];
     const result = parse.call(client, '{"ok":true}', "/test");
     expect(result).toEqual({ ok: true });
   });
 
   it("throws ObsidianApiError on invalid JSON", () => {
     const client = new ObsidianClient(makeConfig());
-    const parse = (client as unknown as Record<string, (body: string, path: string) => unknown>)["parseJsonResponse"];
-    expect(() => parse.call(client, "not json", "/test")).toThrow(ObsidianApiError);
+    const parse = (
+      client as unknown as Record<
+        string,
+        (body: string, path: string) => unknown
+      >
+    )["parseJsonResponse"];
+    expect(() => parse.call(client, "not json", "/test")).toThrow(
+      ObsidianApiError,
+    );
   });
 });
 
 describe("ObsidianClient — handleErrorResponse", () => {
   it("throws ObsidianAuthError for 401", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    const handle = (
+      client as unknown as Record<string, (code: number, body: string) => never>
+    )["handleErrorResponse"];
     expect(() => handle.call(client, 401, "")).toThrow(ObsidianAuthError);
   });
 
   it("throws ObsidianAuthError for 403", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    const handle = (
+      client as unknown as Record<string, (code: number, body: string) => never>
+    )["handleErrorResponse"];
     expect(() => handle.call(client, 403, "")).toThrow(ObsidianAuthError);
   });
 
   it("throws ObsidianApiError for other codes", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    const handle = (
+      client as unknown as Record<string, (code: number, body: string) => never>
+    )["handleErrorResponse"];
     try {
       handle.call(client, 500, '{"message":"Internal error","errorCode":99}');
     } catch (err: unknown) {
@@ -356,7 +405,9 @@ describe("ObsidianClient — handleErrorResponse", () => {
 
   it("uses raw body as message when JSON parsing fails", () => {
     const client = new ObsidianClient(makeConfig());
-    const handle = (client as unknown as Record<string, (code: number, body: string) => never>)["handleErrorResponse"];
+    const handle = (
+      client as unknown as Record<string, (code: number, body: string) => never>
+    )["handleErrorResponse"];
     try {
       handle.call(client, 500, "raw error text");
     } catch (err: unknown) {
@@ -374,13 +425,17 @@ describe("ObsidianClient — handleErrorResponse", () => {
 describe("ObsidianClient — truncateResponse", () => {
   it("does not truncate short text", () => {
     const client = new ObsidianClient(makeConfig({ maxResponseChars: 100 }));
-    const truncate = (client as unknown as Record<string, (text: string) => string>)["truncateResponse"];
+    const truncate = (
+      client as unknown as Record<string, (text: string) => string>
+    )["truncateResponse"];
     expect(truncate.call(client, "short")).toBe("short");
   });
 
   it("truncates text exceeding maxResponseChars", () => {
     const client = new ObsidianClient(makeConfig({ maxResponseChars: 10 }));
-    const truncate = (client as unknown as Record<string, (text: string) => string>)["truncateResponse"];
+    const truncate = (
+      client as unknown as Record<string, (text: string) => string>
+    )["truncateResponse"];
     const result = truncate.call(client, "a".repeat(100));
     expect(result.length).toBeLessThan(100);
     expect(result).toContain("[TRUNCATED");
@@ -389,7 +444,9 @@ describe("ObsidianClient — truncateResponse", () => {
 
   it("does not truncate when maxResponseChars is 0 (disabled)", () => {
     const client = new ObsidianClient(makeConfig({ maxResponseChars: 0 }));
-    const truncate = (client as unknown as Record<string, (text: string) => string>)["truncateResponse"];
+    const truncate = (
+      client as unknown as Record<string, (text: string) => string>
+    )["truncateResponse"];
     const long = "x".repeat(1000000);
     expect(truncate.call(client, long)).toBe(long);
   });
@@ -401,7 +458,12 @@ describe("ObsidianClient — truncateResponse", () => {
 describe("ObsidianClient — withFileLock", () => {
   it("serialises concurrent operations on the same file path", async () => {
     const client = new ObsidianClient(makeConfig());
-    const withFileLock = (client as unknown as Record<string, <T>(path: string, fn: () => Promise<T>) => Promise<T>>)["withFileLock"];
+    const withFileLock = (
+      client as unknown as Record<
+        string,
+        <T>(path: string, fn: () => Promise<T>) => Promise<T>
+      >
+    )["withFileLock"];
 
     const order: number[] = [];
 
@@ -420,7 +482,12 @@ describe("ObsidianClient — withFileLock", () => {
 
   it("allows concurrent operations on different paths", async () => {
     const client = new ObsidianClient(makeConfig());
-    const withFileLock = (client as unknown as Record<string, <T>(path: string, fn: () => Promise<T>) => Promise<T>>)["withFileLock"];
+    const withFileLock = (
+      client as unknown as Record<
+        string,
+        <T>(path: string, fn: () => Promise<T>) => Promise<T>
+      >
+    )["withFileLock"];
 
     const order: string[] = [];
 
@@ -446,14 +513,18 @@ describe("ObsidianClient — withFileLock", () => {
 describe("ObsidianClient — encodePath", () => {
   it("URL-encodes path segments", () => {
     const client = new ObsidianClient(makeConfig());
-    const encodePath = (client as unknown as Record<string, (path: string) => string>)["encodePath"];
+    const encodePath = (
+      client as unknown as Record<string, (path: string) => string>
+    )["encodePath"];
     const result = encodePath.call(client, "my notes/test file.md");
     expect(result).toBe("my%20notes/test%20file.md");
   });
 
   it("handles paths with special characters", () => {
     const client = new ObsidianClient(makeConfig());
-    const encodePath = (client as unknown as Record<string, (path: string) => string>)["encodePath"];
+    const encodePath = (
+      client as unknown as Record<string, (path: string) => string>
+    )["encodePath"];
     const result = encodePath.call(client, "notes/hello world (1).md");
     expect(result).toContain("hello%20world%20(1).md");
   });
@@ -466,13 +537,25 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   /** Helper: calls buildPatchHeaders with the given options and returns the full headers record. */
   function buildHeaders(opts: Record<string, unknown>): Record<string, string> {
     const client = new ObsidianClient(makeConfig());
-    const build = (client as unknown as Record<string, (o: Record<string, unknown>) => Record<string, string>>)["buildPatchHeaders"];
+    const build = (
+      client as unknown as Record<
+        string,
+        (o: Record<string, unknown>) => Record<string, string>
+      >
+    )["buildPatchHeaders"];
     return build.call(client, opts);
   }
 
   /** Helper: builds patch headers for a given target and returns the Target header value. */
   function targetHeader(target: string): string {
-    return buildHeaders({ operation: "append", targetType: "heading", target, contentType: "markdown" })["Target"] ?? "";
+    return (
+      buildHeaders({
+        operation: "append",
+        targetType: "heading",
+        target,
+        contentType: "markdown",
+      })["Target"] ?? ""
+    );
   }
 
   it("sets required headers", () => {
@@ -497,7 +580,9 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("encodes non-ASCII unicode in Target header for HTTP safety", () => {
-    expect(targetHeader("Notizen über Bücher")).toBe("Notizen %C3%BCber B%C3%BCcher");
+    expect(targetHeader("Notizen über Bücher")).toBe(
+      "Notizen %C3%BCber B%C3%BCcher",
+    );
   });
 
   it("encodes emoji in Target header for HTTP safety", () => {
@@ -509,7 +594,9 @@ describe("ObsidianClient — buildPatchHeaders", () => {
   });
 
   it("encodes fully non-ASCII heading (CJK)", () => {
-    expect(targetHeader("日本語の見出し")).toBe("%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%81%AE%E8%A6%8B%E5%87%BA%E3%81%97");
+    expect(targetHeader("日本語の見出し")).toBe(
+      "%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%81%AE%E8%A6%8B%E5%87%BA%E3%81%97",
+    );
   });
 
   it("escapes literal % so Obsidian does not decode %HH sequences", () => {
@@ -586,14 +673,28 @@ describe("ObsidianClient — buildPatchHeaders", () => {
 describe("ObsidianClient — periodicDatePath", () => {
   it("builds correct path with zero-padded month and day", () => {
     const client = new ObsidianClient(makeConfig());
-    const buildPath = (client as unknown as Record<string, (period: string, y: number, m: number, d: number) => string>)["periodicDatePath"];
-    expect(buildPath.call(client, "daily", 2026, 3, 5)).toBe("/periodic/daily/2026/03/05/");
+    const buildPath = (
+      client as unknown as Record<
+        string,
+        (period: string, y: number, m: number, d: number) => string
+      >
+    )["periodicDatePath"];
+    expect(buildPath.call(client, "daily", 2026, 3, 5)).toBe(
+      "/periodic/daily/2026/03/05/",
+    );
   });
 
   it("does not pad already two-digit month/day", () => {
     const client = new ObsidianClient(makeConfig());
-    const buildPath = (client as unknown as Record<string, (period: string, y: number, m: number, d: number) => string>)["periodicDatePath"];
-    expect(buildPath.call(client, "weekly", 2026, 12, 25)).toBe("/periodic/weekly/2026/12/25/");
+    const buildPath = (
+      client as unknown as Record<
+        string,
+        (period: string, y: number, m: number, d: number) => string
+      >
+    )["periodicDatePath"];
+    expect(buildPath.call(client, "weekly", 2026, 12, 25)).toBe(
+      "/periodic/weekly/2026/12/25/",
+    );
   });
 });
 
@@ -632,7 +733,11 @@ describe("ObsidianClient — setCache", () => {
 // ---------------------------------------------------------------------------
 // Helper: create a client with mocked request()
 // ---------------------------------------------------------------------------
-type RequestResult = { statusCode: number; headers: Record<string, string>; body: string };
+type RequestResult = {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: string;
+};
 
 /** Extracts HTTP headers from a mock request call's third argument. */
 function getCallHeaders(call: unknown[] | undefined): Record<string, string> {
@@ -644,9 +749,12 @@ function getCallHeaders(call: unknown[] | undefined): Record<string, string> {
   return {};
 }
 
-function createMockedClient(
-  overrides: Partial<Config> = {},
-): { client: ObsidianClient; mockRequest: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<RequestResult>>> } {
+function createMockedClient(overrides: Partial<Config> = {}): {
+  client: ObsidianClient;
+  mockRequest: ReturnType<
+    typeof vi.fn<(...args: unknown[]) => Promise<RequestResult>>
+  >;
+} {
   const client = new ObsidianClient(makeConfig(overrides));
   const mockRequest = vi.fn<(...args: unknown[]) => Promise<RequestResult>>();
   (client as unknown as Record<string, unknown>)["request"] = mockRequest;
@@ -654,7 +762,11 @@ function createMockedClient(
 }
 
 function okJson(data: unknown): RequestResult {
-  return { statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(data) };
+  return {
+    statusCode: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(data),
+  };
 }
 
 function ok204(): RequestResult {
@@ -662,7 +774,11 @@ function ok204(): RequestResult {
 }
 
 function notFound(msg = "Not found"): RequestResult {
-  return { statusCode: 404, headers: {}, body: JSON.stringify({ message: msg }) };
+  return {
+    statusCode: 404,
+    headers: {},
+    body: JSON.stringify({ message: msg }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +787,12 @@ function notFound(msg = "Not found"): RequestResult {
 describe("ObsidianClient — getServerStatus", () => {
   it("returns server status on success", async () => {
     const { client, mockRequest } = createMockedClient();
-    const status = { ok: true, service: "obsidian", authenticated: true, versions: {} };
+    const status = {
+      ok: true,
+      service: "obsidian",
+      authenticated: true,
+      versions: {},
+    };
     mockRequest.mockResolvedValue(okJson(status));
 
     const result = await client.getServerStatus();
@@ -681,7 +802,11 @@ describe("ObsidianClient — getServerStatus", () => {
 
   it("throws on non-200 status", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: '{"message":"error"}' });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: '{"message":"error"}',
+    });
 
     await expect(client.getServerStatus()).rejects.toThrow(ObsidianApiError);
   });
@@ -701,7 +826,11 @@ describe("ObsidianClient — listFilesInVault", () => {
 
   it("throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.listFilesInVault()).rejects.toThrow(ObsidianApiError);
   });
@@ -724,7 +853,9 @@ describe("ObsidianClient — listFilesInDir", () => {
     // First call: 404 for the dir
     mockRequest.mockResolvedValueOnce(notFound());
     // Second call: listFilesInVault shows the dir exists
-    mockRequest.mockResolvedValueOnce(okJson({ files: ["emptydir/nested.md"] }));
+    mockRequest.mockResolvedValueOnce(
+      okJson({ files: ["emptydir/nested.md"] }),
+    );
 
     const result = await client.listFilesInDir("emptydir");
     expect(result.files).toEqual([]);
@@ -735,14 +866,22 @@ describe("ObsidianClient — listFilesInDir", () => {
     mockRequest.mockResolvedValueOnce(notFound());
     mockRequest.mockResolvedValueOnce(okJson({ files: ["other/note.md"] }));
 
-    await expect(client.listFilesInDir("nonexistent")).rejects.toThrow(ObsidianApiError);
+    await expect(client.listFilesInDir("nonexistent")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("throws on non-200, non-404 error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: '{"message":"error"}' });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: '{"message":"error"}',
+    });
 
-    await expect(client.listFilesInDir("folder")).rejects.toThrow(ObsidianApiError);
+    await expect(client.listFilesInDir("folder")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 });
 
@@ -752,7 +891,11 @@ describe("ObsidianClient — listFilesInDir", () => {
 describe("ObsidianClient — getFileContents", () => {
   it("returns markdown content by default", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 200, headers: {}, body: "# Hello" });
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "# Hello",
+    });
 
     const result = await client.getFileContents("note.md");
     expect(result).toBe("# Hello");
@@ -760,7 +903,13 @@ describe("ObsidianClient — getFileContents", () => {
 
   it("returns JSON for json format", async () => {
     const { client, mockRequest } = createMockedClient();
-    const noteJson = { content: "hello", frontmatter: {}, path: "note.md", tags: [], stat: { ctime: 0, mtime: 0, size: 5 } };
+    const noteJson = {
+      content: "hello",
+      frontmatter: {},
+      path: "note.md",
+      tags: [],
+      stat: { ctime: 0, mtime: 0, size: 5 },
+    };
     mockRequest.mockResolvedValue(okJson(noteJson));
 
     const result = await client.getFileContents("note.md", "json");
@@ -769,7 +918,11 @@ describe("ObsidianClient — getFileContents", () => {
 
   it("returns document map for map format", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["# Title"], blocks: [], frontmatterFields: ["date"] };
+    const docMap = {
+      headings: ["# Title"],
+      blocks: [],
+      frontmatterFields: ["date"],
+    };
     mockRequest.mockResolvedValue(okJson(docMap));
 
     const result = await client.getFileContents("note.md", "map");
@@ -777,19 +930,27 @@ describe("ObsidianClient — getFileContents", () => {
   });
 
   it("truncates long markdown responses", async () => {
-    const { client, mockRequest } = createMockedClient({ maxResponseChars: 50 });
-    mockRequest.mockResolvedValue({ statusCode: 200, headers: {}, body: "x".repeat(200) });
+    const { client, mockRequest } = createMockedClient({
+      maxResponseChars: 50,
+    });
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "x".repeat(200),
+    });
 
     const result = await client.getFileContents("note.md", "markdown");
     expect(typeof result).toBe("string");
-    expect((result as string)).toContain("[TRUNCATED");
+    expect(result as string).toContain("[TRUNCATED");
   });
 
   it("throws on error status", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(notFound());
 
-    await expect(client.getFileContents("missing.md")).rejects.toThrow(ObsidianApiError);
+    await expect(client.getFileContents("missing.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("tries case-insensitive fallback on 404", async () => {
@@ -797,9 +958,17 @@ describe("ObsidianClient — getFileContents", () => {
     // First request: 404
     mockRequest.mockResolvedValueOnce(notFound());
     // Directory listing for case-insensitive fallback
-    mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: JSON.stringify({ files: ["Notes/myfile.md"] }) });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: ["Notes/myfile.md"] }),
+    });
     // Retry with corrected path: 200
-    mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: "found it" });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "found it",
+    });
 
     const result = await client.getFileContents("Notes/MyFile.md");
     expect(result).toBe("found it");
@@ -839,39 +1008,61 @@ describe("ObsidianClient — putContent", () => {
     // First call: PUT succeeds
     mockRequest.mockResolvedValueOnce(ok204());
     // Second call: GET for verification
-    mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: "correct content" });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "correct content",
+    });
 
     await client.putContent("note.md", "correct content");
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
   it("warns on write verification mismatch", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
-    mockRequest.mockResolvedValueOnce({ statusCode: 200, headers: {}, body: "different content" });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "different content",
+    });
 
     await client.putContent("note.md", "expected content");
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
-    expect(calls.some((c) => c.includes("Write verification failed"))).toBe(true);
+    expect(calls.some((c) => c.includes("Write verification failed"))).toBe(
+      true,
+    );
   });
 
   it("warns on write verification read failure", async () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockRejectedValueOnce(new Error("read failed"));
 
     await client.putContent("note.md", "content");
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
-    expect(calls.some((c) => c.includes("Write verification could not read back"))).toBe(true);
+    expect(
+      calls.some((c) => c.includes("Write verification could not read back")),
+    ).toBe(true);
   });
 
   it("throws on error status", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: '{"message":"fail"}' });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: '{"message":"fail"}',
+    });
 
-    await expect(client.putContent("note.md", "content")).rejects.toThrow(ObsidianApiError);
+    await expect(client.putContent("note.md", "content")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("works with default empty content", async () => {
@@ -951,17 +1142,29 @@ describe("ObsidianClient — patchContent", () => {
 
   it("retries with corrected heading on 400 for heading target", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Introduction", "Tasks List", "Conclusion"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Introduction", "Tasks List", "Conclusion"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     // First PATCH returns 400 (heading not found), then GET returns doc map, then retry PATCH returns 204
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchContent("note.md", "new text", {
       operation: "append",
       targetType: "heading",
-      target: "tasks list",  // case mismatch — should match "Tasks List"
+      target: "tasks list", // case mismatch — should match "Tasks List"
     });
 
     // Verify 3 requests: original PATCH, GET for map, retry PATCH
@@ -981,16 +1184,30 @@ describe("ObsidianClient — patchContent", () => {
 
   it("throws original 400 error when retry finds no matching heading", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Introduction", "Conclusion"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Introduction", "Conclusion"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
-    const err = await client.patchContent("note.md", "text", {
-      operation: "append",
-      targetType: "heading",
-      target: "Nonexistent Heading",
-    }).catch((e: unknown) => e);
+    const err = await client
+      .patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Nonexistent Heading",
+      })
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ObsidianApiError);
     expect((err as ObsidianApiError).statusCode).toBe(400);
     expect((err as ObsidianApiError).message).toContain("heading not found");
@@ -1003,15 +1220,29 @@ describe("ObsidianClient — patchContent", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
-      .mockResolvedValueOnce({ statusCode: 500, headers: {}, body: '{"message":"internal error"}' });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 500,
+        headers: {},
+        body: '{"message":"internal error"}',
+      });
 
-    const err = await client.patchContent("note.md", "text", {
-      operation: "append",
-      targetType: "heading",
-      target: "tasks",
-    }).catch((e: unknown) => e);
+    const err = await client
+      .patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "tasks",
+      })
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ObsidianApiError);
     expect((err as { statusCode: number }).statusCode).toBe(400);
 
@@ -1022,10 +1253,22 @@ describe("ObsidianClient — patchContent", () => {
 
   it("retries with progressive suffix match when parent heading was renamed", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["NewParent::Tasks"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["NewParent::Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchContent("note.md", "text", {
@@ -1044,10 +1287,22 @@ describe("ObsidianClient — patchContent", () => {
     const { client, mockRequest } = createMockedClient();
     // Target "Tasks" (flat) was restructured to "New Section::Tasks" (hierarchical)
     // Stage 4 leaf match should find it
-    const docMap = { headings: ["New Section::Tasks"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["New Section::Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchContent("note.md", "text", {
@@ -1063,10 +1318,22 @@ describe("ObsidianClient — patchContent", () => {
 
   it("does not retry when leaf match is ambiguous", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Project A::Tasks", "Project B::Tasks"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Project A::Tasks", "Project B::Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
     await expect(
       client.patchContent("note.md", "text", {
@@ -1084,10 +1351,22 @@ describe("ObsidianClient — patchContent", () => {
     const { client, mockRequest } = createMockedClient();
     // "Tasks" and "TASKS" both match case-insensitively (stage 2 ambiguous)
     // Both have same leaf (stage 4 ambiguous too) — no unique match possible
-    const docMap = { headings: ["Tasks", "TASKS"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Tasks", "TASKS"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
     await expect(
       client.patchContent("note.md", "text", {
@@ -1103,7 +1382,11 @@ describe("ObsidianClient — patchContent", () => {
 
   it("does not retry on 400 for non-heading targets", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"bad request"}',
+    });
 
     await expect(
       client.patchContent("note.md", "text", {
@@ -1119,7 +1402,11 @@ describe("ObsidianClient — patchContent", () => {
 
   it("does not retry when 400 body is not a heading-not-found error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"bad request"}' });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"bad request"}',
+    });
 
     await expect(
       client.patchContent("note.md", "text", {
@@ -1139,8 +1426,16 @@ describe("ObsidianClient — patchContent", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchContent("note.md", "text", {
@@ -1190,7 +1485,11 @@ describe("ObsidianClient — deleteFile", () => {
 describe("ObsidianClient — active file", () => {
   it("getActiveFile returns markdown", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 200, headers: {}, body: "active content" });
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "active content",
+    });
 
     const result = await client.getActiveFile();
     expect(result).toBe("active content");
@@ -1198,7 +1497,13 @@ describe("ObsidianClient — active file", () => {
 
   it("getActiveFile returns JSON for json format", async () => {
     const { client, mockRequest } = createMockedClient();
-    const noteJson = { content: "x", frontmatter: {}, path: "x.md", tags: [], stat: { ctime: 0, mtime: 0, size: 1 } };
+    const noteJson = {
+      content: "x",
+      frontmatter: {},
+      path: "x.md",
+      tags: [],
+      stat: { ctime: 0, mtime: 0, size: 1 },
+    };
     mockRequest.mockResolvedValue(okJson(noteJson));
 
     const result = await client.getActiveFile("json");
@@ -1216,39 +1521,65 @@ describe("ObsidianClient — active file", () => {
 
   it("getActiveFile throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 404, headers: {}, body: '{"message":"no active file"}' });
+    mockRequest.mockResolvedValue({
+      statusCode: 404,
+      headers: {},
+      body: '{"message":"no active file"}',
+    });
 
     await expect(client.getActiveFile()).rejects.toThrow(ObsidianApiError);
   });
 
   it("putActiveFile throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.putActiveFile("content")).rejects.toThrow(ObsidianApiError);
+    await expect(client.putActiveFile("content")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("appendActiveFile throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.appendActiveFile("content")).rejects.toThrow(ObsidianApiError);
+    await expect(client.appendActiveFile("content")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("patchActiveFile throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.patchActiveFile("text", {
-      operation: "append",
-      targetType: "heading",
-      target: "Test",
-    })).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.patchActiveFile("text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Test",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("deleteActiveFile throws on error (non-204/200)", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.deleteActiveFile()).rejects.toThrow(ObsidianApiError);
   });
@@ -1326,20 +1657,40 @@ describe("ObsidianClient — active file", () => {
       targetType: "heading",
       target: "Test",
     });
-    expect(mockRequest).toHaveBeenCalledWith("PATCH", "/active/", expect.any(Object));
+    expect(mockRequest).toHaveBeenCalledWith(
+      "PATCH",
+      "/active/",
+      expect.any(Object),
+    );
   });
 
   it("patchActiveFile retries with corrected heading on 400", async () => {
     const { client, mockRequest } = createMockedClient();
     const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
     client.setCache(mockCache);
-    const docMap = { headings: ["My Heading"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["My Heading"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
-    await client.patchActiveFile("text", { operation: "append", targetType: "heading", target: "my heading" });
+    await client.patchActiveFile("text", {
+      operation: "append",
+      targetType: "heading",
+      target: "my heading",
+    });
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     const retryCall = mockRequest.mock.calls[2];
@@ -1350,13 +1701,29 @@ describe("ObsidianClient — active file", () => {
 
   it("patchActiveFile throws original error when retry finds no match", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Unrelated"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
     await expect(
-      client.patchActiveFile("text", { operation: "append", targetType: "heading", target: "Missing" }),
+      client.patchActiveFile("text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Missing",
+      }),
     ).rejects.toThrow(ObsidianApiError);
   });
 
@@ -1385,7 +1752,9 @@ describe("ObsidianClient — active file", () => {
 describe("ObsidianClient — commands", () => {
   it("listCommands returns command list", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue(okJson({ commands: [{ id: "cmd:test", name: "Test" }] }));
+    mockRequest.mockResolvedValue(
+      okJson({ commands: [{ id: "cmd:test", name: "Test" }] }),
+    );
 
     const result = await client.listCommands();
     expect(result.commands).toHaveLength(1);
@@ -1405,7 +1774,11 @@ describe("ObsidianClient — commands", () => {
 
   it("listCommands throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.listCommands()).rejects.toThrow(ObsidianApiError);
   });
@@ -1414,7 +1787,9 @@ describe("ObsidianClient — commands", () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(notFound());
 
-    await expect(client.executeCommand("nonexistent:cmd")).rejects.toThrow(ObsidianApiError);
+    await expect(client.executeCommand("nonexistent:cmd")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 });
 
@@ -1427,10 +1802,7 @@ describe("ObsidianClient — openFile", () => {
     mockRequest.mockResolvedValue(ok204());
 
     await client.openFile("note.md");
-    expect(mockRequest).toHaveBeenCalledWith(
-      "POST",
-      "/open/note.md",
-    );
+    expect(mockRequest).toHaveBeenCalledWith("POST", "/open/note.md");
   });
 
   it("opens file with newLeaf query param", async () => {
@@ -1446,7 +1818,11 @@ describe("ObsidianClient — openFile", () => {
 
   it("throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.openFile("note.md")).rejects.toThrow(ObsidianApiError);
   });
@@ -1502,23 +1878,37 @@ describe("ObsidianClient — search", () => {
 
   it("simpleSearch throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.simpleSearch("test")).rejects.toThrow(ObsidianApiError);
   });
 
   it("complexSearch throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
     await expect(client.complexSearch({})).rejects.toThrow(ObsidianApiError);
   });
 
   it("dataviewSearch throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.dataviewSearch("LIST")).rejects.toThrow(ObsidianApiError);
+    await expect(client.dataviewSearch("LIST")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("simpleSearch passes contextLength parameter", async () => {
@@ -1537,7 +1927,11 @@ describe("ObsidianClient — search", () => {
 describe("ObsidianClient — periodic notes (current)", () => {
   it("getPeriodicNote returns content", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 200, headers: {}, body: "daily note content" });
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "daily note content",
+    });
 
     const result = await client.getPeriodicNote("daily");
     expect(result).toBe("daily note content");
@@ -1545,7 +1939,13 @@ describe("ObsidianClient — periodic notes (current)", () => {
 
   it("getPeriodicNote returns JSON for json format", async () => {
     const { client, mockRequest } = createMockedClient();
-    const noteJson = { content: "x", frontmatter: {}, path: "x.md", tags: [], stat: { ctime: 0, mtime: 0, size: 1 } };
+    const noteJson = {
+      content: "x",
+      frontmatter: {},
+      path: "x.md",
+      tags: [],
+      stat: { ctime: 0, mtime: 0, size: 1 },
+    };
     mockRequest.mockResolvedValue(okJson(noteJson));
 
     const result = await client.getPeriodicNote("daily", "json");
@@ -1556,39 +1956,65 @@ describe("ObsidianClient — periodic notes (current)", () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(notFound());
 
-    await expect(client.getPeriodicNote("daily")).rejects.toThrow(ObsidianApiError);
+    await expect(client.getPeriodicNote("daily")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("putPeriodicNote throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.putPeriodicNote("daily", "content")).rejects.toThrow(ObsidianApiError);
+    await expect(client.putPeriodicNote("daily", "content")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("appendPeriodicNote throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.appendPeriodicNote("daily", "content")).rejects.toThrow(ObsidianApiError);
+    await expect(client.appendPeriodicNote("daily", "content")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("patchPeriodicNote throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.patchPeriodicNote("daily", "text", {
-      operation: "append",
-      targetType: "heading",
-      target: "Test",
-    })).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.patchPeriodicNote("daily", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Test",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("deletePeriodicNote throws on non-204/200/404 error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.deletePeriodicNote("daily")).rejects.toThrow(ObsidianApiError);
+    await expect(client.deletePeriodicNote("daily")).rejects.toThrow(
+      ObsidianApiError,
+    );
   });
 
   it("putPeriodicNote writes content", async () => {
@@ -1624,7 +2050,11 @@ describe("ObsidianClient — periodic notes (current)", () => {
       targetType: "heading",
       target: "Summary",
     });
-    expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/", expect.any(Object));
+    expect(mockRequest).toHaveBeenCalledWith(
+      "PATCH",
+      "/periodic/monthly/",
+      expect.any(Object),
+    );
   });
 
   it("patchPeriodicNote retries with corrected heading on 400", async () => {
@@ -1633,12 +2063,22 @@ describe("ObsidianClient — periodic notes (current)", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Summary"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchPeriodicNote("monthly", "text", {
-      operation: "append", targetType: "heading", target: "summary",
+      operation: "append",
+      targetType: "heading",
+      target: "summary",
     });
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
@@ -1650,13 +2090,29 @@ describe("ObsidianClient — periodic notes (current)", () => {
 
   it("patchPeriodicNote throws original error when retry finds no match", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Unrelated"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
     await expect(
-      client.patchPeriodicNote("daily", "text", { operation: "append", targetType: "heading", target: "Missing" }),
+      client.patchPeriodicNote("daily", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Missing",
+      }),
     ).rejects.toThrow(ObsidianApiError);
   });
 
@@ -1692,7 +2148,11 @@ describe("ObsidianClient — periodic notes (current)", () => {
 describe("ObsidianClient — periodic notes (by date)", () => {
   it("getPeriodicNoteForDate returns content", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 200, headers: {}, body: "date note" });
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "date note",
+    });
 
     const result = await client.getPeriodicNoteForDate("daily", 2026, 3, 14);
     expect(result).toBe("date note");
@@ -1705,10 +2165,22 @@ describe("ObsidianClient — periodic notes (by date)", () => {
 
   it("getPeriodicNoteForDate returns JSON for json format", async () => {
     const { client, mockRequest } = createMockedClient();
-    const noteJson = { content: "x", frontmatter: {}, path: "x.md", tags: [], stat: { ctime: 0, mtime: 0, size: 1 } };
+    const noteJson = {
+      content: "x",
+      frontmatter: {},
+      path: "x.md",
+      tags: [],
+      stat: { ctime: 0, mtime: 0, size: 1 },
+    };
     mockRequest.mockResolvedValue(okJson(noteJson));
 
-    const result = await client.getPeriodicNoteForDate("daily", 2026, 1, 1, "json");
+    const result = await client.getPeriodicNoteForDate(
+      "daily",
+      2026,
+      1,
+      1,
+      "json",
+    );
     expect(result).toEqual(noteJson);
   });
 
@@ -1716,39 +2188,65 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(notFound());
 
-    await expect(client.getPeriodicNoteForDate("daily", 2026, 1, 1)).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.getPeriodicNoteForDate("daily", 2026, 1, 1),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("putPeriodicNoteForDate throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.putPeriodicNoteForDate("daily", 2026, 1, 1, "content")).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.putPeriodicNoteForDate("daily", 2026, 1, 1, "content"),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("appendPeriodicNoteForDate throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.appendPeriodicNoteForDate("daily", 2026, 1, 1, "text")).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.appendPeriodicNoteForDate("daily", 2026, 1, 1, "text"),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("patchPeriodicNoteForDate throws on error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "text", {
-      operation: "append",
-      targetType: "heading",
-      target: "Test",
-    })).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Test",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("deletePeriodicNoteForDate throws on non-204/200/404 error", async () => {
     const { client, mockRequest } = createMockedClient();
-    mockRequest.mockResolvedValue({ statusCode: 500, headers: {}, body: "error" });
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: "error",
+    });
 
-    await expect(client.deletePeriodicNoteForDate("daily", 2026, 1, 1)).rejects.toThrow(ObsidianApiError);
+    await expect(
+      client.deletePeriodicNoteForDate("daily", 2026, 1, 1),
+    ).rejects.toThrow(ObsidianApiError);
   });
 
   it("putPeriodicNoteForDate invalidates all cache", async () => {
@@ -1794,7 +2292,11 @@ describe("ObsidianClient — periodic notes (by date)", () => {
       targetType: "frontmatter",
       target: "status",
     });
-    expect(mockRequest).toHaveBeenCalledWith("PATCH", "/periodic/monthly/2026/06/15/", expect.any(Object));
+    expect(mockRequest).toHaveBeenCalledWith(
+      "PATCH",
+      "/periodic/monthly/2026/06/15/",
+      expect.any(Object),
+    );
   });
 
   it("patchPeriodicNoteForDate retries with corrected heading on 400", async () => {
@@ -1803,12 +2305,22 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     client.setCache(mockCache);
     const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) })
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
       .mockResolvedValueOnce(ok204());
 
     await client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", {
-      operation: "append", targetType: "heading", target: "tasks",
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
     });
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
@@ -1820,13 +2332,29 @@ describe("ObsidianClient — periodic notes (by date)", () => {
 
   it("patchPeriodicNoteForDate throws original error when retry finds no match", async () => {
     const { client, mockRequest } = createMockedClient();
-    const docMap = { headings: ["Unrelated"], blocks: [], frontmatterFields: [] };
+    const docMap = {
+      headings: ["Unrelated"],
+      blocks: [],
+      frontmatterFields: [],
+    };
     mockRequest
-      .mockResolvedValueOnce({ statusCode: 400, headers: {}, body: '{"message":"heading not found"}' })
-      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(docMap) });
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      });
 
     await expect(
-      client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", { operation: "append", targetType: "heading", target: "Missing" }),
+      client.patchPeriodicNoteForDate("daily", 2026, 3, 16, "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "Missing",
+      }),
     ).rejects.toThrow(ObsidianApiError);
   });
 
@@ -1835,14 +2363,18 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     mockRequest.mockResolvedValue(ok204());
 
     await client.deletePeriodicNoteForDate("yearly", 2026, 1, 1);
-    expect(mockRequest).toHaveBeenCalledWith("DELETE", "/periodic/yearly/2026/01/01/");
+    expect(mockRequest).toHaveBeenCalledWith(
+      "DELETE",
+      "/periodic/yearly/2026/01/01/",
+    );
   });
 
   it("deletePeriodicNoteForDate silently handles 404", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(notFound());
 
-    await expect(client.deletePeriodicNoteForDate("daily", 2026, 1, 1)).resolves.toBeUndefined();
+    await expect(
+      client.deletePeriodicNoteForDate("daily", 2026, 1, 1),
+    ).resolves.toBeUndefined();
   });
 });
-

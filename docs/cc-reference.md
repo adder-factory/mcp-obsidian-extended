@@ -10,82 +10,90 @@ Base URL: `${scheme}://${host}:${port}` (default `https://127.0.0.1:27124`)
 Auth: `Authorization: Bearer ${apiKey}` on all endpoints except `GET /`
 
 ### System
-| Method | Path | Auth | Response |
-|--------|------|------|----------|
-| GET | `/` | No | `{ ok, service, authenticated, versions }` |
+
+| Method | Path | Auth | Response                                   |
+| ------ | ---- | ---- | ------------------------------------------ |
+| GET    | `/`  | No   | `{ ok, service, authenticated, versions }` |
 
 ### Vault Files
-| Method | Path | Headers | Body | Response |
-|--------|------|---------|------|----------|
-| GET | `/vault/` | — | — | `{ files: string[] }` |
-| GET | `/vault/{dir}/` | — | — | `{ files: string[] }` |
-| GET | `/vault/{path}` | Accept: see below | — | content (varies by Accept) |
-| PUT | `/vault/{path}` | Content-Type: text/markdown | markdown | 204 |
-| POST | `/vault/{path}` | Content-Type: text/markdown | markdown | 204 |
-| PATCH | `/vault/{path}` | PATCH headers (see below) | content | 204 |
-| DELETE | `/vault/{path}` | — | — | 204 |
+
+| Method | Path            | Headers                     | Body     | Response                   |
+| ------ | --------------- | --------------------------- | -------- | -------------------------- |
+| GET    | `/vault/`       | —                           | —        | `{ files: string[] }`      |
+| GET    | `/vault/{dir}/` | —                           | —        | `{ files: string[] }`      |
+| GET    | `/vault/{path}` | Accept: see below           | —        | content (varies by Accept) |
+| PUT    | `/vault/{path}` | Content-Type: text/markdown | markdown | 204                        |
+| POST   | `/vault/{path}` | Content-Type: text/markdown | markdown | 204                        |
+| PATCH  | `/vault/{path}` | PATCH headers (see below)   | content  | 204                        |
+| DELETE | `/vault/{path}` | —                           | —        | 204                        |
 
 **Accept header for GET:**
+
 - `text/markdown` → raw markdown string
 - `application/vnd.olrapi.note+json` → NoteJson object
 - `application/vnd.olrapi.document-map+json` → DocumentMap object
 
 ### Active File
+
 Same operations as vault files but on `/active/` (no path parameter).
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/active/` | Same Accept headers as vault GET |
-| PUT | `/active/` | Replace content |
-| POST | `/active/` | Append content |
-| PATCH | `/active/` | Same PATCH headers (except no Create-Target-If-Missing) |
-| DELETE | `/active/` | Delete active file |
+| Method | Path       | Notes                                                   |
+| ------ | ---------- | ------------------------------------------------------- |
+| GET    | `/active/` | Same Accept headers as vault GET                        |
+| PUT    | `/active/` | Replace content                                         |
+| POST   | `/active/` | Append content                                          |
+| PATCH  | `/active/` | Same PATCH headers (except no Create-Target-If-Missing) |
+| DELETE | `/active/` | Delete active file                                      |
 
 ### Commands
-| Method | Path | Response |
-|--------|------|----------|
-| GET | `/commands/` | `{ commands: [{ id: string, name: string }] }` |
-| POST | `/commands/{commandId}/` | 204 on success, 404 if not found |
+
+| Method | Path                     | Response                                       |
+| ------ | ------------------------ | ---------------------------------------------- |
+| GET    | `/commands/`             | `{ commands: [{ id: string, name: string }] }` |
+| POST   | `/commands/{commandId}/` | 204 on success, 404 if not found               |
 
 ### Open
-| Method | Path | Query | Notes |
-|--------|------|-------|-------|
-| POST | `/open/{filename}` | `newLeaf` (boolean) | Creates file if doesn't exist |
+
+| Method | Path               | Query               | Notes                         |
+| ------ | ------------------ | ------------------- | ----------------------------- |
+| POST   | `/open/{filename}` | `newLeaf` (boolean) | Creates file if doesn't exist |
 
 ### Search
-| Method | Path | Content-Type | Body | Response |
-|--------|------|-------------|------|----------|
-| POST | `/search/simple/` | — | Query params: `query`, `contextLength` | `[{ filename, score, matches }]` |
-| POST | `/search/` | `application/vnd.olrapi.jsonlogic+json` | JsonLogic object | `[{ filename, result }]` |
-| POST | `/search/` | `application/vnd.olrapi.dataview.dql+txt` | DQL string (plain text) | `[{ filename, result }]` |
+
+| Method | Path              | Content-Type                              | Body                                   | Response                         |
+| ------ | ----------------- | ----------------------------------------- | -------------------------------------- | -------------------------------- |
+| POST   | `/search/simple/` | —                                         | Query params: `query`, `contextLength` | `[{ filename, score, matches }]` |
+| POST   | `/search/`        | `application/vnd.olrapi.jsonlogic+json`   | JsonLogic object                       | `[{ filename, result }]`         |
+| POST   | `/search/`        | `application/vnd.olrapi.dataview.dql+txt` | DQL string (plain text)                | `[{ filename, result }]`         |
 
 ### Periodic Notes
+
 Period values: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/periodic/{period}/` | Current period. Same Accept headers |
-| PUT | `/periodic/{period}/` | Replace current |
-| POST | `/periodic/{period}/` | Append to current (creates if needed) |
-| PATCH | `/periodic/{period}/` | Patch current |
-| DELETE | `/periodic/{period}/` | Delete current |
-| GET | `/periodic/{period}/{y}/{m}/{d}/` | Specific date |
-| PUT | `/periodic/{period}/{y}/{m}/{d}/` | |
-| POST | `/periodic/{period}/{y}/{m}/{d}/` | |
-| PATCH | `/periodic/{period}/{y}/{m}/{d}/` | |
-| DELETE | `/periodic/{period}/{y}/{m}/{d}/` | |
+| Method | Path                              | Notes                                 |
+| ------ | --------------------------------- | ------------------------------------- |
+| GET    | `/periodic/{period}/`             | Current period. Same Accept headers   |
+| PUT    | `/periodic/{period}/`             | Replace current                       |
+| POST   | `/periodic/{period}/`             | Append to current (creates if needed) |
+| PATCH  | `/periodic/{period}/`             | Patch current                         |
+| DELETE | `/periodic/{period}/`             | Delete current                        |
+| GET    | `/periodic/{period}/{y}/{m}/{d}/` | Specific date                         |
+| PUT    | `/periodic/{period}/{y}/{m}/{d}/` |                                       |
+| POST   | `/periodic/{period}/{y}/{m}/{d}/` |                                       |
+| PATCH  | `/periodic/{period}/{y}/{m}/{d}/` |                                       |
+| DELETE | `/periodic/{period}/{y}/{m}/{d}/` |                                       |
 
 ### PATCH Headers
 
-| Header | Required | Values |
-|--------|----------|--------|
-| `Operation` | yes | `append`, `prepend`, `replace` |
-| `Target-Type` | yes | `heading`, `block`, `frontmatter` |
-| `Target` | yes | URL-encoded string. Headings use `::` delimiter |
-| `Target-Delimiter` | no | string (default `::`) |
-| `Trim-Target-Whitespace` | no | `true`/`false` (default `false`) |
-| `Create-Target-If-Missing` | no | boolean (vault PATCH only, not active) |
-| `Content-Type` | yes | `text/markdown` or `application/json` |
+| Header                     | Required | Values                                          |
+| -------------------------- | -------- | ----------------------------------------------- |
+| `Operation`                | yes      | `append`, `prepend`, `replace`                  |
+| `Target-Type`              | yes      | `heading`, `block`, `frontmatter`               |
+| `Target`                   | yes      | URL-encoded string. Headings use `::` delimiter |
+| `Target-Delimiter`         | no       | string (default `::`)                           |
+| `Trim-Target-Whitespace`   | no       | `true`/`false` (default `false`)                |
+| `Create-Target-If-Missing` | no       | boolean (vault PATCH only, not active)          |
+| `Content-Type`             | yes      | `text/markdown` or `application/json`           |
 
 ---
 
@@ -110,9 +118,9 @@ interface PatchOptions {
   operation: "append" | "prepend" | "replace";
   targetType: "heading" | "block" | "frontmatter";
   target: string;
-  targetDelimiter?: string;       // default "::"
+  targetDelimiter?: string; // default "::"
   trimTargetWhitespace?: boolean; // default false
-  createIfMissing?: boolean;      // vault PATCH only
+  createIfMissing?: boolean; // vault PATCH only
   contentType?: "markdown" | "json"; // default "markdown"
 }
 
@@ -138,19 +146,37 @@ class ObsidianClient {
   constructor(config: Config);
 
   // System
-  getServerStatus(): Promise<{ ok: boolean; service: string; authenticated: boolean; versions: Record<string, unknown> }>;
+  getServerStatus(): Promise<{
+    ok: boolean;
+    service: string;
+    authenticated: boolean;
+    versions: Record<string, unknown>;
+  }>;
 
   // Vault Files
   listFilesInVault(): Promise<{ files: string[] }>;
-  listFilesInDir(dirPath: string): Promise<{ files: string[] }>;  // handles empty dir 404
-  getFileContents(filePath: string, format?: "markdown" | "json" | "map"): Promise<string | NoteJson | DocumentMap>;
-  putContent(filePath: string, content: string, options?: { verify?: boolean }): Promise<void>;
+  listFilesInDir(dirPath: string): Promise<{ files: string[] }>; // handles empty dir 404
+  getFileContents(
+    filePath: string,
+    format?: "markdown" | "json" | "map",
+  ): Promise<string | NoteJson | DocumentMap>;
+  putContent(
+    filePath: string,
+    content: string,
+    options?: { verify?: boolean },
+  ): Promise<void>;
   appendContent(filePath: string, content: string): Promise<void>;
-  patchContent(filePath: string, content: string, options: PatchOptions): Promise<void>;
+  patchContent(
+    filePath: string,
+    content: string,
+    options: PatchOptions,
+  ): Promise<void>;
   deleteFile(filePath: string): Promise<void>;
 
   // Active File
-  getActiveFile(format?: "markdown" | "json" | "map"): Promise<string | NoteJson | DocumentMap>;
+  getActiveFile(
+    format?: "markdown" | "json" | "map",
+  ): Promise<string | NoteJson | DocumentMap>;
   putActiveFile(content: string, options?: { verify?: boolean }): Promise<void>;
   appendActiveFile(content: string): Promise<void>;
   patchActiveFile(content: string, options: PatchOptions): Promise<void>;
@@ -169,18 +195,55 @@ class ObsidianClient {
   dataviewSearch(dql: string): Promise<SearchResult[]>;
 
   // Periodic Notes — Current
-  getPeriodicNote(period: string, format?: "markdown" | "json" | "map"): Promise<string | NoteJson | DocumentMap>;
+  getPeriodicNote(
+    period: string,
+    format?: "markdown" | "json" | "map",
+  ): Promise<string | NoteJson | DocumentMap>;
   putPeriodicNote(period: string, content: string): Promise<void>;
   appendPeriodicNote(period: string, content: string): Promise<void>;
-  patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void>;
+  patchPeriodicNote(
+    period: string,
+    content: string,
+    options: PatchOptions,
+  ): Promise<void>;
   deletePeriodicNote(period: string): Promise<void>;
 
   // Periodic Notes — By Date
-  getPeriodicNoteForDate(period: string, year: number, month: number, day: number, format?: "markdown" | "json" | "map"): Promise<string | NoteJson | DocumentMap>;
-  putPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void>;
-  appendPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string): Promise<void>;
-  patchPeriodicNoteForDate(period: string, year: number, month: number, day: number, content: string, options: PatchOptions): Promise<void>;
-  deletePeriodicNoteForDate(period: string, year: number, month: number, day: number): Promise<void>;
+  getPeriodicNoteForDate(
+    period: string,
+    year: number,
+    month: number,
+    day: number,
+    format?: "markdown" | "json" | "map",
+  ): Promise<string | NoteJson | DocumentMap>;
+  putPeriodicNoteForDate(
+    period: string,
+    year: number,
+    month: number,
+    day: number,
+    content: string,
+  ): Promise<void>;
+  appendPeriodicNoteForDate(
+    period: string,
+    year: number,
+    month: number,
+    day: number,
+    content: string,
+  ): Promise<void>;
+  patchPeriodicNoteForDate(
+    period: string,
+    year: number,
+    month: number,
+    day: number,
+    content: string,
+    options: PatchOptions,
+  ): Promise<void>;
+  deletePeriodicNoteForDate(
+    period: string,
+    year: number,
+    month: number,
+    day: number,
+  ): Promise<void>;
 }
 ```
 
@@ -251,6 +314,7 @@ Format: `name` — "description (max 15 words)" — inputs
 ## Consolidated Tool Schemas (all 10)
 
 ### 1. `vault`
+
 ```
 action: enum [list, list_dir, get, put, append, patch, delete, search_replace]
 path: string (optional for list, required otherwise)
@@ -271,6 +335,7 @@ replaceAll: boolean (for search_replace, default true)
 ```
 
 ### 2. `active_file`
+
 ```
 action: enum [get, put, append, patch, delete]
 content: string (for put/append/patch)
@@ -279,18 +344,21 @@ format: enum [markdown, json, map] (for get)
 ```
 
 ### 3. `commands`
+
 ```
 action: enum [list, execute]
 commandId: string (required for execute)
 ```
 
 ### 4. `open_file`
+
 ```
 path: string (required)
 newLeaf: boolean (default false)
 ```
 
 ### 5. `search`
+
 ```
 type: enum [simple, jsonlogic, dataview]
 query: string (for simple and dataview)
@@ -299,6 +367,7 @@ contextLength: number (for simple, default 100)
 ```
 
 ### 6. `periodic_note`
+
 ```
 action: enum [get, put, append, patch, delete]
 period: enum [daily, weekly, monthly, quarterly, yearly]
@@ -311,15 +380,18 @@ format: enum [markdown, json, map] (for get)
 ```
 
 ### 7. `status` [PROTECTED]
+
 No inputs.
 
 ### 8. `batch_get`
+
 ```
 paths: string[] (required)
 format: enum [markdown, json, map] (default markdown)
 ```
 
 ### 9. `recent`
+
 ```
 type: enum [changes, periodic_notes]
 period: enum (required when type=periodic_notes)
@@ -327,6 +399,7 @@ limit: number (default 10)
 ```
 
 ### 10. `configure` [PROTECTED]
+
 ```
 action: enum [show, set, reset]
 setting: string (for set — e.g. "debug", "timeout", "toolMode")
@@ -338,6 +411,7 @@ value: string (for set — the new value)
 ## Config File Format
 
 `obsidian-mcp.config.json`:
+
 ```json
 {
   "host": "127.0.0.1",
@@ -434,15 +508,15 @@ interface CachedNote {
 }
 
 interface ParsedLink {
-  target: string;               // resolved note path
+  target: string; // resolved note path
   type: "wikilink" | "markdown";
-  context: string;              // ~50 chars surrounding the link
+  context: string; // ~50 chars surrounding the link
 }
 
 class VaultCache {
-  async initialize(): Promise<void>;      // Full cache build (background)
-  async refresh(): Promise<void>;         // Incremental (only changed mtime)
-  startAutoRefresh(): void;               // Background timer
+  async initialize(): Promise<void>; // Full cache build (background)
+  async refresh(): Promise<void>; // Incremental (only changed mtime)
+  startAutoRefresh(): void; // Background timer
   stopAutoRefresh(): void;
 
   getNote(path: string): CachedNote | undefined;
@@ -451,15 +525,20 @@ class VaultCache {
   get noteCount(): number;
   get linkCount(): number;
 
-  invalidate(path: string): void;         // After writes
+  invalidate(path: string): void; // After writes
   invalidateAll(): void;
 
   // Graph queries
   getBacklinks(path: string): Array<{ source: string; context: string }>;
   getForwardLinks(path: string): ParsedLink[];
-  getOrphanNotes(): string[];             // Notes with zero inbound + outbound links
-  getMostConnectedNotes(limit: number): Array<{ path: string; inbound: number; outbound: number }>;
-  getVaultGraph(): { nodes: string[]; edges: Array<{ source: string; target: string }> };
+  getOrphanNotes(): string[]; // Notes with zero inbound + outbound links
+  getMostConnectedNotes(
+    limit: number,
+  ): Array<{ path: string; inbound: number; outbound: number }>;
+  getVaultGraph(): {
+    nodes: string[];
+    edges: Array<{ source: string; target: string }>;
+  };
 }
 ```
 
@@ -487,6 +566,7 @@ function parseLinks(content: string, currentPath: string): ParsedLink[] {
 ## Analysis Tool (Consolidated #11)
 
 `vault_analysis`:
+
 ```
 action: enum [backlinks, connections, structure, refresh]
 path: string (required for backlinks/connections)
@@ -518,7 +598,10 @@ Apply to every file path before passing to HTTP client.
 ## Structured Error Builder
 
 ```typescript
-function buildErrorMessage(error: Error, context: { tool: string; path?: string }): string {
+function buildErrorMessage(
+  error: Error,
+  context: { tool: string; path?: string },
+): string {
   if (error instanceof ObsidianConnectionError) {
     return `CONNECTION ERROR: Cannot reach Obsidian. Ensure Obsidian is running with Local REST API enabled.`;
   }
@@ -530,7 +613,8 @@ function buildErrorMessage(error: Error, context: { tool: string; path?: string 
       return `NOT FOUND: ${context.path ?? "Resource"} does not exist. Use list_files_in_vault to find valid paths.`;
     }
     if (error.statusCode === 400) return `BAD REQUEST: ${error.message}`;
-    if (error.statusCode === 405) return `NOT SUPPORTED: ${error.message}. May require a specific plugin.`;
+    if (error.statusCode === 405)
+      return `NOT SUPPORTED: ${error.message}. May require a specific plugin.`;
     return `API ERROR (${error.statusCode}): ${error.message}`;
   }
   return `ERROR: ${error.message}`;

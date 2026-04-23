@@ -32,12 +32,18 @@ function loadDotenv(): void {
       let key = trimmed.slice(0, eqIndex).trim();
       if (key.startsWith("export ")) key = key.slice(7).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
-      if (key.length > 0 && process.env[key] === undefined) process.env[key] = value;
+      if (key.length > 0 && process.env[key] === undefined)
+        process.env[key] = value;
     }
-  } catch { /* ok */ }
+  } catch {
+    /* ok */
+  }
 }
 
 const FILE = "_patch_stress.md";
@@ -301,7 +307,10 @@ const CASES: TestCase[] = [
 
 // --- Runner ---
 
-async function runCase(client: ObsidianClient, tc: TestCase): Promise<{ passed: boolean; error?: string }> {
+async function runCase(
+  client: ObsidianClient,
+  tc: TestCase,
+): Promise<{ passed: boolean; error?: string }> {
   try {
     // 1. Create the file with the heading
     await client.putContent(FILE, tc.content);
@@ -320,21 +329,29 @@ async function runCase(client: ObsidianClient, tc: TestCase): Promise<{ passed: 
       return { passed: false, error: "Expected string response" };
     }
     if (!result.includes(`Patched: ${tc.name}`)) {
-      return { passed: false, error: `Patch content not found in result. Got: ${result.slice(0, 200)}` };
+      return {
+        passed: false,
+        error: `Patch content not found in result. Got: ${result.slice(0, 200)}`,
+      };
     }
 
     return { passed: true };
   } catch (err: unknown) {
-    const msg = err instanceof ObsidianApiError
-      ? `API ${String(err.statusCode)}: ${err.message}`
-      : (err instanceof Error ? err.message : String(err));
+    const msg =
+      err instanceof ObsidianApiError
+        ? `API ${String(err.statusCode)}: ${err.message}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
     return { passed: false, error: msg };
   }
 }
 
 // --- Concurrent stress ---
 
-async function concurrentPatchStress(client: ObsidianClient): Promise<{ passed: boolean; error?: string }> {
+async function concurrentPatchStress(
+  client: ObsidianClient,
+): Promise<{ passed: boolean; error?: string }> {
   // Create file with 5 headings, PATCH all concurrently
   const headings = ["Alpha", "Bêta", "Gämma", "Délta", "📝 Epsilon"];
   const content = `# Root\n\n${headings.map((h) => `## ${h}\n\nContent.\n`).join("\n")}`;
@@ -346,23 +363,32 @@ async function concurrentPatchStress(client: ObsidianClient): Promise<{ passed: 
         operation: "append",
         targetType: "heading",
         target: `Root::${h}`,
-      })
+      }),
     ),
   );
 
   const failures = results.filter((r) => r.status === "rejected");
   if (failures.length > 0) {
-    const reasons = failures.map((f) => f.status === "rejected" ? String(f.reason) : "").join("; ");
-    return { passed: false, error: `${String(failures.length)}/${String(headings.length)} concurrent patches failed: ${reasons}` };
+    const reasons = failures
+      .map((f) => (f.status === "rejected" ? String(f.reason) : ""))
+      .join("; ");
+    return {
+      passed: false,
+      error: `${String(failures.length)}/${String(headings.length)} concurrent patches failed: ${reasons}`,
+    };
   }
 
   // Verify all patches applied
   const final = await client.getFileContents(FILE, "markdown");
-  if (typeof final !== "string") return { passed: false, error: "Expected string" };
+  if (typeof final !== "string")
+    return { passed: false, error: "Expected string" };
 
   const missing = headings.filter((h) => !final.includes(`Concurrent: ${h}`));
   if (missing.length > 0) {
-    return { passed: false, error: `Missing patches for: ${missing.join(", ")}` };
+    return {
+      passed: false,
+      error: `Missing patches for: ${missing.join(", ")}`,
+    };
   }
 
   return { passed: true };
@@ -370,7 +396,9 @@ async function concurrentPatchStress(client: ObsidianClient): Promise<{ passed: 
 
 // --- Rapid PATCH cycle ---
 
-async function rapidPatchCycle(client: ObsidianClient): Promise<{ passed: boolean; error?: string }> {
+async function rapidPatchCycle(
+  client: ObsidianClient,
+): Promise<{ passed: boolean; error?: string }> {
   const iterations = 20;
   const headings = ["über", "日本語", "📝 Notes", "100% Done", "Q&A + Tips"];
   let failures = 0;
@@ -391,7 +419,10 @@ async function rapidPatchCycle(client: ObsidianClient): Promise<{ passed: boolea
   }
 
   if (failures > 0) {
-    return { passed: false, error: `${String(failures)}/${String(iterations)} rapid cycles failed` };
+    return {
+      passed: false,
+      error: `${String(failures)}/${String(iterations)} rapid cycles failed`,
+    };
   }
   return { passed: true };
 }
@@ -405,13 +436,19 @@ async function main(): Promise<void> {
 
   loadDotenv();
   const config = loadConfig();
-  if (!config.apiKey) { write("[error] OBSIDIAN_API_KEY not set."); process.exit(1); }
+  if (!config.apiKey) {
+    write("[error] OBSIDIAN_API_KEY not set.");
+    process.exit(1);
+  }
 
   const client = new ObsidianClient(config);
 
   // Safety guard
   const { files } = await client.listFilesInVault();
-  if (files.length > 50) { write("[error] Too many files — use test vault."); process.exit(1); }
+  if (files.length > 50) {
+    write("[error] Too many files — use test vault.");
+    process.exit(1);
+  }
 
   let passed = 0;
   let failed = 0;
@@ -458,12 +495,18 @@ async function main(): Promise<void> {
 
   // Cleanup
   write("\n  Cleaning up...");
-  try { await client.deleteFile(FILE); } catch { /* ok */ }
+  try {
+    await client.deleteFile(FILE);
+  } catch {
+    /* ok */
+  }
 
   // Summary
   const total = passed + failed;
   write("");
-  write(`Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(total)} tests`);
+  write(
+    `Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(total)} tests`,
+  );
 
   if (failures.length > 0) {
     write("\nFailures:");

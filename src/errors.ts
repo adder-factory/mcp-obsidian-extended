@@ -4,7 +4,12 @@ export class ObsidianApiError extends Error {
   public readonly errorCode: number | undefined;
 
   /** Creates an API error with the HTTP status code and optional Obsidian error code. */
-  constructor(message: string, statusCode: number, errorCode?: number, options?: ErrorOptions) {
+  constructor(
+    message: string,
+    statusCode: number,
+    errorCode?: number,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = "ObsidianApiError";
     this.statusCode = statusCode;
@@ -37,7 +42,10 @@ interface ErrorContext {
 }
 
 /** Builds an LLM-friendly error message with actionable guidance based on error type. */
-export function buildErrorMessage(error: unknown, context: ErrorContext): string {
+export function buildErrorMessage(
+  error: unknown,
+  context: ErrorContext,
+): string {
   const prefix = `[${context.tool}] `;
   if (error instanceof ObsidianConnectionError) {
     return `${prefix}CONNECTION ERROR: Cannot reach Obsidian. Ensure Obsidian is running with Local REST API enabled.`;

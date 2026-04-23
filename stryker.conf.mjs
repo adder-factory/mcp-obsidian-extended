@@ -6,19 +6,19 @@
 
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
-  packageManager: 'npm',
-  reporters: ['html', 'clear-text', 'progress'],
-  testRunner: 'vitest',
-  coverageAnalysis: 'perTest',
+  packageManager: "npm",
+  reporters: ["html", "clear-text", "progress"],
+  testRunner: "vitest",
+  coverageAnalysis: "perTest",
   mutate: [
-    'src/**/*.ts',
-    'src/**/*.tsx',
-    '!src/**/*.test.ts',
-    '!src/**/*.test.tsx',
-    '!src/**/*.spec.ts',
-    '!src/**/*.spec.tsx',
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/*.spec.ts",
+    "!src/**/*.spec.tsx",
   ],
   thresholds: { high: 80, low: 70, break: 70 },
   incremental: true,
-  incrementalFile: 'reports/stryker-incremental.json',
+  incrementalFile: "reports/stryker-incremental.json",
 };

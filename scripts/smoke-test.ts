@@ -57,7 +57,11 @@ function loadDotenv(): void {
     let value = trimmed.slice(eqIndex + 1).trim();
     // Strip surrounding quotes and process escape sequences in double-quoted values
     if (value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1).replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll('\\"', '"');
+      value = value
+        .slice(1, -1)
+        .replaceAll("\\n", "\n")
+        .replaceAll("\\t", "\t")
+        .replaceAll('\\"', '"');
     } else if (value.startsWith("'") && value.endsWith("'")) {
       // Single-quoted: literal value, no escape processing
       value = value.slice(1, -1);
@@ -94,8 +98,8 @@ async function guardTestVault(client: ObsidianClient): Promise<void> {
   if (files.length > VAULT_FILE_LIMIT) {
     throw new Error(
       `Vault has ${String(files.length)} files (limit: ${String(VAULT_FILE_LIMIT)}). ` +
-      "This looks like a real vault, not a test vault. " +
-      "Set SMOKE_TEST_CONFIRM=true to override this safety check.",
+        "This looks like a real vault, not a test vault. " +
+        "Set SMOKE_TEST_CONFIRM=true to override this safety check.",
     );
   }
 }
@@ -103,13 +107,15 @@ async function guardTestVault(client: ObsidianClient): Promise<void> {
 // --- Test Files ---
 
 const TEST_FILE = "_smoke_test.md";
-const TEST_CONTENT = "# Smoke Test\n\nThis is a smoke test file.\n\n[[some link]]";
+const TEST_CONTENT =
+  "# Smoke Test\n\nThis is a smoke test file.\n\n[[some link]]";
 const APPEND_CONTENT = "\n\nAppended content.";
 
 const LINK_FILE_A = "_smoke_link_a.md";
 const LINK_FILE_B = "_smoke_link_b.md";
 // Explicit .md extension in wikilink to avoid relying on VaultCache's implicit .md appending
-const LINK_CONTENT_A = "# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n";
+const LINK_CONTENT_A =
+  "# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n";
 const LINK_CONTENT_B = "# Target Note\n\nTarget note content.\n";
 
 // --- Test Steps ---
@@ -160,7 +166,9 @@ async function step5AppendAndVerify(client: ObsidianClient): Promise<void> {
     throw new Error("Expected string response for markdown format");
   }
   if (!content.includes("Appended content.")) {
-    throw new Error(`Appended content not found. Got: ${content.slice(0, 300)}`);
+    throw new Error(
+      `Appended content not found. Got: ${content.slice(0, 300)}`,
+    );
   }
 }
 
@@ -177,10 +185,14 @@ async function step6Search(client: ObsidianClient): Promise<void> {
       return;
     }
     if (attempt < maxAttempts) {
-      write(`    (search attempt ${String(attempt)}/${String(maxAttempts)} — not indexed yet, retrying...)`);
+      write(
+        `    (search attempt ${String(attempt)}/${String(maxAttempts)} — not indexed yet, retrying...)`,
+      );
     } else {
       const filenames = results.map((r) => r.filename).join(", ");
-      throw new Error(`_smoke_test.md not found after ${String(maxAttempts)} search attempts. Got: [${filenames}]`);
+      throw new Error(
+        `_smoke_test.md not found after ${String(maxAttempts)} search attempts. Got: [${filenames}]`,
+      );
     }
   }
 }
@@ -214,16 +226,27 @@ async function step8CacheCheck(client: ObsidianClient): Promise<void> {
   client.setCache(cache);
   try {
     // Seed a note to guarantee the cache has at least one entry, even on an empty vault
-    await client.putContent(CACHE_SEED_FILE, "# Cache Seed\n\nEnsures cache is non-empty for testing.\n");
+    await client.putContent(
+      CACHE_SEED_FILE,
+      "# Cache Seed\n\nEnsures cache is non-empty for testing.\n",
+    );
     await cache.initialize();
     if (cache.noteCount <= 0) {
       throw new Error(`Expected noteCount > 0, got ${String(cache.noteCount)}`);
     }
-    write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
+    write(
+      `    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`,
+    );
   } finally {
     cache.stopAutoRefresh();
     // Clean up seed file
-    try { await client.deleteFile(CACHE_SEED_FILE); } catch (e: unknown) { write(`    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`); }
+    try {
+      await client.deleteFile(CACHE_SEED_FILE);
+    } catch (e: unknown) {
+      write(
+        `    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`,
+      );
+    }
   }
 }
 
@@ -244,7 +267,9 @@ async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
     const hasBacklink = backlinks.some((bl) => bl.source === LINK_FILE_A);
     if (!hasBacklink) {
       const sources = backlinks.map((bl) => bl.source).join(", ");
-      throw new Error(`Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`);
+      throw new Error(
+        `Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`,
+      );
     }
   } finally {
     // Always stop timer and clean up, even if initialize() or assertions throw
@@ -255,8 +280,20 @@ async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
 
 /** Cleans up the link test files created by the backlinks test. */
 async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
-  try { await client.deleteFile(LINK_FILE_A); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`); }
-  try { await client.deleteFile(LINK_FILE_B); } catch (e: unknown) { write(`    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`); }
+  try {
+    await client.deleteFile(LINK_FILE_A);
+  } catch (e: unknown) {
+    write(
+      `    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
+  try {
+    await client.deleteFile(LINK_FILE_B);
+  } catch (e: unknown) {
+    write(
+      `    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
 }
 
 // --- Cleanup ---
@@ -270,7 +307,9 @@ async function cleanup(client: ObsidianClient): Promise<void> {
       await client.deleteFile(file);
     } catch (e: unknown) {
       // Expected for already-deleted files; log for unexpected failures
-      write(`    (cleanup: ${file} — ${e instanceof Error ? e.message : String(e)})`);
+      write(
+        `    (cleanup: ${file} — ${e instanceof Error ? e.message : String(e)})`,
+      );
     }
   }
 }
@@ -298,7 +337,9 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   if (!config.apiKey) {
-    write("[error] OBSIDIAN_API_KEY is not set. Set it in .env or as an environment variable.");
+    write(
+      "[error] OBSIDIAN_API_KEY is not set. Set it in .env or as an environment variable.",
+    );
     process.exit(1);
   }
 
@@ -321,7 +362,11 @@ async function main(): Promise<void> {
     { num: 2, name: "List vault files", fn: () => step2ListVaultFiles(client) },
     { num: 3, name: "Put test file", fn: () => step3PutTestFile(client) },
     { num: 4, name: "Read it back", fn: () => step4ReadBack(client) },
-    { num: 5, name: "Append and verify", fn: () => step5AppendAndVerify(client) },
+    {
+      num: 5,
+      name: "Append and verify",
+      fn: () => step5AppendAndVerify(client),
+    },
     { num: 6, name: "Search", fn: () => step6Search(client) },
     { num: 7, name: "Delete and verify 404", fn: () => step7Delete(client) },
   ];
@@ -369,16 +414,22 @@ async function main(): Promise<void> {
   const skipped = totalSteps - passed - failed;
   write("");
   const skipNote = skipped > 0 ? `, ${String(skipped)} skipped` : "";
-  write(`Results: ${String(passed)} passed, ${String(failed)} failed${skipNote} out of ${String(totalSteps)} steps`);
+  write(
+    `Results: ${String(passed)} passed, ${String(failed)} failed${skipNote} out of ${String(totalSteps)} steps`,
+  );
   write("");
   // Informational note — not counted as a test step
-  write("  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).");
+  write(
+    "  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).",
+  );
   write("");
 
   process.exit(failed > 0 ? 1 : 0);
 }
 
 main().catch((err: unknown) => {
-  write(`[fatal] Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
+  write(
+    `[fatal] Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
+  );
   process.exit(1);
 });

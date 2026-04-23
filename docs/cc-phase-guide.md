@@ -18,6 +18,7 @@ Remove all Python files: `*.py`, `pyproject.toml`, `uv.lock`, `Dockerfile`, `.py
 ### Step 1.2 — Scaffold
 
 Create `package.json`:
+
 ```json
 {
   "name": "mcp-obsidian-extended",
@@ -66,13 +67,20 @@ Run `npm install`.
 
 ```typescript
 export class ObsidianApiError extends Error {
-  constructor(message: string, public readonly statusCode: number, public readonly errorCode?: number) {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly errorCode?: number,
+  ) {
     super(message);
     this.name = "ObsidianApiError";
   }
 }
 export class ObsidianConnectionError extends Error {
-  constructor(message: string, public readonly cause?: Error) {
+  constructor(
+    message: string,
+    public readonly cause?: Error,
+  ) {
     super(message);
     this.name = "ObsidianConnectionError";
   }
@@ -103,6 +111,7 @@ Three-tier config loader: Defaults → config file → env vars.
 HTTP client class. See `cc-reference.md` for all method signatures.
 
 Key implementation details:
+
 - **Constructor:** takes `Config`, builds base URL, creates HTTPS agent with cert handling
 - **Auth:** Bearer token on every request except `GET /`
 - **TLS:** If `scheme=http`, no TLS. If `certPath` set, use as `ca`. Otherwise `rejectUnauthorized: false`
@@ -122,6 +131,7 @@ Key implementation details:
 Vault cache with link parser and graph analysis. See `cc-reference.md` for full interface.
 
 Key components:
+
 - `VaultCache` class: in-memory Map of `CachedNote` objects
 - `parseLinks(content, currentPath)`: regex parser for `[[wikilinks]]` and `[text](path.md)` links
 - `initialize()`: fetch all .md files via REST API, parse content + links, runs in background (non-blocking)
@@ -137,9 +147,16 @@ Shared Zod schemas used by both granular and consolidated tools:
 
 ```typescript
 import { z } from "zod";
-export const formatSchema = z.enum(["markdown", "json", "map"]).default("markdown").describe("Response format");
-export const periodSchema = z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).describe("Periodic note type");
-export const patchOptionsSchema = { /* see cc-reference.md */ };
+export const formatSchema = z
+  .enum(["markdown", "json", "map"])
+  .default("markdown")
+  .describe("Response format");
+export const periodSchema = z
+  .enum(["daily", "weekly", "monthly", "quarterly", "yearly"])
+  .describe("Periodic note type");
+export const patchOptionsSchema = {
+  /* see cc-reference.md */
+};
 ```
 
 ### Verification
@@ -167,7 +184,11 @@ import { Config } from "./config.js";
 import { registerGranularTools } from "./tools/granular.js";
 import { registerConsolidatedTools } from "./tools/consolidated.js";
 
-export function registerAllTools(server: McpServer, client: ObsidianClient, config: Config): number {
+export function registerAllTools(
+  server: McpServer,
+  client: ObsidianClient,
+  config: Config,
+): number {
   // 1. Determine base tool set from preset
   // 2. Apply INCLUDE_TOOLS / EXCLUDE_TOOLS
   // 3. Always include protected tools: configure, status/get_server_status
@@ -184,16 +205,18 @@ export function registerAllTools(server: McpServer, client: ObsidianClient, conf
 export function registerGranularTools(
   server: McpServer,
   client: ObsidianClient,
-  shouldRegister: (name: string) => boolean
+  shouldRegister: (name: string) => boolean,
 ): number {
   let count = 0;
-  
+
   if (shouldRegister("list_files_in_vault")) {
     server.tool(
       "list_files_in_vault",
       "List all files and directories in vault root",
       {},
-      async () => { /* call client.listFilesInVault() */ }
+      async () => {
+        /* call client.listFilesInVault() */
+      },
     );
     count++;
   }
@@ -207,12 +230,14 @@ export function registerGranularTools(
 **Brevity rules:** Max 15 words per tool description, max 10 words per parameter `.describe()`.
 
 **The `configure` tool (#34):**
+
 - Actions: `show` (redacted config), `set` (change a setting), `reset` (restore defaults)
 - Settings changeable immediately: debug, timeout, verifyWrites, maxResponseChars
 - Settings requiring restart: toolMode, toolPreset → save to file, return "restart needed" message
 - Always registered — immune to filtering
 
 **Vault Analysis tools (#35-38):**
+
 - `get_backlinks` — query cache for all notes linking to a given file, return with context
 - `get_vault_structure` — vault stats: total notes, total links, orphan notes, most connected, directory tree
 - `get_note_connections` — backlinks + forward links for a specific note
@@ -229,7 +254,16 @@ server.tool(
   "vault",
   "Read, write, search, and manage vault files",
   {
-    action: z.enum(["list", "list_dir", "get", "put", "append", "patch", "delete", "search_replace"]),
+    action: z.enum([
+      "list",
+      "list_dir",
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+      "search_replace",
+    ]),
     path: z.string().optional().describe("File or directory path"),
     content: z.string().optional().describe("Content for write operations"),
     format: formatSchema.optional(),
@@ -237,10 +271,11 @@ server.tool(
   },
   async (args) => {
     switch (args.action) {
-      case "list": return jsonResult(await client.listFilesInVault());
+      case "list":
+        return jsonResult(await client.listFilesInVault());
       // ...
     }
-  }
+  },
 );
 ```
 
@@ -269,30 +304,45 @@ Entry point. Order of operations:
      log("info", `Connected to Obsidian REST API (authenticated)`);
      // Start cache build in background (non-blocking)
      if (config.enableCache) {
-       cache.initialize().then(() => {
-         log("info", `Cache: ready (${cache.noteCount} notes, ${cache.linkCount} links)`);
-         cache.startAutoRefresh();
-       }).catch(err => {
-         log("warn", `Cache build failed: ${err.message}. Graph tools unavailable.`);
-       });
+       cache
+         .initialize()
+         .then(() => {
+           log(
+             "info",
+             `Cache: ready (${cache.noteCount} notes, ${cache.linkCount} links)`,
+           );
+           cache.startAutoRefresh();
+         })
+         .catch((err) => {
+           log(
+             "warn",
+             `Cache build failed: ${err.message}. Graph tools unavailable.`,
+           );
+         });
      }
    } catch {
-     log("warn", "Could not connect to Obsidian. Tools will fail until Obsidian is running.");
+     log(
+       "warn",
+       "Could not connect to Obsidian. Tools will fail until Obsidian is running.",
+     );
    }
    ```
 10. **Log startup summary:**
-   ```
-   [info] mcp-obsidian-extended v1.0.0
-   [info] Config: ~/.obsidian-mcp.config.json + env overrides
-   [info] Tools: granular mode | preset: full | 38 registered
-   [info] Connected to Obsidian REST API v1.0
-   [info] Cache: building... (312 notes)
-   ```
+
+```
+[info] mcp-obsidian-extended v1.0.0
+[info] Config: ~/.obsidian-mcp.config.json + env overrides
+[info] Tools: granular mode | preset: full | 38 registered
+[info] Connected to Obsidian REST API v1.0
+[info] Cache: building... (312 notes)
+```
+
 11. **Connect transport:** `await server.connect(new StdioServerTransport());`
 
 ### Step 2.5 — Setup Wizard (`--setup`)
 
 Interactive readline-based wizard. 4 steps:
+
 1. Connection (API key, host, port, scheme) → test connection immediately
 2. Tool mode (granular/consolidated) + preset (full/read-only/minimal/safe)
 3. Reliability (verifyWrites, maxResponseChars, debug)
@@ -343,11 +393,13 @@ Add `npm run test:smoke` script. Exit 0 = pass, 1 = fail.
 **Obsidian is running on the dev machine.** CC can run all live tests directly.
 
 First run the smoke test:
+
 ```bash
 OBSIDIAN_API_KEY=<key> npm run test:smoke
 ```
 
 Then run manual tests in order — stop and fix failures before proceeding:
+
 - **Group A (read-only):** status, list vault, list dir, get file (all 3 formats), list commands, simple search, get periodic note, batch get
 - **Group B (writes):** put file, get + verify, append + verify, patch under heading + verify, active file put/append/get, periodic note append
 - **Group C (navigation):** open_file, open_file with newLeaf, execute_command (safe command like toggle-sidebar)
@@ -359,6 +411,7 @@ Then run manual tests in order — stop and fix failures before proceeding:
 - **Group I (cache + graph):** wait for cache build, get_vault_structure (verify note count), get_backlinks on a linked note, get_note_connections, refresh_cache
 
 **Tests the user does manually (CC cannot):**
+
 - **Group J (offline fallback):** user stops Obsidian → verify cached reads → user restarts
 - **Desktop Extension:** user installs .mcpb in Claude Desktop, verifies UI form fields
 
@@ -393,6 +446,7 @@ Structure (in this order):
 Initial release — TypeScript rewrite of mcp-obsidian with full API coverage.
 
 ### New
+
 - 38 MCP tools covering 100% of Obsidian Local REST API
 - Dual tool mode: granular (38 tools) and consolidated (11 tools)
 - Tool presets: full, read-only, minimal, safe
@@ -414,6 +468,7 @@ Initial release — TypeScript rewrite of mcp-obsidian with full API coverage.
 - Debug logging mode
 
 ### Fixed (from upstream)
+
 - Empty directory returns 404 instead of empty list (#98)
 - PATCH hangs on invalid target (#3) — mitigated with timeouts
 - Search timeout on large vaults (#88)
@@ -435,6 +490,7 @@ Run `npm run pack:mcpb` to produce the .mcpb file.
 ### Step 3.7 — Example Config File
 
 Create `obsidian-mcp.config.example.json`:
+
 ```json
 {
   "host": "127.0.0.1",
@@ -458,6 +514,7 @@ Create `obsidian-mcp.config.example.json`:
   "debug": false
 }
 ```
+
 Note: `apiKey` intentionally omitted — should be in env var or Claude Desktop config, not in a file that might be committed.
 
 ### Step 3.8 — npm Publish Prep
@@ -474,7 +531,9 @@ Note: `apiKey` intentionally omitted — should be in env var or Claude Desktop 
   "mcpServers": {
     "mcp-obsidian-extended": {
       "command": "node",
-      "args": ["/Users/adderclaudedev/projects/mcp-obsidian-extended/dist/index.js"],
+      "args": [
+        "/Users/adderclaudedev/projects/mcp-obsidian-extended/dist/index.js"
+      ],
       "env": { "OBSIDIAN_API_KEY": "<key>" }
     }
   }
@@ -482,6 +541,7 @@ Note: `apiKey` intentionally omitted — should be in env var or Claude Desktop 
 ```
 
 After npm publish, switch to:
+
 ```json
 {
   "mcpServers": {
@@ -527,23 +587,26 @@ main (protected)
 
 ### Tool Roles
 
-| Tool | How it works | When |
-|------|-------------|------|
-| **Sonar** | Run locally via CLI after `npm run build` | Before pushing each PR |
+| Tool             | How it works                                         | When                          |
+| ---------------- | ---------------------------------------------------- | ----------------------------- |
+| **Sonar**        | Run locally via CLI after `npm run build`            | Before pushing each PR        |
 | **CodeRabbitAI** | Automatic on PR open — reviews diff, leaves comments | On each PR — fix before merge |
-| **Greptile** | Automatic on PR open — codebase-aware review | On each PR — fix before merge |
+| **Greptile**     | Automatic on PR open — codebase-aware review         | On each PR — fix before merge |
 
 ### What Each Tool Catches
 
 **Phase 1 PR:**
+
 - Sonar: TLS security, credential handling, unhandled rejections, complexity
 - CodeRabbitAI/Greptile: Missing endpoints, cache invalidation gaps, error handling paths
 
 **Phase 2 PR:**
+
 - Sonar: `any` types, unchecked index access, input validation
 - CodeRabbitAI/Greptile: Tool description quality, Zod schema correctness, consolidated mode validation, tool/client method mapping
 
 **Phase 3 PR:**
+
 - Sonar: Final quality gate — zero critical/high issues
 - CodeRabbitAI/Greptile: README completeness, test coverage, config examples
 
@@ -557,31 +620,31 @@ CC must run ALL of these tools before each PR. All are open source / free tier.
 
 ### Security Scanning (run locally before PR)
 
-| Tool | What it does | Command |
-|------|-------------|---------|
-| **npm audit** | Dependency vulnerability check | `npm audit` |
-| **Snyk** | Deep dependency + SAST code scanning | `npx snyk test` + `npx snyk code test` |
-| **eslint-plugin-security** | ESLint security rules for Node.js | Add to ESLint config |
-| **Semgrep** | Pattern-based SAST for JS/TS | `npx semgrep --config auto src/` |
-| **Socket.dev** | Supply chain security — risky dep behaviors | `npx socket npm audit` |
+| Tool                       | What it does                                | Command                                |
+| -------------------------- | ------------------------------------------- | -------------------------------------- |
+| **npm audit**              | Dependency vulnerability check              | `npm audit`                            |
+| **Snyk**                   | Deep dependency + SAST code scanning        | `npx snyk test` + `npx snyk code test` |
+| **eslint-plugin-security** | ESLint security rules for Node.js           | Add to ESLint config                   |
+| **Semgrep**                | Pattern-based SAST for JS/TS                | `npx semgrep --config auto src/`       |
+| **Socket.dev**             | Supply chain security — risky dep behaviors | `npx socket npm audit`                 |
 
 ### Code Quality (run locally before PR)
 
-| Tool | What it does | Command |
-|------|-------------|---------|
-| **Sonar** | Static analysis — bugs, smells, complexity | Run locally or CI |
-| **ESLint** | Linting + style + security plugin | `npm run lint` |
-| **TypeScript strict** | Compile-time type safety | `npm run build` |
-| **Knip** | Unused exports, files, dependencies | `npx knip` |
-| **Madge** | Circular dependency detection | `npx madge --circular --extensions ts src/` |
-| **Depcheck** | Unused/missing dependencies | `npx depcheck` |
+| Tool                  | What it does                               | Command                                     |
+| --------------------- | ------------------------------------------ | ------------------------------------------- |
+| **Sonar**             | Static analysis — bugs, smells, complexity | Run locally or CI                           |
+| **ESLint**            | Linting + style + security plugin          | `npm run lint`                              |
+| **TypeScript strict** | Compile-time type safety                   | `npm run build`                             |
+| **Knip**              | Unused exports, files, dependencies        | `npx knip`                                  |
+| **Madge**             | Circular dependency detection              | `npx madge --circular --extensions ts src/` |
+| **Depcheck**          | Unused/missing dependencies                | `npx depcheck`                              |
 
 ### PR-Level Review (automatic on PR open)
 
-| Tool | What it does |
-|------|-------------|
+| Tool             | What it does               |
+| ---------------- | -------------------------- |
 | **CodeRabbitAI** | AI code review on PR diffs |
-| **Greptile** | Codebase-aware AI review |
+| **Greptile**     | Codebase-aware AI review   |
 
 ### Package.json Scripts
 

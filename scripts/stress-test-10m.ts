@@ -34,18 +34,27 @@ try {
     if (eqIdx <= 0) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     let value = trimmed.slice(eqIdx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     if (key.length > 0 && process.env[key] === undefined) {
       process.env[key] = value;
     }
   }
-} catch { /* no .env */ }
+} catch {
+  /* no .env */
+}
 
 // --- Helpers ---
-const write = (msg: string): void => { process.stderr.write(msg); };
-const writeln = (msg: string): void => { process.stderr.write(msg + "\n"); };
+const write = (msg: string): void => {
+  process.stderr.write(msg);
+};
+const writeln = (msg: string): void => {
+  process.stderr.write(msg + "\n");
+};
 const PREFIX = "_stress10m_";
 const DURATION_MS = 10 * 60 * 1000; // 10 minutes
 const startTime = Date.now();
@@ -98,7 +107,10 @@ async function runOp(tool: string, fn: () => Promise<void>): Promise<boolean> {
     return true;
   } catch (err: unknown) {
     stats.failed++;
-    const msg = err instanceof Error ? err.message.slice(0, 80) : String(err).slice(0, 80);
+    const msg =
+      err instanceof Error
+        ? err.message.slice(0, 80)
+        : String(err).slice(0, 80);
     stats.errors.set(msg, (stats.errors.get(msg) ?? 0) + 1);
     return false;
   }
@@ -134,22 +146,41 @@ async function scenarioCrudLifecycle(): Promise<void> {
   const content = `# ${heading}\n\nInitial content.\n\n## Sub\n\nSub content.\n`;
 
   await runOp("put_content", () => client.putContent(f, content));
-  await runOp("get_file_contents_md", async () => { await client.getFileContents(f, "markdown"); });
-  await runOp("get_file_contents_json", async () => { await client.getFileContents(f, "json"); });
-  await runOp("get_file_contents_map", async () => { await client.getFileContents(f, "map"); });
-  await runOp("append_content", () => client.appendContent(f, "\nAppended line.\n"));
-  await runOp("patch_content_heading", () => client.patchContent(f, "\nPatched under heading.\n", {
-    operation: "append", targetType: "heading", target: heading,
-  }));
-  await runOp("patch_content_block", () => client.patchContent(f, "\nPatched under sub.\n", {
-    operation: "append", targetType: "heading", target: "Sub",
-  }));
+  await runOp("get_file_contents_md", async () => {
+    await client.getFileContents(f, "markdown");
+  });
+  await runOp("get_file_contents_json", async () => {
+    await client.getFileContents(f, "json");
+  });
+  await runOp("get_file_contents_map", async () => {
+    await client.getFileContents(f, "map");
+  });
+  await runOp("append_content", () =>
+    client.appendContent(f, "\nAppended line.\n"),
+  );
+  await runOp("patch_content_heading", () =>
+    client.patchContent(f, "\nPatched under heading.\n", {
+      operation: "append",
+      targetType: "heading",
+      target: heading,
+    }),
+  );
+  await runOp("patch_content_block", () =>
+    client.patchContent(f, "\nPatched under sub.\n", {
+      operation: "append",
+      targetType: "heading",
+      target: "Sub",
+    }),
+  );
 
   // search_replace: read → modify → write
   const raw = await client.getFileContents(f, "markdown", true);
   if (typeof raw === "string" && raw.includes("Initial content")) {
     await runOp("search_replace", async () => {
-      await client.putContent(f, raw.replace("Initial content", "Replaced content"));
+      await client.putContent(
+        f,
+        raw.replace("Initial content", "Replaced content"),
+      );
     });
   }
 
@@ -172,10 +203,15 @@ async function scenarioConcurrentSameFile(): Promise<void> {
   // Verify content integrity
   const result = await client.getFileContents(f, "markdown");
   if (typeof result === "string") {
-    const lineCount = result.split("\n").filter((l) => l.includes("Concurrent line")).length;
+    const lineCount = result
+      .split("\n")
+      .filter((l) => l.includes("Concurrent line")).length;
     if (lineCount < 6) {
       stats.failed++;
-      stats.errors.set("concurrent_integrity_low", (stats.errors.get("concurrent_integrity_low") ?? 0) + 1);
+      stats.errors.set(
+        "concurrent_integrity_low",
+        (stats.errors.get("concurrent_integrity_low") ?? 0) + 1,
+      );
     }
   }
 }
@@ -183,7 +219,9 @@ async function scenarioConcurrentSameFile(): Promise<void> {
 // 3. Concurrent write storms — different files
 async function scenarioConcurrentDiffFiles(): Promise<void> {
   const files = Array.from({ length: 5 }, () => testFile("diffwrite"));
-  await Promise.all(files.map((f) => client.putContent(f, `# H\n\nContent for ${f}\n`)));
+  await Promise.all(
+    files.map((f) => client.putContent(f, `# H\n\nContent for ${f}\n`)),
+  );
 
   const writes = files.map((f) =>
     runOp("concurrent_append_diff", () =>
@@ -197,10 +235,15 @@ async function scenarioConcurrentDiffFiles(): Promise<void> {
 async function scenarioSearch(): Promise<void> {
   const f = testFile("search");
   const needle = `UniqueNeedle_${randomId()}`;
-  await client.putContent(f, `# Searchable\n\nThis note contains ${needle} for testing.\n`);
+  await client.putContent(
+    f,
+    `# Searchable\n\nThis note contains ${needle} for testing.\n`,
+  );
 
   // Wait briefly for index
-  await new Promise<void>((r) => { setTimeout(r, 500); });
+  await new Promise<void>((r) => {
+    setTimeout(r, 500);
+  });
 
   await runOp("simple_search", async () => {
     const results = await client.simpleSearch(needle, 50);
@@ -229,11 +272,17 @@ async function scenarioCacheLifecycle(): Promise<void> {
   const cache = new VaultCache(client, 600000);
 
   await runOp("cache_initialize", () => cache.initialize());
-  await runOp("cache_get_backlinks", async () => { cache.getBacklinks(createdFiles[0] ?? "nonexistent.md"); });
+  await runOp("cache_get_backlinks", async () => {
+    cache.getBacklinks(createdFiles[0] ?? "nonexistent.md");
+  });
   await runOp("cache_get_structure", async () => {
     const orphans = cache.getOrphanNotes();
     const connected = cache.getMostConnectedNotes(5);
-    if (cache.noteCount === 0 && orphans.length === 0 && connected.length === 0) {
+    if (
+      cache.noteCount === 0 &&
+      orphans.length === 0 &&
+      connected.length === 0
+    ) {
       throw new Error("cache empty");
     }
   });
@@ -263,7 +312,10 @@ async function scenarioCacheLifecycle(): Promise<void> {
 // 6. Heading mismatch retry simulation
 async function scenarioHeadingRetry(): Promise<void> {
   const f = testFile("heading_retry");
-  await client.putContent(f, "# Alpha\n\nAlpha content.\n\n## Beta\n\nBeta content.\n");
+  await client.putContent(
+    f,
+    "# Alpha\n\nAlpha content.\n\n## Beta\n\nBeta content.\n",
+  );
 
   // Concurrent: one writer changes content while another patches a heading
   const writer = runOp("heading_concurrent_write", () =>
@@ -271,7 +323,9 @@ async function scenarioHeadingRetry(): Promise<void> {
   );
   const patcher = runOp("heading_concurrent_patch", () =>
     client.patchContent(f, "\nPatched under Alpha.\n", {
-      operation: "append", targetType: "heading", target: "Alpha",
+      operation: "append",
+      targetType: "heading",
+      target: "Alpha",
     }),
   );
   await Promise.allSettled([writer, patcher]);
@@ -289,15 +343,27 @@ async function scenarioActiveFile(): Promise<void> {
   const f = testFile("active");
   await client.putContent(f, "# Active Test\n\nActive content.\n");
   await client.openFile(f);
-  await new Promise<void>((r) => { setTimeout(r, 300); }); // Wait for Obsidian to open
+  await new Promise<void>((r) => {
+    setTimeout(r, 300);
+  }); // Wait for Obsidian to open
 
-  await runOp("get_active_file_md", async () => { await client.getActiveFile("markdown"); });
-  await runOp("get_active_file_json", async () => { await client.getActiveFile("json"); });
-  await runOp("get_active_file_map", async () => { await client.getActiveFile("map"); });
-  await runOp("append_active_file", () => client.appendActiveFile("\nActive append.\n"));
+  await runOp("get_active_file_md", async () => {
+    await client.getActiveFile("markdown");
+  });
+  await runOp("get_active_file_json", async () => {
+    await client.getActiveFile("json");
+  });
+  await runOp("get_active_file_map", async () => {
+    await client.getActiveFile("map");
+  });
+  await runOp("append_active_file", () =>
+    client.appendActiveFile("\nActive append.\n"),
+  );
   await runOp("patch_active_file", () =>
     client.patchActiveFile("\nActive patch.\n", {
-      operation: "append", targetType: "heading", target: "Active Test",
+      operation: "append",
+      targetType: "heading",
+      target: "Active Test",
     }),
   );
 }
@@ -310,18 +376,39 @@ async function scenarioPeriodicNotes(): Promise<void> {
   const day = 15;
 
   await runOp("put_periodic_note_for_date", () =>
-    client.putPeriodicNoteForDate("daily", year, month, day, "# Daily Test\n\nStress test content.\n"),
+    client.putPeriodicNoteForDate(
+      "daily",
+      year,
+      month,
+      day,
+      "# Daily Test\n\nStress test content.\n",
+    ),
   );
   await runOp("get_periodic_note_for_date", async () => {
     await client.getPeriodicNoteForDate("daily", year, month, day, "markdown");
   });
   await runOp("append_periodic_note_for_date", () =>
-    client.appendPeriodicNoteForDate("daily", year, month, day, "\nAppended to periodic.\n"),
+    client.appendPeriodicNoteForDate(
+      "daily",
+      year,
+      month,
+      day,
+      "\nAppended to periodic.\n",
+    ),
   );
   await runOp("patch_periodic_note_for_date", () =>
-    client.patchPeriodicNoteForDate("daily", year, month, day, "\nPatched periodic.\n", {
-      operation: "append", targetType: "heading", target: "Daily Test",
-    }),
+    client.patchPeriodicNoteForDate(
+      "daily",
+      year,
+      month,
+      day,
+      "\nPatched periodic.\n",
+      {
+        operation: "append",
+        targetType: "heading",
+        target: "Daily Test",
+      },
+    ),
   );
   await runOp("delete_periodic_note_for_date", () =>
     client.deletePeriodicNoteForDate("daily", year, month, day),
@@ -356,22 +443,34 @@ async function scenarioCommandsAndNav(): Promise<void> {
 // 10. Batch operations
 async function scenarioBatch(): Promise<void> {
   const files = Array.from({ length: 3 }, () => testFile("batch"));
-  await Promise.all(files.map((f, i) =>
-    client.putContent(f, `# Batch ${String(i)}\n\nBatch content ${String(i)}.\n`),
-  ));
+  await Promise.all(
+    files.map((f, i) =>
+      client.putContent(
+        f,
+        `# Batch ${String(i)}\n\nBatch content ${String(i)}.\n`,
+      ),
+    ),
+  );
 
   await runOp("batch_get_files", async () => {
-    const results: Array<{ path: string; content?: unknown; error?: string }> = [];
+    const results: Array<{ path: string; content?: unknown; error?: string }> =
+      [];
     for (const f of files) {
       try {
         const content = await client.getFileContents(f, "markdown");
         results.push({ path: f, content });
       } catch (err: unknown) {
-        results.push({ path: f, error: err instanceof Error ? err.message : String(err) });
+        results.push({
+          path: f,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
     const successes = results.filter((r) => r.content !== undefined).length;
-    if (successes < 2) throw new Error(`batch only got ${String(successes)}/${String(files.length)}`);
+    if (successes < 2)
+      throw new Error(
+        `batch only got ${String(successes)}/${String(files.length)}`,
+      );
   });
 }
 
@@ -379,10 +478,13 @@ async function scenarioBatch(): Promise<void> {
 async function scenarioErrorRecovery(): Promise<void> {
   await runOp("get_404_graceful", async () => {
     try {
-      await client.getFileContents("nonexistent_file_xyz_" + randomId() + ".md");
+      await client.getFileContents(
+        "nonexistent_file_xyz_" + randomId() + ".md",
+      );
       throw new Error("should have thrown");
     } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("should have thrown")) throw err;
+      if (err instanceof Error && err.message.includes("should have thrown"))
+        throw err;
       // Expected 404 error — pass
     }
   });
@@ -404,11 +506,14 @@ async function scenarioErrorRecovery(): Promise<void> {
     await client.putContent(f, "# Exist\n\nContent.\n");
     try {
       await client.patchContent(f, "text", {
-        operation: "append", targetType: "heading", target: "DoesNotExist_" + randomId(),
+        operation: "append",
+        targetType: "heading",
+        target: "DoesNotExist_" + randomId(),
       });
       throw new Error("should have thrown");
     } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes("should have thrown")) throw err;
+      if (err instanceof Error && err.message.includes("should have thrown"))
+        throw err;
       // Expected error — pass
     }
   });
@@ -445,12 +550,20 @@ async function scenarioStatusAndConfig(): Promise<void> {
 
 // 14. Link graph stress — many linked files
 async function scenarioLinkGraph(): Promise<void> {
-  const files = Array.from({ length: 5 }, (_, i) => testFile(`graph${String(i)}`));
+  const files = Array.from({ length: 5 }, (_, i) =>
+    testFile(`graph${String(i)}`),
+  );
 
   // Create files with wikilinks between them
   for (let i = 0; i < files.length; i++) {
-    const links = files.filter((_, j) => j !== i).map((f) => `[[${f.replace(".md", "")}]]`).join(", ");
-    await client.putContent(files[i]!, `# Node ${String(i)}\n\nLinks to: ${links}\n`);
+    const links = files
+      .filter((_, j) => j !== i)
+      .map((f) => `[[${f.replace(".md", "")}]]`)
+      .join(", ");
+    await client.putContent(
+      files[i]!,
+      `# Node ${String(i)}\n\nLinks to: ${links}\n`,
+    );
   }
 
   const cache = new VaultCache(client, 600000);
@@ -485,16 +598,40 @@ async function scenarioLinkGraph(): Promise<void> {
 // 15. Rapid fire mixed operations
 async function scenarioRapidFireMixed(): Promise<void> {
   const f = testFile("rapid");
-  await client.putContent(f, `# Rapid\n\n## Section A\n\nA content.\n\n## Section B\n\nB content.\n`);
+  await client.putContent(
+    f,
+    `# Rapid\n\n## Section A\n\nA content.\n\n## Section B\n\nB content.\n`,
+  );
 
   const ops: Array<() => Promise<void>> = [
-    () => runOp("rapid_get", async () => { await client.getFileContents(f, "markdown"); }).then(() => {}),
-    () => runOp("rapid_get_json", async () => { await client.getFileContents(f, "json"); }).then(() => {}),
-    () => runOp("rapid_get_map", async () => { await client.getFileContents(f, "map"); }).then(() => {}),
-    () => runOp("rapid_append", () => client.appendContent(f, `\nRapid ${randomId()}\n`)).then(() => {}),
-    () => runOp("rapid_search", async () => { await client.simpleSearch("Rapid", 20); }).then(() => {}),
-    () => runOp("rapid_status", async () => { await client.getServerStatus(); }).then(() => {}),
-    () => runOp("rapid_list", async () => { await client.listFilesInVault(); }).then(() => {}),
+    () =>
+      runOp("rapid_get", async () => {
+        await client.getFileContents(f, "markdown");
+      }).then(() => {}),
+    () =>
+      runOp("rapid_get_json", async () => {
+        await client.getFileContents(f, "json");
+      }).then(() => {}),
+    () =>
+      runOp("rapid_get_map", async () => {
+        await client.getFileContents(f, "map");
+      }).then(() => {}),
+    () =>
+      runOp("rapid_append", () =>
+        client.appendContent(f, `\nRapid ${randomId()}\n`),
+      ).then(() => {}),
+    () =>
+      runOp("rapid_search", async () => {
+        await client.simpleSearch("Rapid", 20);
+      }).then(() => {}),
+    () =>
+      runOp("rapid_status", async () => {
+        await client.getServerStatus();
+      }).then(() => {}),
+    () =>
+      runOp("rapid_list", async () => {
+        await client.listFilesInVault();
+      }).then(() => {}),
   ];
 
   // Fire 20 random ops concurrently
@@ -512,13 +649,17 @@ async function run(): Promise<void> {
 
   // Connectivity check
   const status = await client.getServerStatus();
-  writeln(`  Connected: ${status.service} (authenticated: ${String(status.authenticated)})`);
+  writeln(
+    `  Connected: ${status.service} (authenticated: ${String(status.authenticated)})`,
+  );
 
   const { files } = await client.listFilesInVault();
   writeln(`  Vault: ${String(files.length)} files`);
 
   if (files.length > 100 && process.env["SMOKE_TEST_CONFIRM"] !== "true") {
-    writeln("\n  ⚠ Vault has >100 files. Set SMOKE_TEST_CONFIRM=true to proceed.");
+    writeln(
+      "\n  ⚠ Vault has >100 files. Set SMOKE_TEST_CONFIRM=true to proceed.",
+    );
     process.exit(1);
   }
 
@@ -556,29 +697,38 @@ async function run(): Promise<void> {
         await fn();
         writeln("✓");
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message.slice(0, 60) : String(err).slice(0, 60);
+        const msg =
+          err instanceof Error
+            ? err.message.slice(0, 60)
+            : String(err).slice(0, 60);
         writeln(`✗ (${msg})`);
       }
 
       // Periodic cleanup to avoid file bloat
       if (createdFiles.length > 30) {
         const toDelete = createdFiles.splice(0, 20);
-        await Promise.allSettled(toDelete.map((f) => client.deleteFile(f).catch(() => {})));
+        await Promise.allSettled(
+          toDelete.map((f) => client.deleteFile(f).catch(() => {})),
+        );
       }
     }
 
     // Progress report every round
     const opsPerSec = stats.total / ((Date.now() - startTime) / 1000);
-    writeln(`    [ops: ${String(stats.total)} | pass: ${String(stats.passed)} | fail: ${String(stats.failed)} | ${opsPerSec.toFixed(1)} ops/s | tools: ${String(stats.toolCoverage.size)}]\n`);
+    writeln(
+      `    [ops: ${String(stats.total)} | pass: ${String(stats.passed)} | fail: ${String(stats.failed)} | ${opsPerSec.toFixed(1)} ops/s | tools: ${String(stats.toolCoverage.size)}]\n`,
+    );
   }
 
   // --- Cleanup ---
   writeln("  Cleaning up test files...");
-  await Promise.allSettled(createdFiles.map((f) => client.deleteFile(f).catch(() => {})));
+  await Promise.allSettled(
+    createdFiles.map((f) => client.deleteFile(f).catch(() => {})),
+  );
 
   // --- Final Report ---
   const totalSec = (Date.now() - startTime) / 1000;
-  const errorRate = stats.total > 0 ? (stats.failed / stats.total * 100) : 0;
+  const errorRate = stats.total > 0 ? (stats.failed / stats.total) * 100 : 0;
 
   writeln("\n╔═══════════════════════════════════════════════════════════╗");
   writeln("║  FINAL REPORT                                            ║");
@@ -596,7 +746,9 @@ async function run(): Promise<void> {
   writeln(`    p99:  ${String(percentile(stats.latencies, 99))}`);
   writeln(`    max:  ${String(percentile(stats.latencies, 100))}`);
   writeln("");
-  writeln(`  Heap: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1)} MB`);
+  writeln(
+    `  Heap: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1)} MB`,
+  );
   writeln("");
 
   if (stats.errors.size > 0) {

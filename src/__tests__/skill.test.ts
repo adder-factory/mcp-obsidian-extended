@@ -28,7 +28,9 @@ describe("buildSkillContent", () => {
 
   it("includes key golden rules", () => {
     const content = buildSkillContent("granular", false);
-    expect(content).toContain('ALWAYS get_file_contents(path, format: "map") BEFORE any patch_content');
+    expect(content).toContain(
+      'ALWAYS get_file_contents(path, format: "map") BEFORE any patch_content',
+    );
     expect(content).toContain("NEVER use put_content to edit a section");
     expect(content).toContain("NEVER retry a non-idempotent tool on timeout");
     expect(content).toContain("NEVER assume a path exists");
@@ -108,7 +110,9 @@ describe("buildSkillContent", () => {
 
   it("documents patch replace danger", () => {
     const content = buildSkillContent("granular", false);
-    expect(content).toContain("replace operation on a top-level heading replaces EVERYTHING under it");
+    expect(content).toContain(
+      "replace operation on a top-level heading replaces EVERYTHING under it",
+    );
   });
 
   it("documents concurrent write failure rate", () => {
@@ -182,6 +186,8 @@ describe("buildSkillContent", () => {
   it("includes skill action in configure's consolidated reference", () => {
     const content = buildSkillContent("consolidated", false);
     expect(content).toContain("configure:");
-    expect(content).toContain("skill          \u2192 (no params, returns LLM usage guide)");
+    expect(content).toContain(
+      "skill          \u2192 (no params, returns LLM usage guide)",
+    );
   });
 });

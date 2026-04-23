@@ -71,6 +71,7 @@
     "madge": "^8.0.0",
     "postject": "1.0.0-alpha.6",
     "prettier": "^3.8.3",
+    "sonarqube-scanner": "^4.3.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"

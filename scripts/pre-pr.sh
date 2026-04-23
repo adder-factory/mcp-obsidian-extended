@@ -43,6 +43,30 @@ if ! is_inside_git_repo; then
 fi
 cd "$(repo_root)" || { fail "cd to repo root failed"; exit 1; }
 
+# Auto-source ./.env if present. Gate steps (SonarQube especially) read
+# credentials from the shell env; without this, a developer running
+# `npm run pre-pr` has to remember to `source .env` every time. We
+# export everything set in the file so gate subshells inherit it.
+# Opt out with PIPELINE_SKIP_ENV=1 if a project needs a different env
+# loading strategy (e.g. multi-environment .env.test / .env.prod
+# layout). .env is gitignored in Adder Factory convention, so this
+# doesn't leak secrets to the commit tree.
+if [ -f .env ] && [ "${PIPELINE_SKIP_ENV:-0}" != "1" ]; then
+  info "Loading .env into shell env (skip with PIPELINE_SKIP_ENV=1)"
+  set -a
+  # Check the source exit status explicitly — if .env has invalid shell
+  # syntax the source can fail mid-way with a partially-loaded env, and
+  # without this guard the script would continue silently with
+  # hard-to-diagnose behavior in later gates.
+  # shellcheck disable=SC1091
+  if ! . ./.env; then
+    set +a
+    fail ".env sourcing failed — invalid shell syntax? Fix ./.env or re-run with PIPELINE_SKIP_ENV=1"
+    exit 1
+  fi
+  set +a
+fi
+
 if [ -z "$BASE_REF" ]; then
   BASE_REF="${PIPELINE_BASE_REF:-$(default_base_ref)}"
 fi

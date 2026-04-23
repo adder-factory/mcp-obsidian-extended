@@ -158,3 +158,87 @@ npm run sonar                              # Zero issues of any severity in Sona
 ```
 
 Iterate with CodeRabbitAI + Greptile on PR until ALL comments resolved — including nitpicks.
+
+<!-- ADDER-PIPELINE:v1 -->
+
+## Adder Code Review Pipeline
+
+This project uses the Adder code review pipeline. Rules Claude Code must
+follow:
+
+### Before every push
+
+Run the gate until clean:
+
+```bash
+npm run pre-pr
+```
+
+All steps must pass (exit 0). Do **not** push until they do. If a gate is
+incorrectly failing, fix the gate's config rather than skipping it.
+`--skip-qwen` is allowed during fast iteration but the final run before
+opening a PR must include Qwen.
+
+The gate invokes `npm test -- --coverage`. Your project's `test` script
+must be plain (e.g. `"test": "vitest run"`), without a hardcoded
+`--coverage` flag — otherwise the runner sees a duplicate flag and fails.
+Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
+
+### Branch strategy
+
+- Feature branches only — never commit directly to `main`
+- One logical change per branch. If the task has multiple parts, multiple branches.
+- Branch name format: `feat/<short-slug>`, `fix/<short-slug>`, `chore/<short-slug>`
+- PR title matches branch purpose — write it for the reviewer, not for yourself
+
+### Pull request workflow
+
+1. Open PR against `main`
+2. CodeRabbit Pro Plus AND CodeAnt AI both auto-review — you will see comments
+   from both within minutes
+3. Dependabot runs on dep-related PRs
+4. Iterate on every comment from BOTH reviewers. Nitpicks count. No "will fix later."
+5. If CodeRabbit and CodeAnt disagree on something, stop and ask the human — do
+   not oscillate between the two reviewers' preferred approaches
+6. Ask for human approval only when:
+   - All CI checks green
+   - All CodeRabbit threads resolved
+   - All CodeAnt threads resolved
+   - `npm run pre-pr` passes locally on the branch head
+
+### Never do
+
+- Force-push to `main` (branch protection blocks it anyway)
+- Bypass the gate with `--no-verify` on commits
+- Disable an ESLint rule to make the gate pass — fix the underlying code
+- Add files to `.gitignore` to hide them from Semgrep/SonarQube
+- Commit secrets — Gitleaks will catch them, but don't make it do that
+- Change `package.json` scripts `pre-pr`, `qwen-review`, `verify:all`,
+  `security:all` without asking the user first — these are pipeline interfaces
+
+### CodeGraph
+
+This project is indexed by CodeGraph. Prefer `codegraph_*` MCP tools over
+Read/Grep for codebase navigation:
+
+- Where is X defined? — `codegraph_query`
+- Who calls X? — `codegraph_callers`
+- What breaks if I change X? — `codegraph_impact`
+- What does X call? — `codegraph_callees`
+- High-level structure? — `codegraph_structure`
+
+File reads are for when you need the actual source to edit. Use the graph for
+discovery.
+
+### When a session ends or context saturates
+
+Log progress in `.adder-pipeline/session-log.md` with:
+
+- What you were doing
+- Current branch
+- What's left to do
+- Anything the next session needs to know
+
+This survives context restarts.
+
+<!-- /ADDER-PIPELINE:v1 -->

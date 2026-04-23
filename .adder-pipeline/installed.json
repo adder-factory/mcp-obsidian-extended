@@ -1,0 +1,12 @@
+{
+  "version": "0.1.0",
+  "installed_at": "2026-04-23T17:53:04Z",
+  "git_commit": "5010cf284ca4c37ad823bcfd32a46603d5908055",
+  "components": {
+    "scripts": true,
+    "package_json": true,
+    "claude_md": true,
+    "github_workflow": true,
+    "codegraph": true
+  }
+}

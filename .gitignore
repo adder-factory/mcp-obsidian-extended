@@ -12,3 +12,7 @@ sea-config.json
 sea-entry.cjs
 mcp-obsidian-extended.zip
 mcp-obsidian-extended.skill
+
+# Adder pipeline generated artifacts
+reports/
+.stryker-tmp/

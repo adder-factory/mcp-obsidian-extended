@@ -1,0 +1,98 @@
+name: Pipeline
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# One concurrent run per ref — cancel in-progress on new push.
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Pipeline gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for diff-based tools (Stryker --incremental etc.)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install system tools
+        run: |
+          # Gitleaks (pinned version — bump deliberately)
+          GITLEAKS_VERSION=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          # Semgrep: pin explicitly; bump deliberately when changelog warrants.
+          SEMGREP_VERSION=1.157.0
+          python3 -m pip install --quiet "semgrep==${SEMGREP_VERSION}"
+
+      - name: Prettier
+        run: npx prettier --check .
+
+      - name: ESLint
+        run: npx eslint . --max-warnings=0
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Knip
+        run: npx knip
+
+      - name: Tests + coverage
+        run: npm test -- --coverage
+
+      - name: Stryker
+        if: ${{ hashFiles('stryker.conf.mjs', 'stryker.conf.js', 'stryker.config.json') != '' }}
+        run: npx stryker run --incremental
+
+      - name: Gitleaks
+        run: gitleaks detect --source . --verbose --redact --no-banner
+
+      - name: Madge (circular deps)
+        run: |
+          if [ -d src ]; then
+            npx madge --circular --extensions ts,tsx,js,jsx src
+          else
+            npx madge --circular --extensions ts,tsx,js,jsx .
+          fi
+
+      - name: Semgrep
+        run: semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off
+
+      # Qwen step intentionally omitted — runs locally only via
+      # scripts/pre-pr.sh (spec step 15). CI relies on CodeRabbit + CodeAnt
+      # for the post-push AI review perspective.
+
+  sonar:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    # Skip cleanly when the secret isn't configured — self-hosted Sonar
+    # isn't reachable from GHA unless tunneled (we use Cloudflare Tunnel).
+    if: ${{ secrets.SONAR_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - uses: SonarSource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

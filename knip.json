@@ -1,0 +1,14 @@
+{
+  "ignore": [
+    ".adder-pipeline/**",
+    ".github/**",
+    "scripts/**",
+    "stryker.conf.mjs"
+  ],
+  "ignoreBinaries": [
+    "gitleaks",
+    "semgrep",
+    "stryker"
+  ],
+  "$schema": "https://unpkg.com/knip@5/schema.json"
+}

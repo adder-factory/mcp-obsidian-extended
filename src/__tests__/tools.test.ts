@@ -473,16 +473,20 @@ describe("tool metadata — descriptions and schema hints", () => {
   // find the first non-empty description.
   function getZodDescription(node: unknown): string | undefined {
     if (!node || typeof node !== "object") return undefined;
-    const obj = node as {
-      description?: string;
-      _def?: { innerType?: unknown; type?: unknown; schema?: unknown };
-    };
-    if (typeof obj.description === "string" && obj.description.length > 0) {
-      return obj.description;
+    if (
+      "description" in node &&
+      typeof node.description === "string" &&
+      node.description.length > 0
+    ) {
+      return node.description;
     }
-    if (obj._def?.innerType) return getZodDescription(obj._def.innerType);
-    if (obj._def?.type) return getZodDescription(obj._def.type);
-    if (obj._def?.schema) return getZodDescription(obj._def.schema);
+    if (!("_def" in node) || !node._def || typeof node._def !== "object") {
+      return undefined;
+    }
+    const def = node._def;
+    if ("innerType" in def) return getZodDescription(def.innerType);
+    if ("type" in def) return getZodDescription(def.type);
+    if ("schema" in def) return getZodDescription(def.schema);
     return undefined;
   }
 
@@ -491,25 +495,29 @@ describe("tool metadata — descriptions and schema hints", () => {
   // wrapping the object schema doesn't silently skip field assertions.
   function unwrapToZodObject(
     node: unknown,
-  ): { shape: Record<string, unknown> } | undefined {
+  ): Record<string, unknown> | undefined {
     if (!node || typeof node !== "object") return undefined;
-    if ("shape" in node) {
-      return node as { shape: Record<string, unknown> };
+    if ("shape" in node && node.shape && typeof node.shape === "object") {
+      // Provably safe: shape is narrowed to non-null object; ZodObject's shape
+      // is structurally Record<string, ZodTypeAny> at runtime — we treat its
+      // values as `unknown` and let getZodDescription narrow them.
+      return node.shape as Record<string, unknown>;
     }
-    const def = (node as { _def?: { innerType?: unknown; schema?: unknown } })
-      ._def;
-    if (def?.innerType) return unwrapToZodObject(def.innerType);
-    if (def?.schema) return unwrapToZodObject(def.schema);
+    if (!("_def" in node) || !node._def || typeof node._def !== "object") {
+      return undefined;
+    }
+    const def = node._def;
+    if ("innerType" in def) return unwrapToZodObject(def.innerType);
+    if ("schema" in def) return unwrapToZodObject(def.schema);
     return undefined;
   }
 
   function inputFieldDescriptions(
     schema: Record<string, unknown>,
   ): Array<[string, string | undefined]> {
-    const inputSchema = (schema as { inputSchema?: unknown }).inputSchema;
-    const unwrapped = unwrapToZodObject(inputSchema);
-    if (!unwrapped) return [];
-    return Object.entries(unwrapped.shape).map(([fieldName, fieldType]) => [
+    const shape = unwrapToZodObject(schema.inputSchema);
+    if (!shape) return [];
+    return Object.entries(shape).map(([fieldName, fieldType]) => [
       fieldName,
       getZodDescription(fieldType),
     ]);

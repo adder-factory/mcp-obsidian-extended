@@ -76,12 +76,18 @@ interface FileStats {
 
 /**
  * Decide whether a declaration is "exported" for coverage purposes.
- * Covers `export` modifiers and re-exports via `export { ... }` / `export default`.
+ *
+ * Handles the forms we score: `export` modifiers on declarations (function /
+ * class / interface / type / enum / variable statement). Re-exports
+ * (`export { ... } from './x'`, `export * from './x'`) are deliberately
+ * excluded — the re-exported symbol is scored in its own source file.
+ * `export default expr;` assignments are also excluded: when the default
+ * target is a named declaration (`export default function foo() {}`) it is
+ * already caught via the exportable path; bare-identifier forms
+ * (`export default foo;`) point at a declaration scored in its own right.
  */
 function isExported(node: Node): boolean {
   if (Node.isExportable(node) && node.isExported()) return true;
-  if (Node.isExportAssignment(node)) return true;
-  if (Node.isExportDeclaration(node)) return true;
   return false;
 }
 
@@ -105,7 +111,6 @@ function collectTopLevel(sourceFile: import("ts-morph").SourceFile): Node[] {
       results.push(stmt);
     else if (Node.isVariableStatement(stmt) && stmt.isExported())
       results.push(stmt);
-    else if (Node.isExportAssignment(stmt)) results.push(stmt);
   }
   return results;
 }
@@ -129,6 +134,13 @@ function collectClassMembers(cls: import("ts-morph").ClassDeclaration): Node[] {
     ) {
       continue;
     }
+    // Overloaded methods: ts-morph returns one MethodDeclaration per
+    // signature plus one for the implementation. Scoring each separately
+    // over-weights a single API method by its overload count, so we keep
+    // only the implementation (signature-only overloads return true from
+    // isOverload()). hasMethodOrOverloadJSDoc below still consults the
+    // sibling signatures for JSDoc.
+    if (Node.isMethodDeclaration(m) && m.isOverload()) continue;
     const mods = m.getModifiers().map((mod) => mod.getKind());
     if (mods.includes(SyntaxKind.PrivateKeyword)) continue;
     if (mods.includes(SyntaxKind.ProtectedKeyword)) continue;

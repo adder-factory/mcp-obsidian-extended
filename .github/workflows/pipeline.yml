@@ -51,6 +51,13 @@ jobs:
       - name: Knip
         run: npx knip
 
+      # JSDoc coverage (opt-in). Skips cleanly on repos that haven't adopted
+      # the gate yet — their next install.sh run copies the script and the
+      # step becomes a hard check.
+      - name: JSDoc coverage
+        if: ${{ hashFiles('scripts/jsdoc-coverage.ts') != '' }}
+        run: npx tsx scripts/jsdoc-coverage.ts --threshold 85
+
       - name: Tests + coverage
         run: npm test -- --coverage
 

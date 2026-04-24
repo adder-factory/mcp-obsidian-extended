@@ -8,6 +8,7 @@
   "ignore": [
     ".adder-pipeline/**",
     ".github/**",
+    "scripts/**",
     "stryker.conf.mjs"
   ],
   "ignoreBinaries": [
@@ -19,7 +20,10 @@
   ],
   "ignoreDependencies": [
     "esbuild",
-    "postject"
+    "glob",
+    "postject",
+    "ts-morph",
+    "tsx"
   ],
   "ignoreExportsUsedInFile": {
     "interface": true,

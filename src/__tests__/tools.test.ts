@@ -442,8 +442,12 @@ describe("tool metadata — descriptions and schema hints", () => {
   // match because the first word is a verb. Tools whose descriptions open with
   // a noun-category instead of a verb stay in VERB_OPENER_ALLOWLIST — keep that
   // set narrow; adding a name here is a deliberate exception to the contract.
+  // Verb set is liberal by design — adding a verb here is cheap, but failing
+  // a real PR for a legitimately verb-led description (e.g., a future "Rename"
+  // tool) is an annoying yak-shave. New verbs added on each Phase 4 reviewer
+  // pass; extend further if a future tool surfaces a missing one.
   const VERB_PREFIX_RE =
-    /^(List|Get|Read|Put|Append|Patch|Delete|Replace|Move|Search|Run|Execute|Check|Force|Refresh|Create|Configure|Analyze|Insert|Open|Find|View|Query|CRUD)\b/;
+    /^(List|Get|Read|Put|Append|Patch|Delete|Replace|Move|Search|Run|Execute|Check|Force|Refresh|Create|Configure|Analyze|Insert|Open|Find|View|Query|Update|Toggle|Enable|Disable|Rename|Copy|CRUD)\b/;
   const VERB_OPENER_ALLOWLIST = new Set<string>([
     // vault_analysis opens with "Backlinks, connections, structure…" — it
     // describes a category of read-only inspections, not a single action.
@@ -458,24 +462,44 @@ describe("tool metadata — descriptions and schema hints", () => {
   // ZodObject exposes .shape: Record<string, ZodTypeAny>; each ZodTypeAny
   // exposes .description: string | undefined (set via .describe()).
   //
-  // Zod wraps optional/nullable/default by *replacing* the outer schema with a
-  // new wrapper whose .description is undefined unless .describe() was called
-  // on the wrapper itself. The convention in this codebase is mixed: some
-  // fields use `.optional().describe(...)` (description on outer), others use
-  // `someSharedSchema.optional()` (description on inner). Both are valid; the
-  // walker descends through _def.innerType (ZodOptional/ZodNullable/ZodDefault)
-  // and _def.type (ZodArray) to find the first non-empty description.
+  // Zod wraps optional/nullable/default/effects by *replacing* the outer
+  // schema with a new wrapper whose .description is undefined unless
+  // .describe() was called on the wrapper itself. The convention in this
+  // codebase is mixed: some fields use `.optional().describe(...)`
+  // (description on outer), others use `someSharedSchema.optional()`
+  // (description on inner). Both are valid; the walker descends through
+  // _def.innerType (ZodOptional/ZodNullable/ZodDefault), _def.type
+  // (ZodArray), and _def.schema (ZodEffects from .refine()/.transform()) to
+  // find the first non-empty description.
   function getZodDescription(node: unknown): string | undefined {
     if (!node || typeof node !== "object") return undefined;
     const obj = node as {
       description?: string;
-      _def?: { innerType?: unknown; type?: unknown };
+      _def?: { innerType?: unknown; type?: unknown; schema?: unknown };
     };
     if (typeof obj.description === "string" && obj.description.length > 0) {
       return obj.description;
     }
     if (obj._def?.innerType) return getZodDescription(obj._def.innerType);
     if (obj._def?.type) return getZodDescription(obj._def.type);
+    if (obj._def?.schema) return getZodDescription(obj._def.schema);
+    return undefined;
+  }
+
+  // Unwrap the captured inputSchema until a ZodObject (with .shape) surfaces.
+  // Mirrors getZodDescription's traversal so a top-level .refine()/.transform()
+  // wrapping the object schema doesn't silently skip field assertions.
+  function unwrapToZodObject(
+    node: unknown,
+  ): { shape: Record<string, unknown> } | undefined {
+    if (!node || typeof node !== "object") return undefined;
+    if ("shape" in node) {
+      return node as { shape: Record<string, unknown> };
+    }
+    const def = (node as { _def?: { innerType?: unknown; schema?: unknown } })
+      ._def;
+    if (def?.innerType) return unwrapToZodObject(def.innerType);
+    if (def?.schema) return unwrapToZodObject(def.schema);
     return undefined;
   }
 
@@ -483,15 +507,9 @@ describe("tool metadata — descriptions and schema hints", () => {
     schema: Record<string, unknown>,
   ): Array<[string, string | undefined]> {
     const inputSchema = (schema as { inputSchema?: unknown }).inputSchema;
-    if (
-      !inputSchema ||
-      typeof inputSchema !== "object" ||
-      !("shape" in inputSchema)
-    ) {
-      return [];
-    }
-    const shape = (inputSchema as { shape: Record<string, unknown> }).shape;
-    return Object.entries(shape).map(([fieldName, fieldType]) => [
+    const unwrapped = unwrapToZodObject(inputSchema);
+    if (!unwrapped) return [];
+    return Object.entries(unwrapped.shape).map(([fieldName, fieldType]) => [
       fieldName,
       getZodDescription(fieldType),
     ]);

@@ -3982,6 +3982,17 @@ describe("consolidated tools — registration and behavior", () => {
   // full error-formatting contract here.
 
   describe("errorResult message content (#13)", () => {
+    // Catch-branch tests below assert the error message starts with a
+    // `[tool] ` prefix rather than merely containing it. That matches the
+    // actual contract from buildErrorMessage() (the prefix is always at
+    // position 0) and kills a hypothetical mutant that shifted the literal
+    // away from the start of the string — a substring check would let that
+    // slip through silently.
+    function expectToolPrefixedError(result: ToolResult, tool: string): void {
+      expect(result.isError).toBe(true);
+      expect(getText(result).startsWith(`[${tool}] `)).toBe(true);
+    }
+
     // ---- vault tool ----
 
     it("vault list_dir without path returns exact error", async () => {
@@ -4199,8 +4210,7 @@ describe("consolidated tools — registration and behavior", () => {
         caseSensitive: true,
         replaceAll: true,
       });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[vault]");
+      expectToolPrefixedError(result, "vault");
     });
 
     // ---- active_file tool ----
@@ -4282,8 +4292,7 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getActiveFile).mockRejectedValue(new Error("boom"));
       const result = await getTool("active_file").handler({ action: "get" });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[active_file]");
+      expectToolPrefixedError(result, "active_file");
     });
 
     // ---- commands tool ----
@@ -4313,8 +4322,7 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.listCommands).mockRejectedValue(new Error("boom"));
       const result = await getTool("commands").handler({ action: "list" });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[commands]");
+      expectToolPrefixedError(result, "commands");
     });
 
     // ---- search tool ----
@@ -4376,8 +4384,7 @@ describe("consolidated tools — registration and behavior", () => {
         query: "q",
         contextLength: 100,
       });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[search]");
+      expectToolPrefixedError(result, "search");
     });
 
     // ---- periodic_note tool ----
@@ -4492,8 +4499,7 @@ describe("consolidated tools — registration and behavior", () => {
         action: "get",
         period: "daily",
       });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[periodic_note]");
+      expectToolPrefixedError(result, "periodic_note");
     });
 
     // ---- status tool (catch-branch prefix only) ----
@@ -4502,8 +4508,7 @@ describe("consolidated tools — registration and behavior", () => {
       const { client, getTool } = setup();
       vi.mocked(client.getServerStatus).mockRejectedValue(new Error("boom"));
       const result = await getTool("status").handler({});
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[status]");
+      expectToolPrefixedError(result, "status");
     });
 
     // NOTE: batch_get's outer catch branch (consolidated.ts L841) is
@@ -4537,8 +4542,7 @@ describe("consolidated tools — registration and behavior", () => {
         type: "changes",
         limit: 5,
       });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[recent]");
+      expectToolPrefixedError(result, "recent");
     });
 
     // ---- vault_analysis tool ----
@@ -4619,8 +4623,7 @@ describe("consolidated tools — registration and behavior", () => {
         path: "n.md",
         limit: 10,
       });
-      expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[vault_analysis]");
+      expectToolPrefixedError(result, "vault_analysis");
     });
   });
 });

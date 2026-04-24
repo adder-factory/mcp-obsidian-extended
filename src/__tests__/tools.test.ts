@@ -448,6 +448,14 @@ describe("tool metadata — descriptions and schema hints", () => {
   // pass; extend further if a future tool surfaces a missing one.
   const VERB_PREFIX_RE =
     /^(List|Get|Read|Put|Append|Patch|Delete|Replace|Move|Search|Run|Execute|Check|Force|Refresh|Create|Configure|Analyze|Insert|Open|Find|View|Query|Update|Toggle|Enable|Disable|Rename|Copy|CRUD)\b/;
+
+  // Token budget contract from CLAUDE.md L81: "Tool descriptions: MAX 15
+  // words. Parameter descriptions: MAX 10 words. Tokens matter." Codified
+  // here so future tool additions can't drift past the budget unnoticed.
+  const MAX_TOOL_DESCRIPTION_WORDS = 15;
+  const MAX_PARAM_DESCRIPTION_WORDS = 10;
+  const countWords = (s: string): number =>
+    s.trim().split(/\s+/).filter(Boolean).length;
   const VERB_OPENER_ALLOWLIST = new Set<string>([
     // vault_analysis opens with "Backlinks, connections, structure…" — it
     // describes a category of read-only inspections, not a single action.
@@ -540,7 +548,7 @@ describe("tool metadata — descriptions and schema hints", () => {
 
   for (const mode of ["granular", "consolidated"] as const) {
     describe(`${mode} mode (preset: full)`, () => {
-      it("every tool has a non-empty description ≥ 10 chars", () => {
+      it("every tool has a non-empty description ≥ 10 chars and ≤ 15 words", () => {
         const tools = enumerateAllTools(mode);
         expect(tools.length).toBeGreaterThan(0);
         for (const t of tools) {
@@ -551,6 +559,10 @@ describe("tool metadata — descriptions and schema hints", () => {
             t.description.trim().length,
             `${t.name}: description length`,
           ).toBeGreaterThanOrEqual(10);
+          expect(
+            countWords(t.description),
+            `${t.name}: description word count (CLAUDE.md L81 token budget)`,
+          ).toBeLessThanOrEqual(MAX_TOOL_DESCRIPTION_WORDS);
         }
       });
 
@@ -564,7 +576,7 @@ describe("tool metadata — descriptions and schema hints", () => {
         }
       });
 
-      it("every Zod schema field has a non-empty .describe() text ≥ 3 chars", () => {
+      it("every Zod schema field has a non-empty .describe() text ≥ 3 chars and ≤ 10 words", () => {
         const tools = enumerateAllTools(mode);
         for (const t of tools) {
           for (const [fieldName, desc] of inputFieldDescriptions(t.schema)) {
@@ -576,6 +588,10 @@ describe("tool metadata — descriptions and schema hints", () => {
               (desc ?? "").trim().length,
               `${t.name}.${fieldName}: .describe() length`,
             ).toBeGreaterThanOrEqual(3);
+            expect(
+              countWords(desc ?? ""),
+              `${t.name}.${fieldName}: .describe() word count (CLAUDE.md L81 token budget)`,
+            ).toBeLessThanOrEqual(MAX_PARAM_DESCRIPTION_WORDS);
           }
         }
       });

@@ -28,18 +28,40 @@ function parseArgs(argv: string[]): Args {
     perFile: false,
     json: false,
   };
+  const takeValue = (flag: string, i: number): string => {
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith("--")) {
+      console.error(`${flag} requires a value`);
+      process.exit(2);
+    }
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--threshold") args.threshold = Number(argv[++i]);
-    else if (a === "--pattern") args.pattern = String(argv[++i]);
-    else if (a === "--exclude") args.exclude.push(String(argv[++i]));
-    else if (a === "--per-file") args.perFile = true;
+    if (a === "--threshold") {
+      const v = Number(takeValue(a, i));
+      i++;
+      if (!Number.isFinite(v) || v < 0 || v > 100) {
+        console.error("--threshold requires a number between 0 and 100");
+        process.exit(2);
+      }
+      args.threshold = v;
+    } else if (a === "--pattern") {
+      args.pattern = takeValue(a, i);
+      i++;
+    } else if (a === "--exclude") {
+      args.exclude.push(takeValue(a, i));
+      i++;
+    } else if (a === "--per-file") args.perFile = true;
     else if (a === "--json") args.json = true;
     else if (a === "--help" || a === "-h") {
       console.log(
         "Usage: tsx scripts/jsdoc-coverage.ts [--threshold N] [--pattern GLOB] [--exclude GLOB] [--per-file] [--json]",
       );
       process.exit(0);
+    } else {
+      console.error(`Unknown argument: ${a}`);
+      process.exit(2);
     }
   }
   return args;
@@ -89,25 +111,29 @@ function collectTopLevel(sourceFile: import("ts-morph").SourceFile): Node[] {
 }
 
 /**
- * Yield class members (methods, accessors) that count toward coverage.
- * Private / protected members and the constructor are skipped — only the
- * public contract is part of the documented surface.
+ * Yield class members (methods, accessors, public properties) that count
+ * toward coverage. Private / protected members and the constructor are
+ * skipped — only the public contract is part of the documented surface.
  */
 function collectClassMembers(cls: import("ts-morph").ClassDeclaration): Node[] {
   const members: Node[] = [];
   for (const m of cls.getMembers()) {
     if (Node.isConstructorDeclaration(m)) continue;
     if (
-      Node.isMethodDeclaration(m) ||
-      Node.isGetAccessorDeclaration(m) ||
-      Node.isSetAccessorDeclaration(m)
+      !(
+        Node.isMethodDeclaration(m) ||
+        Node.isGetAccessorDeclaration(m) ||
+        Node.isSetAccessorDeclaration(m) ||
+        Node.isPropertyDeclaration(m)
+      )
     ) {
-      const mods = m.getModifiers().map((mod) => mod.getKind());
-      if (mods.includes(SyntaxKind.PrivateKeyword)) continue;
-      if (mods.includes(SyntaxKind.ProtectedKeyword)) continue;
-      if (m.getName().startsWith("#")) continue;
-      members.push(m);
+      continue;
     }
+    const mods = m.getModifiers().map((mod) => mod.getKind());
+    if (mods.includes(SyntaxKind.PrivateKeyword)) continue;
+    if (mods.includes(SyntaxKind.ProtectedKeyword)) continue;
+    if (m.getName().startsWith("#")) continue;
+    members.push(m);
   }
   return members;
 }
@@ -116,6 +142,23 @@ function collectClassMembers(cls: import("ts-morph").ClassDeclaration): Node[] {
 function hasJSDoc(node: Node): boolean {
   if (!Node.isJSDocable(node)) return false;
   return node.getJsDocs().length > 0;
+}
+
+/**
+ * Documentation check that understands TypeScript overload groups. For an
+ * overloaded method, TypeScript surfaces JSDoc from the signatures (not the
+ * implementation) in tooltips and generated docs. Treat the group as
+ * documented when the implementation OR any overload signature carries a
+ * JSDoc block.
+ */
+function hasMethodOrOverloadJSDoc(m: Node): boolean {
+  if (hasJSDoc(m)) return true;
+  if (Node.isMethodDeclaration(m)) {
+    for (const o of m.getOverloads()) {
+      if (hasJSDoc(o)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -141,6 +184,7 @@ function labelFor(node: Node): string {
   if (Node.isMethodDeclaration(node)) return `method ${node.getName()}`;
   if (Node.isGetAccessorDeclaration(node)) return `get ${node.getName()}`;
   if (Node.isSetAccessorDeclaration(node)) return `set ${node.getName()}`;
+  if (Node.isPropertyDeclaration(node)) return `property ${node.getName()}`;
   return node.getKindName();
 }
 
@@ -185,7 +229,7 @@ function main(): void {
       if (Node.isClassDeclaration(d)) {
         for (const m of collectClassMembers(d)) {
           fileStat.total++;
-          if (hasJSDoc(m)) fileStat.documented++;
+          if (hasMethodOrOverloadJSDoc(m)) fileStat.documented++;
           else fileStat.missing.push(`${labelFor(d)}#${labelFor(m)}`);
         }
       }

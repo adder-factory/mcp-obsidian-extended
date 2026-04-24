@@ -1,6 +1,8 @@
 /** Thrown when the Obsidian REST API returns a non-success HTTP status. */
 export class ObsidianApiError extends Error {
+  /** HTTP status code returned by the Obsidian REST API. */
   public readonly statusCode: number;
+  /** Obsidian-specific numeric error code when the API includes one in its body. */
   public readonly errorCode: number | undefined;
 
   /** Creates an API error with the HTTP status code and optional Obsidian error code. */

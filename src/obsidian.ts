@@ -977,6 +977,7 @@ export class ObsidianClient {
   /** Creates or overwrites a vault file with the given content (idempotent). */
   async putContent(filePath: string): Promise<void>;
   async putContent(filePath: string, content: string): Promise<void>;
+  /** Implementation: PUT the content under a file lock and invalidate the cache entry. */
   async putContent(filePath: string, content = ""): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);

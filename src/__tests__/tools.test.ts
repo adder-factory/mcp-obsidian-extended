@@ -3990,7 +3990,11 @@ describe("consolidated tools — registration and behavior", () => {
     // slip through silently.
     function expectToolPrefixedError(result: ToolResult, tool: string): void {
       expect(result.isError).toBe(true);
-      expect(getText(result).startsWith(`[${tool}] `)).toBe(true);
+      const text = getText(result);
+      expect(
+        text.startsWith(`[${tool}] `),
+        `expected error to start with "[${tool}] ", got: "${text}"`,
+      ).toBe(true);
     }
 
     // ---- vault tool ----

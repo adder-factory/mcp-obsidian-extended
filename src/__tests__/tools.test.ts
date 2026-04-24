@@ -3959,3 +3959,238 @@ describe("consolidated tools — registration and behavior", () => {
     });
   });
 });
+
+// ============================================================================
+// Section 4: granular tools — error-path coverage (Issue #20)
+// ============================================================================
+//
+// Every granular tool wraps its client call in try/catch and surfaces failures
+// via errorResult(buildErrorMessage(...)). The happy paths are tested above;
+// this section exercises the catch branch for each tool whose error path was
+// previously uncovered per Sonar's new-code coverage report. The assertion is
+// intentionally lightweight: we only need result.isError to be true and the
+// tool-name prefix to appear in the message, because buildErrorMessage's
+// output format is already unit-tested in errors.test.ts.
+
+describe("granular tools — error-path coverage (#20)", () => {
+  function setupFailing(): {
+    client: ObsidianClient;
+    cache: VaultCache;
+    getTool: (name: string) => CapturedTool;
+  } {
+    const { server, getTool } = makeMockServer();
+    const client = makeMockClient();
+    const cache = makeMockCache();
+    const config = makeConfig();
+    registerGranularTools(server as never, client, cache, () => true, config);
+    return { client, cache, getTool };
+  }
+
+  // Tool → client method to reject, plus a minimal valid args object.
+  // Tools backed by helpers (batch_get_file_contents, get_recent_changes,
+  // get_recent_periodic_notes, get_vault_structure, get_note_connections,
+  // refresh_cache, search_replace) are handled individually below because
+  // they need a mock on something other than a single client method.
+  const simpleCases: Array<
+    [tool: string, method: keyof ObsidianClient, args: Record<string, unknown>]
+  > = [
+    ["append_content", "appendContent", { path: "n.md", content: "x" }],
+    [
+      "patch_content",
+      "patchContent",
+      {
+        path: "n.md",
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+    ],
+    ["delete_file", "deleteFile", { path: "n.md" }],
+    ["get_active_file", "getActiveFile", { format: "markdown" }],
+    ["put_active_file", "putActiveFile", { content: "x" }],
+    ["append_active_file", "appendActiveFile", { content: "x" }],
+    [
+      "patch_active_file",
+      "patchActiveFile",
+      { content: "x", operation: "append", targetType: "heading", target: "H" },
+    ],
+    ["delete_active_file", "deleteActiveFile", {}],
+    ["execute_command", "executeCommand", { commandId: "app:go-back" }],
+    ["complex_search", "complexSearch", { query: {} }],
+    ["dataview_search", "dataviewSearch", { dql: "TABLE" }],
+    [
+      "get_periodic_note",
+      "getPeriodicNote",
+      { period: "daily", format: "markdown" },
+    ],
+    ["put_periodic_note", "putPeriodicNote", { period: "daily", content: "x" }],
+    [
+      "append_periodic_note",
+      "appendPeriodicNote",
+      { period: "daily", content: "x" },
+    ],
+    [
+      "patch_periodic_note",
+      "patchPeriodicNote",
+      {
+        period: "daily",
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+    ],
+    ["delete_periodic_note", "deletePeriodicNote", { period: "daily" }],
+    [
+      "get_periodic_note_for_date",
+      "getPeriodicNoteForDate",
+      { period: "daily", year: 2026, month: 4, day: 23, format: "markdown" },
+    ],
+    [
+      "put_periodic_note_for_date",
+      "putPeriodicNoteForDate",
+      { period: "daily", year: 2026, month: 4, day: 23, content: "x" },
+    ],
+    [
+      "append_periodic_note_for_date",
+      "appendPeriodicNoteForDate",
+      { period: "daily", year: 2026, month: 4, day: 23, content: "x" },
+    ],
+    [
+      "patch_periodic_note_for_date",
+      "patchPeriodicNoteForDate",
+      {
+        period: "daily",
+        year: 2026,
+        month: 4,
+        day: 23,
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+    ],
+    [
+      "delete_periodic_note_for_date",
+      "deletePeriodicNoteForDate",
+      { period: "daily", year: 2026, month: 4, day: 23 },
+    ],
+    ["get_server_status", "getServerStatus", {}],
+  ];
+
+  it.each(simpleCases)(
+    "%s surfaces client error via errorResult",
+    async (tool, method, args) => {
+      const { client, getTool } = setupFailing();
+      vi.mocked(client[method] as never).mockRejectedValue(new Error("boom"));
+      const result = await getTool(tool).handler(args);
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain(`[${tool}]`);
+    },
+  );
+
+  // search_replace has two distinct uncovered error paths.
+  it("search_replace returns errorResult on invalid user regex", async () => {
+    const { client, getTool } = setupFailing();
+    vi.mocked(client.getFileContents).mockResolvedValue("body");
+    const result = await getTool("search_replace").handler({
+      path: "n.md",
+      search: "(",
+      replace: "x",
+      useRegex: true,
+      caseSensitive: true,
+      replaceAll: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("Invalid regex");
+  });
+
+  it("search_replace surfaces general client error via errorResult", async () => {
+    const { client, getTool } = setupFailing();
+    vi.mocked(client.getFileContents).mockRejectedValue(new Error("boom"));
+    const result = await getTool("search_replace").handler({
+      path: "n.md",
+      search: "foo",
+      replace: "bar",
+      useRegex: false,
+      caseSensitive: true,
+      replaceAll: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[search_replace]");
+  });
+
+  // NOTE: batch_get_file_contents's catch branch (src/tools/granular.ts L955)
+  // is intentionally not exercised. `batchGetFiles` in src/tools/shared.ts
+  // catches per-file errors and folds them into the result array, so the
+  // outer catch here is only reachable if `jsonResult` itself throws (e.g.
+  // BigInt / circular structures) — which the surrounding types rule out.
+  // Leaving this line uncovered is correct; adding a test that forced an
+  // impossible state would be noise.
+
+  // handleRecentChanges reads cache.getAllNotes() when cache is initialized;
+  // make that throw to trip the outer catch.
+  it("get_recent_changes surfaces cache error via errorResult", async () => {
+    const { cache, getTool } = setupFailing();
+    vi.mocked(cache.getAllNotes).mockImplementation(() => {
+      throw new Error("cache boom");
+    });
+    const result = await getTool("get_recent_changes").handler({ limit: 5 });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[get_recent_changes]");
+  });
+
+  // handleRecentPeriodicNotes calls client.listFilesInVault() directly.
+  it("get_recent_periodic_notes surfaces error via errorResult", async () => {
+    const { client, getTool } = setupFailing();
+    vi.mocked(client.listFilesInVault).mockRejectedValue(new Error("boom"));
+    const result = await getTool("get_recent_periodic_notes").handler({
+      period: "daily",
+      limit: 5,
+    });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[get_recent_periodic_notes]");
+  });
+
+  it("get_backlinks surfaces cache error via errorResult", async () => {
+    const { cache, getTool } = setupFailing();
+    vi.mocked(cache.getBacklinks).mockImplementation(() => {
+      throw new Error("cache boom");
+    });
+    const result = await getTool("get_backlinks").handler({ path: "n.md" });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[get_backlinks]");
+  });
+
+  // buildVaultStructure reads cache.getOrphanNotes() first.
+  it("get_vault_structure surfaces cache error via errorResult", async () => {
+    const { cache, getTool } = setupFailing();
+    vi.mocked(cache.getOrphanNotes).mockImplementation(() => {
+      throw new Error("cache boom");
+    });
+    const result = await getTool("get_vault_structure").handler({ limit: 10 });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[get_vault_structure]");
+  });
+
+  it("get_note_connections surfaces error via errorResult", async () => {
+    const { cache, getTool } = setupFailing();
+    vi.mocked(cache.getBacklinks).mockImplementation(() => {
+      throw new Error("cache boom");
+    });
+    const result = await getTool("get_note_connections").handler({
+      path: "n.md",
+    });
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[get_note_connections]");
+  });
+
+  it("refresh_cache surfaces error via errorResult", async () => {
+    const { cache, getTool } = setupFailing();
+    vi.mocked(cache.refresh).mockRejectedValue(new Error("cache boom"));
+    const result = await getTool("refresh_cache").handler({});
+    expect(result.isError).toBe(true);
+    expect(getText(result)).toContain("[refresh_cache]");
+  });
+});

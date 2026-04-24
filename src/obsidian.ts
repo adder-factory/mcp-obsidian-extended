@@ -254,8 +254,7 @@ function encodeTargetHeader(target: string): string {
   // Encode non-ASCII and control characters. Regex created inline to avoid
   // shared /g lastIndex state. Uses try/catch to handle unpaired surrogates
   // (encodeURIComponent throws URIError on malformed UTF-16).
-  return escaped.replace(/[^\x20-\x7E]+/g, (match) => {
-    // NOSONAR: replace with /g is idiomatic
+  return escaped.replaceAll(/[^\x20-\x7E]+/g, (match) => {
     try {
       return encodeURIComponent(match);
     } catch {

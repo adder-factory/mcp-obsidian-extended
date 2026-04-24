@@ -3958,6 +3958,670 @@ describe("consolidated tools — registration and behavior", () => {
       expect(getText(result)).toBe("[configure] Unknown action: bogus");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // errorResult message content (Issue #13)
+  // -------------------------------------------------------------------------
+  //
+  // Stryker surfaced 57 surviving StringLiteral mutants across
+  // src/tools/consolidated.ts L115–L926: every errorResult() message literal
+  // can be blanked to "" with no test noticing. Tests previously asserted
+  // `result.isError === true` and occasionally `toContain()` on a substring,
+  // which does not kill a mutation to "". MCP tool error messages are the
+  // primary signal LLMs use to route recovery behavior, so silent truncation
+  // to "" would ship unnoticed.
+  //
+  // Each test below drives one of those error paths and asserts the exact
+  // expected text via `toBe()` — same approach as the switch-exhaustiveness
+  // block above (PR #19). Grouped by tool to keep related assertions next
+  // to the code under test. The nine try/catch branches that wrap a handler
+  // body with `errorResult(buildErrorMessage(err, { tool: "..." }))` are
+  // covered via a minimal `[${tool}]` prefix assertion: buildErrorMessage's
+  // output format is already unit-tested in errors.test.ts, and the prefix
+  // check kills the tool-name StringLiteral mutant without duplicating the
+  // full error-formatting contract here.
+
+  describe("errorResult message content (#13)", () => {
+    // ---- vault tool ----
+
+    it("vault list_dir without path returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "list_dir",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] path is required for list_dir");
+    });
+
+    it("vault move without source returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "move",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] source is required for move");
+    });
+
+    it("vault move without destination returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "move",
+        source: "a.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] destination is required for move");
+    });
+
+    it("vault put without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "put",
+        path: "n.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] content is required for put");
+    });
+
+    it("vault append without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "append",
+        path: "n.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] content is required for append");
+    });
+
+    it("vault patch without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "patch",
+        path: "n.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] content is required for patch");
+    });
+
+    it("vault patch without operation returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "patch",
+        path: "n.md",
+        content: "x",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] operation is required for patch");
+    });
+
+    it("vault patch without targetType returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "patch",
+        path: "n.md",
+        content: "x",
+        operation: "append",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] targetType is required for patch");
+    });
+
+    it("vault patch without target returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "patch",
+        path: "n.md",
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] target is required for patch");
+    });
+
+    it("vault search_replace without search returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "search_replace",
+        path: "n.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault] search is required for search_replace",
+      );
+    });
+
+    it("vault search_replace without replace returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "search_replace",
+        path: "n.md",
+        search: "foo",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault] replace is required for search_replace",
+      );
+    });
+
+    it("vault search_replace non-string contents returns exact error", async () => {
+      const { client, getTool } = setup();
+      // getFileContents returns NoteJson (object) instead of a string
+      vi.mocked(client.getFileContents).mockResolvedValue({
+        content: "hi",
+        frontmatter: {},
+        path: "n.md",
+        stat: { ctime: 0, mtime: 0, size: 2 },
+        tags: [],
+      } as unknown as NoteJson);
+      const result = await getTool("vault").handler({
+        action: "search_replace",
+        path: "n.md",
+        search: "foo",
+        replace: "bar",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[vault] Expected markdown content");
+    });
+
+    it("vault search_replace invalid regex returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "search_replace",
+        path: "n.md",
+        search: "(",
+        replace: "x",
+        useRegex: true,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe('[vault] Invalid regex: "("');
+    });
+
+    it("vault preset-blocked action returns exact error", async () => {
+      const { getTool } = setup({ toolPreset: "read-only" });
+      const result = await getTool("vault").handler({
+        action: "delete",
+        path: "n.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[vault] Action "delete" is not allowed in "read-only" preset',
+      );
+    });
+
+    it("vault catch branch carries [vault] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.listFilesInVault).mockRejectedValue(new Error("boom"));
+      const result = await getTool("vault").handler({
+        action: "list",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[vault]");
+    });
+
+    // ---- active_file tool ----
+
+    it("active_file preset-blocked action returns exact error", async () => {
+      const { getTool } = setup({ toolPreset: "read-only" });
+      const result = await getTool("active_file").handler({ action: "delete" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[active_file] Action "delete" is not allowed in "read-only" preset',
+      );
+    });
+
+    it("active_file put without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({ action: "put" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[active_file] content is required for put");
+    });
+
+    it("active_file append without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({ action: "append" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[active_file] content is required for append",
+      );
+    });
+
+    it("active_file patch without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({ action: "patch" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[active_file] content is required for patch",
+      );
+    });
+
+    it("active_file patch without operation returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({
+        action: "patch",
+        content: "x",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[active_file] operation is required for patch",
+      );
+    });
+
+    it("active_file patch without targetType returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({
+        action: "patch",
+        content: "x",
+        operation: "append",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[active_file] targetType is required for patch",
+      );
+    });
+
+    it("active_file patch without target returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({
+        action: "patch",
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[active_file] target is required for patch",
+      );
+    });
+
+    it("active_file catch branch carries [active_file] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getActiveFile).mockRejectedValue(new Error("boom"));
+      const result = await getTool("active_file").handler({ action: "get" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[active_file]");
+    });
+
+    // ---- commands tool ----
+
+    it("commands preset-blocked action returns exact error", async () => {
+      const { getTool } = setup({ toolPreset: "read-only" });
+      const result = await getTool("commands").handler({
+        action: "execute",
+        commandId: "app:go-back",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[commands] Action "execute" is not allowed in "read-only" preset',
+      );
+    });
+
+    it("commands execute without commandId returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("commands").handler({ action: "execute" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[commands] commandId is required for execute",
+      );
+    });
+
+    it("commands catch branch carries [commands] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.listCommands).mockRejectedValue(new Error("boom"));
+      const result = await getTool("commands").handler({ action: "list" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[commands]");
+    });
+
+    // ---- search tool ----
+
+    it("search preset-blocked type returns exact error", async () => {
+      const { getTool } = setup({ toolPreset: "minimal" });
+      const result = await getTool("search").handler({
+        type: "jsonlogic",
+        jsonQuery: {},
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[search] Type "jsonlogic" is not allowed in "minimal" preset',
+      );
+    });
+
+    it("search simple without query returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("search").handler({
+        type: "simple",
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[search] query is required for simple search",
+      );
+    });
+
+    it("search jsonlogic without jsonQuery returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("search").handler({
+        type: "jsonlogic",
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[search] jsonQuery is required for jsonlogic search",
+      );
+    });
+
+    it("search dataview without query returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("search").handler({
+        type: "dataview",
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[search] query is required for dataview search",
+      );
+    });
+
+    it("search catch branch carries [search] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.simpleSearch).mockRejectedValue(new Error("boom"));
+      const result = await getTool("search").handler({
+        type: "simple",
+        query: "q",
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[search]");
+    });
+
+    // ---- periodic_note tool ----
+
+    it("periodic_note preset-blocked action returns exact error", async () => {
+      const { getTool } = setup({ toolPreset: "read-only" });
+      const result = await getTool("periodic_note").handler({
+        action: "delete",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[periodic_note] Action "delete" is not allowed in "read-only" preset',
+      );
+    });
+
+    it("periodic_note partial date fields return exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "get",
+        period: "daily",
+        year: 2026,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] All of year, month, and day are required for date-scoped operations (or omit all for current period)",
+      );
+    });
+
+    it("periodic_note put without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "put",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] content is required for put",
+      );
+    });
+
+    it("periodic_note append without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "append",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] content is required for append",
+      );
+    });
+
+    it("periodic_note patch without content returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "patch",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] content is required for patch",
+      );
+    });
+
+    it("periodic_note patch without operation returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "patch",
+        period: "daily",
+        content: "x",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] operation is required for patch",
+      );
+    });
+
+    it("periodic_note patch without targetType returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "patch",
+        period: "daily",
+        content: "x",
+        operation: "append",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] targetType is required for patch",
+      );
+    });
+
+    it("periodic_note patch without target returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "patch",
+        period: "daily",
+        content: "x",
+        operation: "append",
+        targetType: "heading",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[periodic_note] target is required for patch",
+      );
+    });
+
+    it("periodic_note catch branch carries [periodic_note] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getPeriodicNote).mockRejectedValue(new Error("boom"));
+      const result = await getTool("periodic_note").handler({
+        action: "get",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[periodic_note]");
+    });
+
+    // ---- status tool (catch-branch prefix only) ----
+
+    it("status catch branch carries [status] prefix", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getServerStatus).mockRejectedValue(new Error("boom"));
+      const result = await getTool("status").handler({});
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[status]");
+    });
+
+    // NOTE: batch_get's outer catch branch (consolidated.ts L841) is
+    // intentionally not exercised for the same reason PR #20 left its
+    // granular sibling uncovered: batchGetFiles() catches per-file errors
+    // internally, so the outer catch is only reachable if jsonResult itself
+    // throws on an impossible input (e.g. BigInt / circular structures).
+    // Forcing that state would be noise; the `tool: "batch_get"` string
+    // literal at L841 stays a surviving mutant by design.
+
+    // ---- recent tool ----
+
+    it("recent periodic_notes without period returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("recent").handler({
+        type: "periodic_notes",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[recent] period is required for periodic_notes",
+      );
+    });
+
+    it("recent catch branch carries [recent] prefix", async () => {
+      const { cache, getTool } = setup();
+      vi.mocked(cache.getAllNotes).mockImplementation(() => {
+        throw new Error("cache boom");
+      });
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 5,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[recent]");
+    });
+
+    // ---- vault_analysis tool ----
+
+    it("vault_analysis preset-blocked action returns exact error", async () => {
+      // The Zod enum only admits {backlinks, connections, structure, refresh}
+      // in production, but we bypass Zod here so an out-of-enum action
+      // reaches the preset guard before the switch — exercising the literal.
+      const { getTool } = setup({ toolPreset: "read-only" });
+      const result = await getTool("vault_analysis").handler({
+        action: "bogus",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[vault_analysis] Action "bogus" is not allowed in "read-only" preset',
+      );
+    });
+
+    it("vault_analysis backlinks without path returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault_analysis] path is required for backlinks",
+      );
+    });
+
+    it("vault_analysis connections without path returns exact error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault_analysis").handler({
+        action: "connections",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault_analysis] path is required for connections",
+      );
+    });
+
+    it("vault_analysis refresh with cache disabled returns exact error", async () => {
+      const { getTool } = setup({ enableCache: false });
+      const result = await getTool("vault_analysis").handler({
+        action: "refresh",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true",
+      );
+    });
+
+    it("vault_analysis refresh failure returns exact error", async () => {
+      const { cache, getTool } = setup();
+      // refresh() resolves but cache stays uninitialized — simulates a
+      // transient Obsidian unreachable scenario.
+      vi.mocked(cache.getIsInitialized).mockReturnValue(false);
+      const result = await getTool("vault_analysis").handler({
+        action: "refresh",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[vault_analysis] Cache refresh failed — Obsidian may be unreachable",
+      );
+    });
+
+    it("vault_analysis catch branch carries [vault_analysis] prefix", async () => {
+      const { cache, getTool } = setup();
+      vi.mocked(cache.getBacklinks).mockImplementation(() => {
+        throw new Error("cache boom");
+      });
+      const result = await getTool("vault_analysis").handler({
+        action: "backlinks",
+        path: "n.md",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[vault_analysis]");
+    });
+  });
 });
 
 // ============================================================================

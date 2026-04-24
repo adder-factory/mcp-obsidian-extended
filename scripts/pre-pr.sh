@@ -11,6 +11,8 @@ set -o pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 . "$HERE/lib/common.sh"
+# shellcheck source=lib/sonar-qg.sh
+. "$HERE/lib/sonar-qg.sh"
 
 SKIP_QWEN=0
 BASE_REF=""
@@ -83,27 +85,33 @@ GATE_RESULTS=()
 # Each gate_* function runs one step; returns 0 on pass, non-zero on fail.
 # Skipping is decided by the caller (below) based on project state / env.
 
+# gate_prettier — step 5. Format check via `prettier --check .`.
 gate_prettier() {
   banner "STEP 5 / Prettier"
   require_cmd npx "install Node.js" || return 1
   npx --no-install prettier --check .
 }
 
+# gate_eslint — step 6. Flat-config lint; any warning fails the gate.
 gate_eslint() {
   banner "STEP 6 / ESLint"
   npx --no-install eslint . --max-warnings=0
 }
 
+# gate_tsc — step 7. Strict type check (no emit).
 gate_tsc() {
   banner "STEP 7 / TypeScript (tsc --noEmit)"
   npx --no-install tsc --noEmit
 }
 
+# gate_knip — step 8. Dead-code / unused-exports scan.
 gate_knip() {
   banner "STEP 8 / knip (dead code, unused exports)"
   npx --no-install knip
 }
 
+# gate_tests — step 9. `npm test -- --coverage`; coverage threshold is
+# enforced by the runner config (Vitest/Jest), not by this gate.
 gate_tests() {
   banner "STEP 9 / Tests + coverage threshold"
   # Coverage threshold is enforced by the test runner config
@@ -123,6 +131,7 @@ gate_tests() {
   npm test --silent -- --coverage
 }
 
+# gate_stryker — step 10. Mutation testing; incremental so CI cache hits.
 gate_stryker() {
   banner "STEP 10 / Stryker (mutation testing)"
   # --incremental: only mutate files changed since the last run. CI runs full
@@ -130,6 +139,11 @@ gate_stryker() {
   npx --no-install stryker run --incremental
 }
 
+# gate_sonar — two-stage SonarQube gate (pipeline step 11).
+# Stage 1: run the npm scanner (sonarqube-scanner or @sonar/scan) to upload
+# analysis; stage 2: call verify_sonar_qg() to poll the server for the
+# compute-engine task and read the quality-gate verdict. The scanner alone
+# only reports upload success — Issue #7 added the verdict poll.
 gate_sonar() {
   banner "STEP 11 / SonarQube"
   if [ ! -f sonar-project.properties ]; then
@@ -149,15 +163,25 @@ gate_sonar() {
     printf '    Install: npm install -D sonarqube-scanner\n'
     return 1
   fi
-  npx --no-install "$scanner_cmd"
+  # Stage 1: upload analysis. The scanner exits 0 on successful upload —
+  # NOT on quality-gate pass.
+  if ! npx --no-install "$scanner_cmd"; then
+    return 1
+  fi
+  # Stage 2: wait for the server-side CE task and read the QG verdict.
+  # Before this was wired, every PR saw "SonarQube pass" the instant the
+  # scanner uploaded, even when the gate was failing server-side (Issue #7).
+  verify_sonar_qg
 }
 
+# gate_gitleaks — step 12. Secret scan over the full working tree.
 gate_gitleaks() {
   banner "STEP 12 / Gitleaks (secrets)"
   require_cmd gitleaks "brew install gitleaks" || return 1
   gitleaks detect --source . --verbose --redact --no-banner
 }
 
+# gate_madge — step 13. Circular-dependency detection on src/ (or repo root).
 gate_madge() {
   banner "STEP 13 / Madge (circular deps)"
   local src_dir="src"
@@ -165,6 +189,7 @@ gate_madge() {
   npx --no-install madge --circular --extensions ts,tsx,js,jsx "$src_dir"
 }
 
+# gate_semgrep — step 14. SAST via Semgrep's default + TS/JS rulesets.
 gate_semgrep() {
   banner "STEP 14 / Semgrep"
   require_cmd semgrep "brew install semgrep" || return 1
@@ -172,6 +197,7 @@ gate_semgrep() {
           --error --metrics=off --quiet .
 }
 
+# gate_qwen — step 15. Delegates to qwen-review.sh for the local AI review.
 gate_qwen() {
   banner "STEP 15 / Qwen local review"
   bash "$HERE/qwen-review.sh" --base "$BASE_REF"

@@ -119,9 +119,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Two-stage SonarQube gate (Issue #7). The scan-action only uploads
+      # analysis; the QG verdict is computed asynchronously by the server's
+      # CE task and must be polled via /api/qualitygates/project_status.
+      # Without the paired quality-gate-action, a failing QG is silently
+      # reported as "SonarQube pass" on every PR.
       - uses: SonarSource/sonarqube-scan-action@v5
         if: env.SONAR_TOKEN != ''
 
-      - uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+      - uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
         if: env.SONAR_TOKEN != ''
-        timeout-minutes: 5
+        # Leave headroom above pollingTimeoutSec so the GHA wall-clock doesn't
+        # race the action's internal polling timeout (action warm-up adds time).
+        timeout-minutes: 7
+        with:
+          # pollingTimeoutSec input requires v1.2.0+ (added in that release).
+          pollingTimeoutSec: 300

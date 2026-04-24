@@ -8,7 +8,6 @@
   "ignore": [
     ".adder-pipeline/**",
     ".github/**",
-    "scripts/**",
     "stryker.conf.mjs"
   ],
   "ignoreBinaries": [

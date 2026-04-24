@@ -752,10 +752,12 @@ export class VaultCache implements VaultCacheInterface {
     return [...this.notes.keys()];
   }
 
+  /** Number of notes currently tracked in the cache. */
   get noteCount(): number {
     return this.notes.size;
   }
 
+  /** Total number of outbound links across all cached notes. */
   get linkCount(): number {
     return this.cachedLinkCount;
   }

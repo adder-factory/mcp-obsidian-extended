@@ -3872,6 +3872,12 @@ describe("consolidated tools — registration and behavior", () => {
   // and asserts the tool-prefixed error message actually fires.
 
   describe("switch exhaustiveness guards", () => {
+    // `toBe` rather than `toContain` on the error text: the whole point of
+    // these tests is to kill BlockStatement mutants on the guard body, and
+    // exact-match assertions also catch any future drift in the message
+    // format itself (e.g., missing `[tool]` prefix or dropped discriminant
+    // interpolation).
+
     it("vault default branch returns [vault] Unknown action error", async () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
@@ -3882,7 +3888,7 @@ describe("consolidated tools — registration and behavior", () => {
         replaceAll: true,
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[vault] Unknown action: bogus");
+      expect(getText(result)).toBe("[vault] Unknown action: bogus");
     });
 
     it("active_file default branch returns [active_file] Unknown action error", async () => {
@@ -3891,7 +3897,7 @@ describe("consolidated tools — registration and behavior", () => {
         action: "bogus",
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[active_file] Unknown action: bogus");
+      expect(getText(result)).toBe("[active_file] Unknown action: bogus");
     });
 
     it("commands default branch returns [commands] Unknown action error", async () => {
@@ -3900,7 +3906,7 @@ describe("consolidated tools — registration and behavior", () => {
         action: "bogus",
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[commands] Unknown action: bogus");
+      expect(getText(result)).toBe("[commands] Unknown action: bogus");
     });
 
     it("search default branch returns [search] Unknown type error", async () => {
@@ -3910,7 +3916,7 @@ describe("consolidated tools — registration and behavior", () => {
         contextLength: 100,
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[search] Unknown type: bogus");
+      expect(getText(result)).toBe("[search] Unknown type: bogus");
     });
 
     it("periodic_note default branch returns [periodic_note] Unknown action error", async () => {
@@ -3920,9 +3926,7 @@ describe("consolidated tools — registration and behavior", () => {
         period: "daily",
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain(
-        "[periodic_note] Unknown action: bogus",
-      );
+      expect(getText(result)).toBe("[periodic_note] Unknown action: bogus");
     });
 
     it("recent default branch returns [recent] Unknown type error", async () => {
@@ -3932,19 +3936,17 @@ describe("consolidated tools — registration and behavior", () => {
         limit: 10,
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[recent] Unknown type: bogus");
+      expect(getText(result)).toBe("[recent] Unknown type: bogus");
     });
 
     it("vault_analysis default branch returns [vault_analysis] Unknown action error", async () => {
-      const { getTool } = setup({ enableCache: true });
+      const { getTool } = setup();
       const result = await getTool("vault_analysis").handler({
         action: "bogus",
         limit: 10,
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain(
-        "[vault_analysis] Unknown action: bogus",
-      );
+      expect(getText(result)).toBe("[vault_analysis] Unknown action: bogus");
     });
 
     it("configure default branch returns [configure] Unknown action error", async () => {
@@ -3953,7 +3955,7 @@ describe("consolidated tools — registration and behavior", () => {
         action: "bogus",
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toContain("[configure] Unknown action: bogus");
+      expect(getText(result)).toBe("[configure] Unknown action: bogus");
     });
   });
 });

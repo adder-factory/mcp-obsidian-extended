@@ -3856,4 +3856,104 @@ describe("consolidated tools — registration and behavior", () => {
       expect(getText(result)).toContain("ERROR: unexpected");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Switch exhaustiveness guards (Issue #14)
+  // -------------------------------------------------------------------------
+  //
+  // Stryker surfaced 8 surviving BlockStatement mutants: the bodies of
+  // `default:` branches of exhaustive switches could be blanked without any
+  // test noticing. These guards are the runtime counterpart of TypeScript's
+  // `const _exhaustive: never = x` compile-time check — if a future
+  // maintainer deletes the body, the switch falls through silently and the
+  // handler returns `undefined` to the MCP runtime. Each test drives an
+  // invalid discriminant through the switch (bypassing compile-time
+  // narrowing via the mock handler's `Record<string, unknown>` signature)
+  // and asserts the tool-prefixed error message actually fires.
+
+  describe("switch exhaustiveness guards", () => {
+    it("vault default branch returns [vault] Unknown action error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("vault").handler({
+        action: "bogus",
+        path: "note.md",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: true,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[vault] Unknown action: bogus");
+    });
+
+    it("active_file default branch returns [active_file] Unknown action error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("active_file").handler({
+        action: "bogus",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[active_file] Unknown action: bogus");
+    });
+
+    it("commands default branch returns [commands] Unknown action error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("commands").handler({
+        action: "bogus",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[commands] Unknown action: bogus");
+    });
+
+    it("search default branch returns [search] Unknown type error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("search").handler({
+        type: "bogus",
+        contextLength: 100,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[search] Unknown type: bogus");
+    });
+
+    it("periodic_note default branch returns [periodic_note] Unknown action error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("periodic_note").handler({
+        action: "bogus",
+        period: "daily",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain(
+        "[periodic_note] Unknown action: bogus",
+      );
+    });
+
+    it("recent default branch returns [recent] Unknown type error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("recent").handler({
+        type: "bogus",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[recent] Unknown type: bogus");
+    });
+
+    it("vault_analysis default branch returns [vault_analysis] Unknown action error", async () => {
+      const { getTool } = setup({ enableCache: true });
+      const result = await getTool("vault_analysis").handler({
+        action: "bogus",
+        limit: 10,
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain(
+        "[vault_analysis] Unknown action: bogus",
+      );
+    });
+
+    it("configure default branch returns [configure] Unknown action error", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "bogus",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("[configure] Unknown action: bogus");
+    });
+  });
 });

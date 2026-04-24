@@ -16,12 +16,16 @@ export default {
   // See pipeline-spec.md → Stryker section → "key glob patterns to
   // actual project file types".
   mutate: ["src/**/*.ts", "!src/**/*.test.ts"],
-  // Baseline score on v1.1.1 was 56.78 %. Starting the `break` threshold at
-  // 55 so the gate passes on current tests while still failing on regressions,
-  // then ratcheting up (60 → 65 → 70) as tests improve. See
-  // ~/projects/code-review-pipeline/baseline-findings.md for the bake-in run.
+  // Baseline score on v1.1.1 was 56.78 %. The `break` threshold ratchets up
+  // `(new_score − 1pp)` after each test-improvement PR so it always sits
+  // ~1pp below the current kill rate — tight enough to catch a regression,
+  // loose enough to tolerate incremental-cache noise. History:
+  //   56.78 → break 55       (PR #12 baseline)
+  //   60.76 → break 59.76    (PR closing #14, switch exhaustiveness guards)
+  // See ~/projects/code-review-pipeline/baseline-findings.md for the bake-in
+  // run and build-log.md for each ratchet entry.
   // TODO: raise `break` to 70 once a sustained run keeps the score above it.
-  thresholds: { high: 80, low: 70, break: 55 },
+  thresholds: { high: 80, low: 70, break: 59.76 },
   // ignoreStatic must stay `false` — static mutants catch wrong defaults
   // / bad constants / bad regex literals, which is exactly what type checks
   // and linters miss. Explicit value (not relying on Stryker's current

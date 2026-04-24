@@ -227,14 +227,14 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 
 ### CodeGraph
 
-This project is indexed by CodeGraph. Prefer `codegraph_*` MCP tools over
-Read/Grep for codebase navigation:
+This project is indexed by CodeGraph. Prefer `mcp__codegraph__codegraph_*`
+MCP tools over Read/Grep for codebase navigation:
 
-- Where is X defined? — `codegraph_query`
-- Who calls X? — `codegraph_callers`
-- What breaks if I change X? — `codegraph_impact`
-- What does X call? — `codegraph_callees`
-- High-level structure? — `codegraph_structure`
+- Where is X defined? — `mcp__codegraph__codegraph_search`
+- Who calls X? — `mcp__codegraph__codegraph_callers`
+- What breaks if I change X? — `mcp__codegraph__codegraph_impact`
+- What does X call? — `mcp__codegraph__codegraph_callees`
+- High-level structure? — `mcp__codegraph__codegraph_files`
 
 File reads are for when you need the actual source to edit. Use the graph for
 discovery.

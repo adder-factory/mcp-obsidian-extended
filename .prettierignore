@@ -5,3 +5,4 @@ knip.json
 # Tool-generated (managed by external tools, not ours to format)
 .claude/
 .codegraph/
+scripts/jsdoc-coverage.ts

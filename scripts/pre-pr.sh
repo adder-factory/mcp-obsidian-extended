@@ -110,6 +110,17 @@ gate_knip() {
   npx --no-install knip
 }
 
+# gate_jsdoc_coverage — step 8b. Documentation coverage on exported
+# declarations. Opt-in: only runs when scripts/jsdoc-coverage.ts is present
+# in the target repo (installed by install.sh). Threshold defaults to 85 %
+# and can be overridden per repo by setting JSDOC_COVERAGE_THRESHOLD. See
+# script-specs/jsdoc-coverage.md for the metric definition.
+gate_jsdoc_coverage() {
+  banner "STEP 8b / JSDoc coverage (ts-morph)"
+  local threshold="${JSDOC_COVERAGE_THRESHOLD:-85}"
+  npx --no-install tsx scripts/jsdoc-coverage.ts --threshold "$threshold"
+}
+
 # gate_tests — step 9. `npm test -- --coverage`; coverage threshold is
 # enforced by the runner config (Vitest/Jest), not by this gate.
 gate_tests() {
@@ -210,6 +221,16 @@ time_gate "Prettier"         gate_prettier  || true
 time_gate "ESLint"           gate_eslint    || true
 time_gate "tsc"              gate_tsc       || true
 time_gate "knip"             gate_knip      || true
+
+# JSDoc coverage: opt-in. Runs when scripts/jsdoc-coverage.ts is present
+# (installed by install.sh). Absent in legacy projects that pre-date the
+# gate — they get a SKIP, not a failure, and pick the gate up on re-install.
+if [ -f scripts/jsdoc-coverage.ts ]; then
+  time_gate "JSDoc coverage" gate_jsdoc_coverage || true
+else
+  skip_gate "JSDoc coverage" "scripts/jsdoc-coverage.ts absent — re-run install.sh to adopt"
+fi
+
 time_gate "Tests + coverage" gate_tests     || true
 
 # Stryker: opt-in per project. Skip cleanly when no config present.

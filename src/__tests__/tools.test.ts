@@ -454,6 +454,12 @@ describe("tool metadata — descriptions and schema hints", () => {
   // here so future tool additions can't drift past the budget unnoticed.
   const MAX_TOOL_DESCRIPTION_WORDS = 15;
   const MAX_PARAM_DESCRIPTION_WORDS = 10;
+
+  /**
+   * Counts whitespace-separated words in a description string. Empty / blank
+   * inputs return 0.
+   * @param s description string
+   */
   const countWords = (s: string): number =>
     s.trim().split(/\s+/).filter(Boolean).length;
   const VERB_OPENER_ALLOWLIST = new Set<string>([
@@ -466,19 +472,22 @@ describe("tool metadata — descriptions and schema hints", () => {
     "simple_search",
   ]);
 
-  // Duck-type the captured inputSchema (a ZodObject) without importing zod.
-  // ZodObject exposes .shape: Record<string, ZodTypeAny>; each ZodTypeAny
-  // exposes .description: string | undefined (set via .describe()).
-  //
-  // Zod wraps optional/nullable/default/effects by *replacing* the outer
-  // schema with a new wrapper whose .description is undefined unless
-  // .describe() was called on the wrapper itself. The convention in this
-  // codebase is mixed: some fields use `.optional().describe(...)`
-  // (description on outer), others use `someSharedSchema.optional()`
-  // (description on inner). Both are valid; the walker descends through
-  // _def.innerType (ZodOptional/ZodNullable/ZodDefault), _def.type
-  // (ZodArray), and _def.schema (ZodEffects from .refine()/.transform()) to
-  // find the first non-empty description.
+  /**
+   * Walks a Zod schema tree and returns the first non-empty `.description`
+   * found, descending through wrapper types.
+   *
+   * Zod replaces the outer schema with a new wrapper whose `.description` is
+   * undefined unless `.describe()` was called on the wrapper itself. This
+   * codebase mixes `.optional().describe(...)` (outer-described) and
+   * `someSharedSchema.optional()` (inner-described); the walker descends
+   * through `_def.innerType` (ZodOptional / ZodNullable / ZodDefault),
+   * `_def.type` (ZodArray), and `_def.schema` (ZodEffects from `.refine()` /
+   * `.transform()`) so both patterns surface a description.
+   *
+   * @param node Zod schema (typed as `unknown` so the helper stays
+   *             zod-import-free; narrowed via `in` operator + `typeof`).
+   * @returns the description text, or `undefined` if none found.
+   */
   function getZodDescription(node: unknown): string | undefined {
     if (!node || typeof node !== "object") return undefined;
     if (
@@ -498,9 +507,16 @@ describe("tool metadata — descriptions and schema hints", () => {
     return undefined;
   }
 
-  // Unwrap the captured inputSchema until a ZodObject (with .shape) surfaces.
-  // Mirrors getZodDescription's traversal so a top-level .refine()/.transform()
-  // wrapping the object schema doesn't silently skip field assertions.
+  /**
+   * Unwraps a captured inputSchema until a ZodObject surfaces (one that
+   * exposes `.shape`). Mirrors {@link getZodDescription}'s traversal so a
+   * top-level `.refine()` / `.transform()` wrapping the object schema doesn't
+   * silently skip field assertions for the tool.
+   *
+   * @param node candidate ZodObject or wrapper containing one.
+   * @returns the underlying `.shape` map, or `undefined` if no ZodObject is
+   *          reachable through the wrapper chain.
+   */
   function unwrapToZodObject(
     node: unknown,
   ): Record<string, unknown> | undefined {
@@ -520,10 +536,28 @@ describe("tool metadata — descriptions and schema hints", () => {
     return undefined;
   }
 
+  /**
+   * Extracts `[fieldName, descriptionText]` pairs for every field in a
+   * captured tool's Zod inputSchema. Returns `[]` if the tool legitimately
+   * has no inputSchema (e.g. `list_files_in_vault`); HARD-FAILS via
+   * `expect()` if an inputSchema is present but the walker cannot reach a
+   * ZodObject — that case would otherwise let the `.describe()` contract
+   * pass vacuously while skipping every field.
+   *
+   * @param toolName name of the tool (for assertion failure messages).
+   * @param schema captured tool's full registration config (`{ description,
+   *               inputSchema }`).
+   */
   function inputFieldDescriptions(
+    toolName: string,
     schema: Record<string, unknown>,
   ): Array<[string, string | undefined]> {
+    if (schema.inputSchema === undefined) return [];
     const shape = unwrapToZodObject(schema.inputSchema);
+    expect(
+      shape,
+      `${toolName}: inputSchema present but unwrapToZodObject did not reach a ZodObject — metadata checks would silently skip every field`,
+    ).toBeDefined();
     if (!shape) return [];
     return Object.entries(shape).map(([fieldName, fieldType]) => [
       fieldName,
@@ -531,6 +565,13 @@ describe("tool metadata — descriptions and schema hints", () => {
     ]);
   }
 
+  /**
+   * Registers every tool for a given mode at preset=`full` and returns the
+   * captured registrations. Per-mode preset filters are bypassed so the
+   * metadata assertions see the full tool surface.
+   *
+   * @param toolMode `"granular"` (39 tools) or `"consolidated"` (11 tools).
+   */
   function enumerateAllTools(
     toolMode: "granular" | "consolidated",
   ): CapturedTool[] {
@@ -579,7 +620,10 @@ describe("tool metadata — descriptions and schema hints", () => {
       it("every Zod schema field has a non-empty .describe() text ≥ 3 chars and ≤ 10 words", () => {
         const tools = enumerateAllTools(mode);
         for (const t of tools) {
-          for (const [fieldName, desc] of inputFieldDescriptions(t.schema)) {
+          for (const [fieldName, desc] of inputFieldDescriptions(
+            t.name,
+            t.schema,
+          )) {
             expect(
               typeof desc,
               `${t.name}.${fieldName}: .describe() type`,

@@ -426,6 +426,138 @@ describe("registerAllTools — consolidated mode", () => {
 });
 
 // ===========================================================================
+// Section 1.5: tool metadata (descriptions + Zod .describe() hints)
+// ===========================================================================
+//
+// Issue #15. Stryker mutation testing surfaced ~25 surviving StringLiteral
+// mutants on src/tools/granular.ts L43–L1079: descriptions + .describe() hints
+// could be mutated to "" without any test catching it. MCP description text
+// and Zod .describe() are the primary signals an LLM uses to pick the right
+// tool and fill its parameters; a blank one ships a tool the model can't find
+// or a parameter it fills wrong. These tests assert the contract regardless
+// of mode/preset.
+
+describe("tool metadata — descriptions and schema hints", () => {
+  // Recognized verb prefixes. Comma-separated openers ("Read, write, search…")
+  // match because the first word is a verb. Tools whose descriptions open with
+  // a noun-category instead of a verb stay in VERB_OPENER_ALLOWLIST — keep that
+  // set narrow; adding a name here is a deliberate exception to the contract.
+  const VERB_PREFIX_RE =
+    /^(List|Get|Read|Put|Append|Patch|Delete|Replace|Move|Search|Run|Execute|Check|Force|Refresh|Create|Configure|Analyze|Insert|Open|Find|View|Query|CRUD)\b/;
+  const VERB_OPENER_ALLOWLIST = new Set<string>([
+    // vault_analysis opens with "Backlinks, connections, structure…" — it
+    // describes a category of read-only inspections, not a single action.
+    "vault_analysis",
+    // simple_search opens with "Full-text search across all vault files…" —
+    // the noun-modifier describes the search variety; rewriting to "Search…"
+    // would lose the disambiguation from complex_search / dataview_search.
+    "simple_search",
+  ]);
+
+  // Duck-type the captured inputSchema (a ZodObject) without importing zod.
+  // ZodObject exposes .shape: Record<string, ZodTypeAny>; each ZodTypeAny
+  // exposes .description: string | undefined (set via .describe()).
+  //
+  // Zod wraps optional/nullable/default by *replacing* the outer schema with a
+  // new wrapper whose .description is undefined unless .describe() was called
+  // on the wrapper itself. The convention in this codebase is mixed: some
+  // fields use `.optional().describe(...)` (description on outer), others use
+  // `someSharedSchema.optional()` (description on inner). Both are valid; the
+  // walker descends through _def.innerType (ZodOptional/ZodNullable/ZodDefault)
+  // and _def.type (ZodArray) to find the first non-empty description.
+  function getZodDescription(node: unknown): string | undefined {
+    if (!node || typeof node !== "object") return undefined;
+    const obj = node as {
+      description?: string;
+      _def?: { innerType?: unknown; type?: unknown };
+    };
+    if (typeof obj.description === "string" && obj.description.length > 0) {
+      return obj.description;
+    }
+    if (obj._def?.innerType) return getZodDescription(obj._def.innerType);
+    if (obj._def?.type) return getZodDescription(obj._def.type);
+    return undefined;
+  }
+
+  function inputFieldDescriptions(
+    schema: Record<string, unknown>,
+  ): Array<[string, string | undefined]> {
+    const inputSchema = (schema as { inputSchema?: unknown }).inputSchema;
+    if (
+      !inputSchema ||
+      typeof inputSchema !== "object" ||
+      !("shape" in inputSchema)
+    ) {
+      return [];
+    }
+    const shape = (inputSchema as { shape: Record<string, unknown> }).shape;
+    return Object.entries(shape).map(([fieldName, fieldType]) => [
+      fieldName,
+      getZodDescription(fieldType),
+    ]);
+  }
+
+  function enumerateAllTools(
+    toolMode: "granular" | "consolidated",
+  ): CapturedTool[] {
+    const { server, getRegistered, getTool } = makeMockServer();
+    const client = makeMockClient();
+    const cache = makeMockCache();
+    registerAllTools(
+      server as never,
+      client,
+      cache,
+      makeConfig({ toolMode, toolPreset: "full" }),
+    );
+    return getRegistered().map(getTool);
+  }
+
+  for (const mode of ["granular", "consolidated"] as const) {
+    describe(`${mode} mode (preset: full)`, () => {
+      it("every tool has a non-empty description ≥ 10 chars", () => {
+        const tools = enumerateAllTools(mode);
+        expect(tools.length).toBeGreaterThan(0);
+        for (const t of tools) {
+          expect(typeof t.description, `${t.name}: description type`).toBe(
+            "string",
+          );
+          expect(
+            t.description.trim().length,
+            `${t.name}: description length`,
+          ).toBeGreaterThanOrEqual(10);
+        }
+      });
+
+      it("every tool description starts with a recognized verb (or is allowlisted)", () => {
+        const tools = enumerateAllTools(mode);
+        for (const t of tools) {
+          if (VERB_OPENER_ALLOWLIST.has(t.name)) continue;
+          expect(t.description, `${t.name}: description verb prefix`).toMatch(
+            VERB_PREFIX_RE,
+          );
+        }
+      });
+
+      it("every Zod schema field has a non-empty .describe() text ≥ 3 chars", () => {
+        const tools = enumerateAllTools(mode);
+        for (const t of tools) {
+          for (const [fieldName, desc] of inputFieldDescriptions(t.schema)) {
+            expect(
+              typeof desc,
+              `${t.name}.${fieldName}: .describe() type`,
+            ).toBe("string");
+            expect(
+              (desc ?? "").trim().length,
+              `${t.name}.${fieldName}: .describe() length`,
+            ).toBeGreaterThanOrEqual(3);
+          }
+        }
+      });
+    });
+  }
+});
+
+// ===========================================================================
 // Section 2: granular.ts tool handlers
 // ===========================================================================
 

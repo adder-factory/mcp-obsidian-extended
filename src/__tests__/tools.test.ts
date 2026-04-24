@@ -426,6 +426,224 @@ describe("registerAllTools — consolidated mode", () => {
 });
 
 // ===========================================================================
+// Section 1.5: tool metadata (descriptions + Zod .describe() hints)
+// ===========================================================================
+//
+// Issue #15. Stryker mutation testing surfaced ~25 surviving StringLiteral
+// mutants on src/tools/granular.ts L43–L1079: descriptions + .describe() hints
+// could be mutated to "" without any test catching it. MCP description text
+// and Zod .describe() are the primary signals an LLM uses to pick the right
+// tool and fill its parameters; a blank one ships a tool the model can't find
+// or a parameter it fills wrong. These tests assert the contract regardless
+// of mode/preset.
+
+describe("tool metadata — descriptions and schema hints", () => {
+  // Recognized verb prefixes. Comma-separated openers ("Read, write, search…")
+  // match because the first word is a verb. Tools whose descriptions open with
+  // a noun-category instead of a verb stay in VERB_OPENER_ALLOWLIST — keep that
+  // set narrow; adding a name here is a deliberate exception to the contract.
+  // Verb set is liberal by design — adding a verb here is cheap, but failing
+  // a real PR for a legitimately verb-led description (e.g., a future "Rename"
+  // tool) is an annoying yak-shave. New verbs added on each Phase 4 reviewer
+  // pass; extend further if a future tool surfaces a missing one.
+  const VERB_PREFIX_RE =
+    /^(List|Get|Read|Put|Append|Patch|Delete|Replace|Move|Search|Run|Execute|Check|Force|Refresh|Create|Configure|Analyze|Insert|Open|Find|View|Query|Update|Toggle|Enable|Disable|Rename|Copy|CRUD)\b/;
+
+  // Token budget contract from CLAUDE.md L81: "Tool descriptions: MAX 15
+  // words. Parameter descriptions: MAX 10 words. Tokens matter." Codified
+  // here so future tool additions can't drift past the budget unnoticed.
+  const MAX_TOOL_DESCRIPTION_WORDS = 15;
+  const MAX_PARAM_DESCRIPTION_WORDS = 10;
+
+  /**
+   * Counts whitespace-separated words in a description string. Empty / blank
+   * inputs return 0.
+   * @param s description string
+   */
+  const countWords = (s: string): number =>
+    s.trim().split(/\s+/).filter(Boolean).length;
+  const VERB_OPENER_ALLOWLIST = new Set<string>([
+    // vault_analysis opens with "Backlinks, connections, structure…" — it
+    // describes a category of read-only inspections, not a single action.
+    "vault_analysis",
+    // simple_search opens with "Full-text search across all vault files…" —
+    // the noun-modifier describes the search variety; rewriting to "Search…"
+    // would lose the disambiguation from complex_search / dataview_search.
+    "simple_search",
+  ]);
+
+  /**
+   * Walks a Zod schema tree and returns the first non-empty `.description`
+   * found, descending through wrapper types.
+   *
+   * Zod replaces the outer schema with a new wrapper whose `.description` is
+   * undefined unless `.describe()` was called on the wrapper itself. This
+   * codebase mixes `.optional().describe(...)` (outer-described) and
+   * `someSharedSchema.optional()` (inner-described); the walker descends
+   * through `_def.innerType` (ZodOptional / ZodNullable / ZodDefault),
+   * `_def.type` (ZodArray), and `_def.schema` (ZodEffects from `.refine()` /
+   * `.transform()`) so both patterns surface a description.
+   *
+   * @param node Zod schema (typed as `unknown` so the helper stays
+   *             zod-import-free; narrowed via `in` operator + `typeof`).
+   * @returns the description text, or `undefined` if none found.
+   */
+  function getZodDescription(node: unknown): string | undefined {
+    if (!node || typeof node !== "object") return undefined;
+    if (
+      "description" in node &&
+      typeof node.description === "string" &&
+      node.description.length > 0
+    ) {
+      return node.description;
+    }
+    if (!("_def" in node) || !node._def || typeof node._def !== "object") {
+      return undefined;
+    }
+    const def = node._def;
+    if ("innerType" in def) return getZodDescription(def.innerType);
+    if ("type" in def) return getZodDescription(def.type);
+    if ("schema" in def) return getZodDescription(def.schema);
+    return undefined;
+  }
+
+  /**
+   * Unwraps a captured inputSchema until a ZodObject surfaces (one that
+   * exposes `.shape`). Mirrors {@link getZodDescription}'s traversal so a
+   * top-level `.refine()` / `.transform()` wrapping the object schema doesn't
+   * silently skip field assertions for the tool.
+   *
+   * @param node candidate ZodObject or wrapper containing one.
+   * @returns the underlying `.shape` map, or `undefined` if no ZodObject is
+   *          reachable through the wrapper chain.
+   */
+  function unwrapToZodObject(
+    node: unknown,
+  ): Record<string, unknown> | undefined {
+    if (!node || typeof node !== "object") return undefined;
+    if ("shape" in node && node.shape && typeof node.shape === "object") {
+      // Provably safe: shape is narrowed to non-null object; ZodObject's shape
+      // is structurally Record<string, ZodTypeAny> at runtime — we treat its
+      // values as `unknown` and let getZodDescription narrow them.
+      return node.shape as Record<string, unknown>;
+    }
+    if (!("_def" in node) || !node._def || typeof node._def !== "object") {
+      return undefined;
+    }
+    const def = node._def;
+    if ("innerType" in def) return unwrapToZodObject(def.innerType);
+    if ("schema" in def) return unwrapToZodObject(def.schema);
+    return undefined;
+  }
+
+  /**
+   * Extracts `[fieldName, descriptionText]` pairs for every field in a
+   * captured tool's Zod inputSchema. Returns `[]` if the tool legitimately
+   * has no inputSchema (e.g. `list_files_in_vault`); HARD-FAILS via
+   * `expect()` if an inputSchema is present but the walker cannot reach a
+   * ZodObject — that case would otherwise let the `.describe()` contract
+   * pass vacuously while skipping every field.
+   *
+   * @param toolName name of the tool (for assertion failure messages).
+   * @param schema captured tool's full registration config (`{ description,
+   *               inputSchema }`).
+   */
+  function inputFieldDescriptions(
+    toolName: string,
+    schema: Record<string, unknown>,
+  ): Array<[string, string | undefined]> {
+    if (schema.inputSchema === undefined) return [];
+    const shape = unwrapToZodObject(schema.inputSchema);
+    expect(
+      shape,
+      `${toolName}: inputSchema present but unwrapToZodObject did not reach a ZodObject — metadata checks would silently skip every field`,
+    ).toBeDefined();
+    if (!shape) return [];
+    return Object.entries(shape).map(([fieldName, fieldType]) => [
+      fieldName,
+      getZodDescription(fieldType),
+    ]);
+  }
+
+  /**
+   * Registers every tool for a given mode at preset=`full` and returns the
+   * captured registrations. Per-mode preset filters are bypassed so the
+   * metadata assertions see the full tool surface.
+   *
+   * @param toolMode `"granular"` (39 tools) or `"consolidated"` (11 tools).
+   */
+  function enumerateAllTools(
+    toolMode: "granular" | "consolidated",
+  ): CapturedTool[] {
+    const { server, getRegistered, getTool } = makeMockServer();
+    const client = makeMockClient();
+    const cache = makeMockCache();
+    registerAllTools(
+      server as never,
+      client,
+      cache,
+      makeConfig({ toolMode, toolPreset: "full" }),
+    );
+    return getRegistered().map(getTool);
+  }
+
+  for (const mode of ["granular", "consolidated"] as const) {
+    describe(`${mode} mode (preset: full)`, () => {
+      it("every tool has a non-empty description ≥ 10 chars and ≤ 15 words", () => {
+        const tools = enumerateAllTools(mode);
+        expect(tools.length).toBeGreaterThan(0);
+        for (const t of tools) {
+          expect(typeof t.description, `${t.name}: description type`).toBe(
+            "string",
+          );
+          expect(
+            t.description.trim().length,
+            `${t.name}: description length`,
+          ).toBeGreaterThanOrEqual(10);
+          expect(
+            countWords(t.description),
+            `${t.name}: description word count (CLAUDE.md L81 token budget)`,
+          ).toBeLessThanOrEqual(MAX_TOOL_DESCRIPTION_WORDS);
+        }
+      });
+
+      it("every tool description starts with a recognized verb (or is allowlisted)", () => {
+        const tools = enumerateAllTools(mode);
+        for (const t of tools) {
+          if (VERB_OPENER_ALLOWLIST.has(t.name)) continue;
+          expect(t.description, `${t.name}: description verb prefix`).toMatch(
+            VERB_PREFIX_RE,
+          );
+        }
+      });
+
+      it("every Zod schema field has a non-empty .describe() text ≥ 3 chars and ≤ 10 words", () => {
+        const tools = enumerateAllTools(mode);
+        for (const t of tools) {
+          for (const [fieldName, desc] of inputFieldDescriptions(
+            t.name,
+            t.schema,
+          )) {
+            expect(
+              typeof desc,
+              `${t.name}.${fieldName}: .describe() type`,
+            ).toBe("string");
+            expect(
+              (desc ?? "").trim().length,
+              `${t.name}.${fieldName}: .describe() length`,
+            ).toBeGreaterThanOrEqual(3);
+            expect(
+              countWords(desc ?? ""),
+              `${t.name}.${fieldName}: .describe() word count (CLAUDE.md L81 token budget)`,
+            ).toBeLessThanOrEqual(MAX_PARAM_DESCRIPTION_WORDS);
+          }
+        }
+      });
+    });
+  }
+});
+
+// ===========================================================================
 // Section 2: granular.ts tool handlers
 // ===========================================================================
 

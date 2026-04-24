@@ -5,9 +5,22 @@
     "src/__tests__/**/*.test.ts",
     "scripts/**/*.{js,ts,mjs}"
   ],
-  "ignore": [".adder-pipeline/**", ".github/**", "stryker.conf.mjs"],
-  "ignoreBinaries": ["gitleaks", "semgrep", "mcpb", "sonar-scanner", "snyk"],
-  "ignoreDependencies": ["esbuild", "postject"],
+  "ignore": [
+    ".adder-pipeline/**",
+    ".github/**",
+    "stryker.conf.mjs"
+  ],
+  "ignoreBinaries": [
+    "gitleaks",
+    "mcpb",
+    "semgrep",
+    "snyk",
+    "sonar-scanner"
+  ],
+  "ignoreDependencies": [
+    "esbuild",
+    "postject"
+  ],
   "ignoreExportsUsedInFile": {
     "interface": true,
     "type": true

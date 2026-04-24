@@ -4139,13 +4139,14 @@ describe("consolidated tools — registration and behavior", () => {
     it("vault search_replace non-string contents returns exact error", async () => {
       const { client, getTool } = setup();
       // getFileContents returns NoteJson (object) instead of a string
-      vi.mocked(client.getFileContents).mockResolvedValue({
+      const noteJson: NoteJson = {
         content: "hi",
         frontmatter: {},
         path: "n.md",
         stat: { ctime: 0, mtime: 0, size: 2 },
         tags: [],
-      } as unknown as NoteJson);
+      };
+      vi.mocked(client.getFileContents).mockResolvedValue(noteJson);
       const result = await getTool("vault").handler({
         action: "search_replace",
         path: "n.md",

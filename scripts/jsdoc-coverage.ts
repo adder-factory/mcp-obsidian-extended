@@ -71,12 +71,18 @@ function isExported(node: Node): boolean {
 function collectTopLevel(sourceFile: import("ts-morph").SourceFile): Node[] {
   const results: Node[] = [];
   for (const stmt of sourceFile.getStatements()) {
-    if (Node.isFunctionDeclaration(stmt) && isExported(stmt)) results.push(stmt);
-    else if (Node.isClassDeclaration(stmt) && isExported(stmt)) results.push(stmt);
-    else if (Node.isInterfaceDeclaration(stmt) && isExported(stmt)) results.push(stmt);
-    else if (Node.isTypeAliasDeclaration(stmt) && isExported(stmt)) results.push(stmt);
-    else if (Node.isEnumDeclaration(stmt) && isExported(stmt)) results.push(stmt);
-    else if (Node.isVariableStatement(stmt) && stmt.isExported()) results.push(stmt);
+    if (Node.isFunctionDeclaration(stmt) && isExported(stmt))
+      results.push(stmt);
+    else if (Node.isClassDeclaration(stmt) && isExported(stmt))
+      results.push(stmt);
+    else if (Node.isInterfaceDeclaration(stmt) && isExported(stmt))
+      results.push(stmt);
+    else if (Node.isTypeAliasDeclaration(stmt) && isExported(stmt))
+      results.push(stmt);
+    else if (Node.isEnumDeclaration(stmt) && isExported(stmt))
+      results.push(stmt);
+    else if (Node.isVariableStatement(stmt) && stmt.isExported())
+      results.push(stmt);
     else if (Node.isExportAssignment(stmt)) results.push(stmt);
   }
   return results;
@@ -117,13 +123,18 @@ function hasJSDoc(node: Node): boolean {
  * declarations in the report.
  */
 function labelFor(node: Node): string {
-  if (Node.isFunctionDeclaration(node)) return `function ${node.getName() ?? "<anon>"}`;
-  if (Node.isClassDeclaration(node)) return `class ${node.getName() ?? "<anon>"}`;
+  if (Node.isFunctionDeclaration(node))
+    return `function ${node.getName() ?? "<anon>"}`;
+  if (Node.isClassDeclaration(node))
+    return `class ${node.getName() ?? "<anon>"}`;
   if (Node.isInterfaceDeclaration(node)) return `interface ${node.getName()}`;
   if (Node.isTypeAliasDeclaration(node)) return `type ${node.getName()}`;
   if (Node.isEnumDeclaration(node)) return `enum ${node.getName()}`;
   if (Node.isVariableStatement(node)) {
-    const names = node.getDeclarations().map((d) => d.getName()).join(", ");
+    const names = node
+      .getDeclarations()
+      .map((d) => d.getName())
+      .join(", ");
     return `const/let ${names}`;
   }
   if (Node.isExportAssignment(node)) return "export default";
@@ -158,7 +169,12 @@ function main(): void {
 
   for (const sf of project.getSourceFiles()) {
     const rel = path.relative(process.cwd(), sf.getFilePath());
-    const fileStat: FileStats = { file: rel, total: 0, documented: 0, missing: [] };
+    const fileStat: FileStats = {
+      file: rel,
+      total: 0,
+      documented: 0,
+      missing: [],
+    };
 
     const decls = collectTopLevel(sf);
     for (const d of decls) {
@@ -185,7 +201,13 @@ function main(): void {
   if (args.json) {
     console.log(
       JSON.stringify(
-        { threshold: args.threshold, total: totalAll, documented: documentedAll, pct, files: stats },
+        {
+          threshold: args.threshold,
+          total: totalAll,
+          documented: documentedAll,
+          pct,
+          files: stats,
+        },
         null,
         2,
       ),
@@ -194,7 +216,9 @@ function main(): void {
     if (args.perFile) {
       for (const s of stats) {
         const p = s.total === 0 ? 100 : (s.documented / s.total) * 100;
-        console.log(`${p.toFixed(1).padStart(5)}%  ${s.documented}/${s.total}  ${s.file}`);
+        console.log(
+          `${p.toFixed(1).padStart(5)}%  ${s.documented}/${s.total}  ${s.file}`,
+        );
         if (s.missing.length > 0) {
           for (const miss of s.missing) console.log(`         - ${miss}`);
         }
@@ -207,7 +231,9 @@ function main(): void {
   }
 
   if (pct < args.threshold) {
-    console.error(`FAIL: coverage ${pct.toFixed(2)}% is below threshold ${args.threshold}%`);
+    console.error(
+      `FAIL: coverage ${pct.toFixed(2)}% is below threshold ${args.threshold}%`,
+    );
     process.exit(1);
   }
 }

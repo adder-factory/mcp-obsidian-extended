@@ -3973,6 +3973,12 @@ describe("consolidated tools — registration and behavior", () => {
 // output format is already unit-tested in errors.test.ts.
 
 describe("granular tools — error-path coverage (#20)", () => {
+  /**
+   * Build the registration fixture used by every error-path test in this
+   * section. Returns the mock client + cache plus a getTool accessor so
+   * each case can selectively reject the relevant client method (or throw
+   * from a cache method) before invoking the tool's handler.
+   */
   function setupFailing(): {
     client: ObsidianClient;
     cache: VaultCache;
@@ -4077,6 +4083,13 @@ describe("granular tools — error-path coverage (#20)", () => {
       { period: "daily", year: 2026, month: 4, day: 23 },
     ],
     ["get_server_status", "getServerStatus", {}],
+    // Added per Gemini review — these three tools' catch branches weren't
+    // in Sonar's "new code" bucket (pre-baseline code), but exercising
+    // them keeps the pattern consistent and guards against regressions
+    // if the handlers ever drift.
+    ["list_commands", "listCommands", {}],
+    ["open_file", "openFile", { path: "n.md", newLeaf: false }],
+    ["simple_search", "simpleSearch", { query: "q", contextLength: 100 }],
   ];
 
   it.each(simpleCases)(

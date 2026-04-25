@@ -53,7 +53,10 @@ function loadDotenv(): void {
 }
 
 function pick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
+  if (arr.length === 0) {
+    throw new Error("pick() requires a non-empty array");
+  }
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function fmt(ms: number): string {

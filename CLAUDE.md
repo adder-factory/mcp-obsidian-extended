@@ -182,6 +182,8 @@ opening a PR must include Qwen.
 The gate invokes `npm test -- --coverage`. Your project's `test` script
 must be plain (e.g. `"test": "vitest run"`), without a hardcoded
 `--coverage` flag — otherwise the runner sees a duplicate flag and fails.
+Keep coverage as a separate script (e.g. `"test:coverage": "vitest run --coverage"`),
+which is consistent with the `npm run test:coverage` command above.
 Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 
 ### Branch strategy

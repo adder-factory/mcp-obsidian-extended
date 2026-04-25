@@ -236,7 +236,12 @@ async function scenario1HeadingMismatch(
   for (let i = 0; i < fileCount; i++) {
     const f = `${STRESS_PREFIX}heading_${String(i).padStart(2, "0")}.md`;
     files.push(f);
-    const content = `# ${headings[0]}\n\nH1 content\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+    const content = `${headings
+      .map((heading, index) => {
+        const level = index === 0 ? "#" : "##";
+        return `${level} ${heading}\n\nH${String(index + 1)} content`;
+      })
+      .join("\n\n")}\n`;
     await client.putContent(f, content);
   }
 

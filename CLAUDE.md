@@ -39,7 +39,12 @@ API reference: @docs/cc-reference.md
 
 ## TypeScript Rules
 
-- STRICT MODE: `strict: true` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noPropertyAccessFromIndexSignature` + `noImplicitOverride` + `isolatedModules`
+- STRICT MODE: `strict: true` with the following flags enabled:
+  - `noUncheckedIndexedAccess`
+  - `exactOptionalPropertyTypes`
+  - `noPropertyAccessFromIndexSignature`
+  - `noImplicitOverride`
+  - `isolatedModules`
 - ESM only: `"type": "module"` in package.json, use `.js` extensions in import paths
 - NEVER use `any` — use `unknown` and narrow with type guards. ESLint `no-explicit-any` is set to error.
 - NEVER use `as` type assertions unless provably safe — prefer type narrowing

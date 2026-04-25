@@ -239,7 +239,7 @@ async function scenario1HeadingMismatch(
     files.push(f);
     const content = `${headings
       .map((heading, index) => {
-        const level = index === 0 ? "#" : "##";
+        const level = "#".repeat(index + 1);
         return `${level} ${heading}\n\nH${String(index + 1)} content`;
       })
       .join("\n\n")}\n`;

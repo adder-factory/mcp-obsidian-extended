@@ -632,7 +632,7 @@ async function scenario4WriteContention(
   }
 
   const duration = Date.now() - startTime;
-  const markerRate =
+  const markerRatePercent =
     markersSent.size > 0
       ? ((markersFound / markersSent.size) * 100).toFixed(1)
       : "0";
@@ -647,7 +647,7 @@ async function scenario4WriteContention(
 
   const summary =
     `Total ops: ${String(stats.totalOps)}, Reads: ${String(readOps)}, ` +
-    `Markers sent: ${String(markersSent.size)}, Markers found: ${String(markersFound)} (${markerRate}%), ` +
+    `Markers sent: ${String(markersSent.size)}, Markers found: ${String(markersFound)} (${markerRatePercent}%), ` +
     `Corruption: ${String(corruptionDetected)}, Error rate: ${(errorRate * 100).toFixed(1)}%, ` +
     `Duration: ${fmt(duration)}`;
 

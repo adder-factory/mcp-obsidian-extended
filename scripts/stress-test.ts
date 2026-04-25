@@ -271,9 +271,9 @@ async function testCacheRebuildUnderLoad(
   );
   await Promise.all(
     files.map((f, i) => {
-      // Self-link fallback satisfies noUncheckedIndexedAccess; the indexed
-      // access is always in bounds (i < fileCount === files.length).
-      const next = files[(i + 1) % fileCount] ?? f;
+      // Indexed access is always in bounds (i < fileCount === files.length),
+      // so this is guaranteed to exist.
+      const next = files[(i + 1) % fileCount]!;
       return client.putContent(f, `# Cache File ${String(i)}\n\n[[${next}]]\n`);
     }),
   );

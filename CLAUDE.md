@@ -206,14 +206,15 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    - All CodeAnt threads resolved
    - `npm run pre-pr` passes locally on the branch head
 
-   **There is no human code review.** The pipeline spec is explicit: "No
-   human code review — pipeline must be thorough enough that human only
-   tests functionality." The human's pre-merge role is confirming that
-   CI + AI reviewers are clean and clicking merge — not inspecting the
-   diff. Branch protection intentionally sets
-   `required_pull_request_reviews: null` to match this principle;
-   reviewer approval at the GitHub level is not required and not
-   configured. Human functional testing happens post-merge.
+   **Human/user approval is still required before merge.** The pipeline
+   spec means there is no mandatory *line-by-line human code review* step:
+   AI reviewers + CI provide the formal code-quality gate, and all feedback
+   must be resolved before requesting merge. The human's pre-merge role is
+   to verify readiness (CI green, AI threads resolved), decide whether to
+   approve/merge, and ensure functional validation expectations are met.
+   Branch protection intentionally sets
+   `required_pull_request_reviews: null`, so GitHub reviewer approval is not
+   required/configured even though explicit user approval to merge is.
 
 ### Never do
 

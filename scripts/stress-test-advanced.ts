@@ -255,8 +255,8 @@ async function scenario1HeadingMismatch(
   let patcherOps = 0;
 
   interface HeadingSection {
-    heading: string;
-    body: string;
+    readonly heading: string;
+    readonly body: string;
   }
 
   const buildHeadingContent = (

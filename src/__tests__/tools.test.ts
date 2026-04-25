@@ -2280,9 +2280,6 @@ describe("consolidated tools — registration and behavior", () => {
       await getTool("vault").handler({
         action: "delete",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.deleteFile).toHaveBeenCalledWith("note.md");
     });
@@ -2291,9 +2288,6 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
         action: "delete",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });

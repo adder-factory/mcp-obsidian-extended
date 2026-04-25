@@ -228,6 +228,7 @@ coordination has overhead. Use them when work fits ALL three:
    with different inputs
 
 Examples:
+
 - ✅ JSDoc backfill across 60 files
 - ✅ Bulk test additions across independent modules
 - ✅ Multi-repo template propagation

@@ -3872,6 +3872,11 @@ describe("consolidated tools — registration and behavior", () => {
   // and asserts the tool-prefixed error message actually fires.
 
   describe("switch exhaustiveness guards", () => {
+    // These tests verify runtime exhaustiveness guards that complement
+    // TypeScript's compile-time exhaustive switch checks (`never` pattern).
+    // We intentionally pass invalid discriminants through the mocked
+    // handler's `Record<string, unknown>` input shape so type narrowing is
+    // bypassed and the runtime `default` branch must execute.
     // `toBe` rather than `toContain` on the error text: the whole point of
     // these tests is to kill BlockStatement mutants on the guard body, and
     // exact-match assertions also catch any future drift in the message

@@ -425,8 +425,9 @@ async function scenario3LargeVaultScale(
         const links: string[] = [];
         for (let l = 0; l < linkCount; l++) {
           const targetIdx = Math.floor(Math.random() * fileCount);
-          if (targetIdx !== globalIdx) {
-            links.push(`[[${files[targetIdx]!}]]`);
+          const targetFile = files[targetIdx];
+          if (targetIdx !== globalIdx && targetFile !== undefined) {
+            links.push(`[[${targetFile}]]`);
           }
         }
         const content = `# Note ${String(globalIdx)}\n\nSome content about topic ${String(globalIdx)}.\n\n## Links\n\n${links.join("\n")}\n`;
@@ -632,7 +633,7 @@ async function scenario4WriteContention(
   }
 
   const duration = Date.now() - startTime;
-  const markerRate =
+  const markerRatePercent =
     markersSent.size > 0
       ? ((markersFound / markersSent.size) * 100).toFixed(1)
       : "0";
@@ -647,7 +648,7 @@ async function scenario4WriteContention(
 
   const summary =
     `Total ops: ${String(stats.totalOps)}, Reads: ${String(readOps)}, ` +
-    `Markers sent: ${String(markersSent.size)}, Markers found: ${String(markersFound)} (${markerRate}%), ` +
+    `Markers sent: ${String(markersSent.size)}, Markers found: ${String(markersFound)} (${markerRatePercent}%), ` +
     `Corruption: ${String(corruptionDetected)}, Error rate: ${(errorRate * 100).toFixed(1)}%, ` +
     `Duration: ${fmt(duration)}`;
 
@@ -669,10 +670,7 @@ async function scenario5PeriodicDateSweep(
   const year = 2019;
   const month = 1;
   // Include edge case dates: 1, 9, 10, 28, 29, 30, 31, plus regular ones
-  const days = [
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-    22, 23, 24, 25, 26, 27, 28, 29, 30,
-  ];
+  const days: readonly number[] = Array.from({ length: 31 }, (_, i) => i + 1);
   const period = "daily";
 
   write(

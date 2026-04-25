@@ -2224,9 +2224,6 @@ describe("consolidated tools — registration and behavior", () => {
         action: "append",
         path: "note.md",
         content: "extra",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.appendContent).toHaveBeenCalledWith("note.md", "extra");
     });

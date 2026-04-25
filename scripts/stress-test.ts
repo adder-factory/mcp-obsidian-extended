@@ -528,13 +528,14 @@ async function main(): Promise<void> {
   const failed = results.filter((r) => !r.passed).length;
   const totalOps = results.reduce((sum, r) => sum + r.ops, 0);
   const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
+  const avgPerOp = totalOps > 0 ? `${fmt(totalDuration / totalOps)}/op avg` : "n/a";
 
   write("");
   write(
     `Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(results.length)} tests`,
   );
   write(
-    `Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${fmt(totalDuration / totalOps)}/op avg)`,
+    `Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${avgPerOp})`,
   );
   write("");
 

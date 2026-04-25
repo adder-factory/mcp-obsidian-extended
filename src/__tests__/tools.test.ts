@@ -872,6 +872,24 @@ describe("granular tools — registration and basic behavior", () => {
       expect(getText(result)).toContain("Replaced in: note.md");
     });
 
+    it("replaces only the first match when replaceAll is false", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents).mockResolvedValue("world world world");
+      const result = await getTool("search_replace").handler({
+        path: "note.md",
+        search: "world",
+        replace: "Obsidian",
+        useRegex: false,
+        caseSensitive: true,
+        replaceAll: false,
+      });
+      expect(client.putContent).toHaveBeenCalledWith(
+        "note.md",
+        "Obsidian world world",
+      );
+      expect(getText(result)).toContain("Replaced in: note.md");
+    });
+
     it("returns no-match message when pattern not found", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.getFileContents).mockResolvedValue("Hello world");

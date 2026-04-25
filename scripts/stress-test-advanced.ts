@@ -670,7 +670,7 @@ async function scenario5PeriodicDateSweep(
   const year = 2019;
   const month = 1;
   // Include edge case dates: 1, 9, 10, 28, 29, 30, 31, plus regular ones
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  const days: readonly number[] = Array.from({ length: 31 }, (_, i) => i + 1);
   const period = "daily";
 
   write(

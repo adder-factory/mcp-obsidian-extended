@@ -7,7 +7,6 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import { loadConfig } from "../src/config.js";
 import { ObsidianClient } from "../src/obsidian.js";

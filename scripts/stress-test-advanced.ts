@@ -13,11 +13,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { loadConfig } from "../src/config.js";
 import { ObsidianClient } from "../src/obsidian.js";
 import { VaultCache } from "../src/cache.js";
-import {
-  ObsidianApiError,
-  ObsidianConnectionError,
-  ObsidianAuthError,
-} from "../src/errors.js";
+import { ObsidianApiError } from "../src/errors.js";
 
 // --- Constants ---
 
@@ -1025,7 +1021,6 @@ async function main(): Promise<void> {
   ];
 
   const results: ScenarioResult[] = [];
-  const allStats = new Stats();
 
   for (const scenario of scenarios) {
     write(`\n--- ${scenario.budget} budget ---`);
@@ -1072,11 +1067,6 @@ async function main(): Promise<void> {
   const totalPassed = results.reduce((sum, r) => sum + r.stats.totalPassed, 0);
   const scenariosPassed = results.filter((r) => r.passed).length;
   const scenariosFailed = results.filter((r) => !r.passed).length;
-  const toolsCovered = new Set<string>();
-  for (const r of results) {
-    // Count covered ops from each scenario's stats report
-    // (We can't easily access private toolCoverage, but we can count from summary)
-  }
 
   // Latency percentiles across all scenarios
   const allLatencies: number[] = [];

@@ -248,6 +248,17 @@ async function scenario1HeadingMismatch(
   let writerOps = 0;
   let patcherOps = 0;
 
+  const buildHeadingContent = (
+    title: string,
+    sections: Array<{ heading: string; body: string }>,
+  ): string => {
+    let content = `# ${title}\n\nH1 content\n\n`;
+    for (const section of sections) {
+      content += `## ${section.heading}\n\n${section.body}\n\n`;
+    }
+    return content;
+  };
+
   // Writer: restructure headings on random files
   const writerWork = async (): Promise<void> => {
     while (Date.now() < deadline) {
@@ -256,13 +267,28 @@ async function scenario1HeadingMismatch(
       let newContent: string;
       if (variant === 0) {
         // Rename H2 -> H2_renamed
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## H2_renamed\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(headings[0], [
+          { heading: "H2_renamed", body: "H2 content" },
+          { heading: headings[2], body: "H3 content" },
+          { heading: headings[3], body: "H4 content" },
+          { heading: headings[4], body: "H5 content" },
+        ]);
       } else if (variant === 1) {
         // Add a new heading
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## NewHeading\n\nNew stuff\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(headings[0], [
+          { heading: "NewHeading", body: "New stuff" },
+          { heading: headings[1], body: "H2 content" },
+          { heading: headings[2], body: "H3 content" },
+          { heading: headings[3], body: "H4 content" },
+          { heading: headings[4], body: "H5 content" },
+        ]);
       } else {
         // Remove H4
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(headings[0], [
+          { heading: headings[1], body: "H2 content" },
+          { heading: headings[2], body: "H3 content" },
+          { heading: headings[4], body: "H5 content" },
+        ]);
       }
       await timedOp(stats, "heading:write", () =>
         client.putContent(file, newContent),

@@ -255,13 +255,12 @@ async function scenario1HeadingMismatch(
 
   const buildHeadingContent = (
     title: string,
-    sections: Array<{ heading: string; body: string }>,
+    sections: ReadonlyArray<{ heading: string; body: string }>,
   ): string => {
-    let content = `# ${title}\n\nH1 content\n\n`;
-    for (const section of sections) {
-      content += `## ${section.heading}\n\n${section.body}\n\n`;
-    }
-    return content;
+    const sectionsText = sections
+      .map((s) => `## ${s.heading}\n\n${s.body}`)
+      .join("\n\n");
+    return `# ${title}\n\nH1 content\n\n${sectionsText}\n`;
   };
 
   // Writer: restructure headings on random files

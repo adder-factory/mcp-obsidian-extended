@@ -2113,6 +2113,19 @@ describe("consolidated tools — registration and behavior", () => {
     return { client, cache, getTool };
   }
 
+  function withVaultDefaults<T extends Record<string, unknown>>(args: T): T & {
+    useRegex: boolean;
+    caseSensitive: boolean;
+    replaceAll: boolean;
+  } {
+    return {
+      useRegex: false,
+      caseSensitive: true,
+      replaceAll: true,
+      ...args,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // vault tool
   // -------------------------------------------------------------------------
@@ -2120,12 +2133,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.listFilesInVault", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["x.md"] });
-      const result = await getTool("vault").handler({
-        action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      const result = await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list",
+        }),
+      );
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(getText(result)).toContain("x.md");
     });
@@ -2134,24 +2146,22 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — list_dir action", () => {
     it("calls client.listFilesInDir with path", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler({
-        action: "list_dir",
-        path: "mydir",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list_dir",
+          path: "mydir",
+        }),
+      );
       expect(client.listFilesInDir).toHaveBeenCalledWith("mydir");
     });
 
     it("returns errorResult when path is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({
-        action: "list_dir",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      const result = await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list_dir",
+        }),
+      );
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("path is required");
     });

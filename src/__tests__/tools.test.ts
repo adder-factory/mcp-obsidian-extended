@@ -620,7 +620,7 @@ describe("tool metadata — descriptions and schema hints", () => {
       it("every tool description starts with a recognized verb (or is allowlisted)", () => {
         const tools = enumerateAllTools(mode);
         for (const t of tools) {
-          if (VERB_OPENER_ALLOWLIST.has(t.name)) continue;
+          if (VERB_OPENER_EXCEPTIONS.has(t.name)) continue;
           expect(t.description, `${t.name}: description verb prefix`).toMatch(
             VERB_PREFIX_RE,
           );

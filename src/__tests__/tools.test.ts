@@ -48,7 +48,8 @@ import {
 import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 // ---------------------------------------------------------------------------
-// Suppress stderr
+// Suppress stderr output during tests to avoid cluttering logs from expected
+// error-path execution; this global mock is restored after each test.
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -559,6 +560,10 @@ describe("tool metadata — descriptions and schema hints", () => {
       `${toolName}: inputSchema present but unwrapToZodObject did not reach a ZodObject — metadata checks would silently skip every field`,
     ).toBeDefined();
     if (!shape) return [];
+    expect(
+      Object.keys(shape).length,
+      `${toolName}: inputSchema unwrapped to an empty ZodObject shape — metadata checks would pass vacuously`,
+    ).toBeGreaterThan(0);
     return Object.entries(shape).map(([fieldName, fieldType]) => [
       fieldName,
       getZodDescription(fieldType),
@@ -2113,6 +2118,21 @@ describe("consolidated tools — registration and behavior", () => {
     return { client, cache, getTool };
   }
 
+  function withVaultDefaults<T extends Record<string, unknown>>(
+    args: T,
+  ): T & {
+    useRegex: boolean;
+    caseSensitive: boolean;
+    replaceAll: boolean;
+  } {
+    return {
+      useRegex: false,
+      caseSensitive: true,
+      replaceAll: true,
+      ...args,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // vault tool
   // -------------------------------------------------------------------------
@@ -2120,12 +2140,11 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.listFilesInVault", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["x.md"] });
-      const result = await getTool("vault").handler({
-        action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      const result = await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list",
+        }),
+      );
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(getText(result)).toContain("x.md");
     });
@@ -2134,24 +2153,22 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — list_dir action", () => {
     it("calls client.listFilesInDir with path", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler({
-        action: "list_dir",
-        path: "mydir",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list_dir",
+          path: "mydir",
+        }),
+      );
       expect(client.listFilesInDir).toHaveBeenCalledWith("mydir");
     });
 
     it("returns errorResult when path is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler({
-        action: "list_dir",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
-      });
+      const result = await getTool("vault").handler(
+        withVaultDefaults({
+          action: "list_dir",
+        }),
+      );
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("path is required");
     });
@@ -3872,6 +3889,11 @@ describe("consolidated tools — registration and behavior", () => {
   // and asserts the tool-prefixed error message actually fires.
 
   describe("switch exhaustiveness guards", () => {
+    // These tests verify runtime exhaustiveness guards that complement
+    // TypeScript's compile-time exhaustive switch checks (`never` pattern).
+    // We intentionally pass invalid discriminants through the mocked
+    // handler's `Record<string, unknown>` input shape so type narrowing is
+    // bypassed and the runtime `default` branch must execute.
     // `toBe` rather than `toContain` on the error text: the whole point of
     // these tests is to kill BlockStatement mutants on the guard body, and
     // exact-match assertions also catch any future drift in the message

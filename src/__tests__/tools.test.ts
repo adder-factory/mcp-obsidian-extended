@@ -560,10 +560,10 @@ describe("tool metadata — descriptions and schema hints", () => {
       `${toolName}: inputSchema present but unwrapToZodObject did not reach a ZodObject — metadata checks would silently skip every field`,
     ).toBeDefined();
     if (!shape) return [];
-    expect(
-      Object.keys(shape).length,
-      `${toolName}: inputSchema unwrapped to an empty ZodObject shape — metadata checks would pass vacuously`,
-    ).toBeGreaterThan(0);
+    // Explicit empty schemas (e.g., z.object({})) are valid for tools with
+    // no parameters. In that case there are no field-level descriptions to
+    // assert, so return an empty list.
+    if (Object.keys(shape).length === 0) return [];
     return Object.entries(shape).map(([fieldName, fieldType]) => [
       fieldName,
       getZodDescription(fieldType),

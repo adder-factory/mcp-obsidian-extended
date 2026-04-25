@@ -425,8 +425,9 @@ async function scenario3LargeVaultScale(
         const links: string[] = [];
         for (let l = 0; l < linkCount; l++) {
           const targetIdx = Math.floor(Math.random() * fileCount);
-          if (targetIdx !== globalIdx) {
-            links.push(`[[${files[targetIdx]!}]]`);
+          const targetFile = files[targetIdx];
+          if (targetIdx !== globalIdx && targetFile !== undefined) {
+            links.push(`[[${targetFile}]]`);
           }
         }
         const content = `# Note ${String(globalIdx)}\n\nSome content about topic ${String(globalIdx)}.\n\n## Links\n\n${links.join("\n")}\n`;

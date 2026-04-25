@@ -2185,9 +2185,6 @@ describe("consolidated tools — registration and behavior", () => {
         action: "put",
         path: "note.md",
         content: "body",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalledWith("note.md", "body");
     });
@@ -2197,9 +2194,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "put",
         content: "body",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -2209,9 +2203,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "put",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });

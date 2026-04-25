@@ -1480,7 +1480,8 @@ describe("granular tools — registration and basic behavior", () => {
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed)) {
-        expect(parsed[0]).toMatchObject({ path: "new.md" });
+        expect(parsed).toHaveLength(2);
+        expect(parsed[0]).toMatchObject({ path: "new.md", mtime: 999 });
       }
     });
 
@@ -3147,8 +3148,9 @@ describe("consolidated tools — registration and behavior", () => {
       });
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        expect(parsed[0]).toMatchObject({ path: "new.md" });
+      if (Array.isArray(parsed)) {
+        expect(parsed).toHaveLength(2);
+        expect(parsed[0]).toMatchObject({ path: "new.md", mtime: 999 });
       }
     });
 

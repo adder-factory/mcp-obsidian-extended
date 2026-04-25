@@ -404,7 +404,6 @@ async function rapidPatchCycle(
 
   for (let i = 0; i < iterations; i++) {
     const heading = headings[i % headings.length];
-    if (heading === undefined) continue;
     const content = `# Root\n\n## ${heading}\n\nBase.\n`;
     try {
       await client.putContent(FILE, content);

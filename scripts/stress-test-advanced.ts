@@ -225,6 +225,7 @@ async function scenario1HeadingMismatch(
   const durationMs = 3 * 60 * 1000;
   const fileCount = 20;
   const headings = ["H1", "H2", "H3", "H4", "H5"] as const;
+  const [h1, h2, h3, h4, h5] = headings;
   const startTime = Date.now();
 
   write(
@@ -238,7 +239,7 @@ async function scenario1HeadingMismatch(
     files.push(f);
     const content = `${headings
       .map((heading, index) => {
-        const level = "#".repeat(index + 1);
+        const level = index === 0 ? "#" : "##";
         return `${level} ${heading}\n\nH${String(index + 1)} content`;
       })
       .join("\n\n")}\n`;

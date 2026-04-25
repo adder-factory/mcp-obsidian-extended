@@ -67,7 +67,7 @@ API reference: @docs/cc-reference.md
 
 ## Logging & Output
 
-- **CRITICAL: stdout is the MCP transport.** NEVER use `console.log()`. ESLint `no-console` is error.
+- **Critical: stdout is the MCP transport.** NEVER use `console.log()`. ESLint `no-console` is error.
 - ALL logging goes to `process.stderr` via a stderr logger utility
 - NEVER log the API key — not in debug, not in errors, not in stack traces
 - Debug logging (`OBSIDIAN_DEBUG=true`): log HTTP method/path/status/timing — NEVER bodies or auth headers

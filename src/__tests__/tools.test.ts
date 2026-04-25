@@ -441,7 +441,7 @@ describe("registerAllTools — consolidated mode", () => {
 describe("tool metadata — descriptions and schema hints", () => {
   // Recognized verb prefixes. Comma-separated openers ("Read, write, search…")
   // match because the first word is a verb. Tools whose descriptions open with
-  // a noun-category instead of a verb stay in VERB_OPENER_ALLOWLIST — keep that
+  // a noun-category instead of a verb stay in VERB_OPENER_EXCEPTIONS — keep that
   // set narrow; adding a name here is a deliberate exception to the contract.
   // Verb set is liberal by design — adding a verb here is cheap, but failing
   // a real PR for a legitimately verb-led description (e.g., a future "Rename"
@@ -463,7 +463,7 @@ describe("tool metadata — descriptions and schema hints", () => {
    */
   const countWords = (s: string): number =>
     s.trim().split(/\s+/).filter(Boolean).length;
-  const VERB_OPENER_ALLOWLIST = new Set<string>([
+  const VERB_OPENER_EXCEPTIONS = new Set<string>([
     // vault_analysis opens with "Backlinks, connections, structure…" — it
     // describes a category of read-only inspections, not a single action.
     "vault_analysis",

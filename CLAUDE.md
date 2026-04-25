@@ -164,6 +164,80 @@ npm run sonar                              # Zero issues of any severity in Sona
 
 Iterate with CodeRabbitAI + Greptile on PR until ALL comments resolved — including nitpicks.
 
+## Systematic Debugging
+
+When a test fails, gate regresses, or unexpected behavior surfaces, follow
+this 4-phase process. Do NOT skip to fix.
+
+**Phase 1 — Reproduce.** Confirm the failure is reproducible. If
+intermittent, capture frequency. No fix without reliable repro.
+
+**Phase 2 — Narrow scope.** Bisect to smallest input/file/commit that
+triggers the failure. Don't theorize on full system.
+
+**Phase 3 — Hypothesize with evidence.** State the hypothesis explicitly.
+List evidence supporting it. Distinguish "this would explain it" from "I
+have proof."
+
+**Phase 4 — Verify fix targets cause, not symptom.** After applying a fix,
+confirm: (a) original repro now passes, (b) the fix matches the hypothesis,
+not a workaround that masks it.
+
+Skipping phases produces silent-pass bugs (e.g., Sonar gate verifying
+upload not verdict — Issue #7).
+
+## Verification Before Completion
+
+Before reporting a task complete, verify ALL of the following:
+
+1. The relevant gate or check actually ran (not skipped)
+2. Exit code was checked, not just process completion
+3. The metric the task targeted actually moved (not just "tests pass")
+4. Downstream consumers not broken (run dependent tests if changes touch
+   shared code)
+5. The reported state matches the actual state (no hallucinated "all green")
+
+Reporting "done" without these checks creates the silent-pass class of
+bug. Sonar Issue #7 (every PR silently passing since #12) is the reference
+example.
+
+## Multi-Stage Task Verification
+
+When a task is broken into stages (e.g., "Stage 1 → Stage 2 → Stage 3"),
+each stage gets an explicit verification step before proceeding to the
+next. Format per stage:
+
+1. Action — what the stage does
+2. Expected outcome — what success looks like, measurable
+3. Verification command/check — how to confirm the outcome
+4. Stop condition — what triggers escalation vs. proceeding
+
+Do NOT batch verification at end of all stages. A failed early stage that
+propagates is harder to diagnose than one caught immediately.
+
+## When to Use Subagents
+
+Subagents are not free — each burns its own context window, and
+coordination has overhead. Use them when work fits ALL three:
+
+1. **Parallel-safe** — independent files, no shared state, results don't
+   depend on each other
+2. **Naturally splits 3+ ways** — fewer than 3 splits = overhead exceeds
+   benefit
+3. **Mechanical or templated** — each subtask follows the same pattern
+   with different inputs
+
+Examples:
+- ✅ JSDoc backfill across 60 files
+- ✅ Bulk test additions across independent modules
+- ✅ Multi-repo template propagation
+- ❌ Single-file refactor
+- ❌ Sequential multi-stage task
+- ❌ Small PR (<50 LOC, <3 files)
+
+Default to single-agent for everything else. The cost of a subagent that
+isn't pulling its weight is real.
+
 <!-- ADDER-PIPELINE:v1 -->
 
 ## Adder Code Review Pipeline

@@ -4013,9 +4013,15 @@ describe("consolidated tools — registration and behavior", () => {
     function expectToolPrefixedError(result: ToolResult, tool: string): void {
       expect(result.isError).toBe(true);
       const text = getText(result);
+      const prefix = `[${tool}] `;
       expect(
-        text.startsWith(`[${tool}] `),
-        `expected error to start with "[${tool}] ", got: "${text}"`,
+        text.startsWith(prefix),
+        `expected error to start with "${prefix}", got: "${text}"`,
+      ).toBe(true);
+      const remainder = text.slice(prefix.length);
+      expect(
+        remainder.trim().length > 0,
+        `expected error to include non-empty text after "${prefix}", got: "${text}"`,
       ).toBe(true);
     }
 

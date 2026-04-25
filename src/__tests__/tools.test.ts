@@ -2158,9 +2158,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "get",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.getFileContents).toHaveBeenCalledWith("note.md", undefined);
       expect(getText(result)).toBe("# Content");
@@ -2170,9 +2167,6 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
         action: "get",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });

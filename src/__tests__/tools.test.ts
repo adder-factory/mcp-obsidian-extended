@@ -48,7 +48,8 @@ import {
 import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 // ---------------------------------------------------------------------------
-// Suppress stderr
+// Suppress stderr output during tests to avoid cluttering logs from expected
+// error-path execution; this global mock is restored after each test.
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
@@ -2117,7 +2118,9 @@ describe("consolidated tools — registration and behavior", () => {
     return { client, cache, getTool };
   }
 
-  function withVaultDefaults<T extends Record<string, unknown>>(args: T): T & {
+  function withVaultDefaults<T extends Record<string, unknown>>(
+    args: T,
+  ): T & {
     useRegex: boolean;
     caseSensitive: boolean;
     replaceAll: boolean;

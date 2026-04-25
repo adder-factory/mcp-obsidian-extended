@@ -247,12 +247,15 @@ async function testCrudCycle(client: ObsidianClient): Promise<StressResult> {
     }
   });
 
+  const ops = count * 3; // put + get + delete per cycle
+  const perOpDetail = ops > 0 ? `${fmt(duration / ops)}/op` : "n/a";
+
   return {
     name: "Rapid create-read-delete cycles",
     passed: successes === count,
     duration,
-    ops: count * 3, // put + get + delete per cycle
-    details: `${String(successes)}/${String(count)} cycles, ${String(count * 3)} ops in ${fmt(duration)}, ${fmt(duration / (count * 3))}/op`,
+    ops,
+    details: `${String(successes)}/${String(count)} cycles, ${String(ops)} ops in ${fmt(duration)}, ${perOpDetail}`,
   };
 }
 
@@ -528,13 +531,15 @@ async function main(): Promise<void> {
   const failed = results.filter((r) => !r.passed).length;
   const totalOps = results.reduce((sum, r) => sum + r.ops, 0);
   const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
+  const avgPerOp =
+    totalOps > 0 ? `${fmt(totalDuration / totalOps)}/op avg` : "n/a";
 
   write("");
   write(
     `Results: ${String(passed)} passed, ${String(failed)} failed out of ${String(results.length)} tests`,
   );
   write(
-    `Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${fmt(totalDuration / totalOps)}/op avg)`,
+    `Total: ${String(totalOps)} operations in ${fmt(totalDuration)} (${avgPerOp})`,
   );
   write("");
 

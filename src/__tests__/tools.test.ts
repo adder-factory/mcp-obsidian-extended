@@ -3780,9 +3780,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONNECTION ERROR");
@@ -3795,9 +3792,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("AUTH ERROR");
@@ -3827,9 +3821,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "get",
         path: "x.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("NOT SUPPORTED");
@@ -3842,9 +3833,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("ERROR: unexpected");

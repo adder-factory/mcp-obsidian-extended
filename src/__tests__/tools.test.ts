@@ -3149,8 +3149,10 @@ describe("consolidated tools — registration and behavior", () => {
       const parsed: unknown = JSON.parse(getText(result));
       expect(Array.isArray(parsed)).toBe(true);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const first = parsed[0] as Record<string, unknown>;
-        expect(first["path"]).toBe("new.md");
+        const first = parsed[0];
+        if (typeof first === "object" && first !== null) {
+          expect(first["path"]).toBe("new.md");
+        }
       }
     });
 

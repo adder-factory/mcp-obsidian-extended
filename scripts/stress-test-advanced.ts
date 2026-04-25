@@ -53,13 +53,9 @@ function loadDotenv(): void {
 }
 
 function pick<T>(arr: readonly T[]): T {
-  if (arr.length === 0) {
-    throw new Error("pick() requires a non-empty array");
-  }
-  const index = Math.floor(Math.random() * arr.length);
-  const value = arr[index];
+  const value = arr[Math.floor(Math.random() * arr.length)];
   if (value === undefined) {
-    throw new Error("pick() index out of bounds");
+    throw new Error("pick() requires a non-empty array");
   }
   return value;
 }

@@ -2158,9 +2158,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "get",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.getFileContents).toHaveBeenCalledWith("note.md", undefined);
       expect(getText(result)).toBe("# Content");
@@ -2170,9 +2167,6 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
         action: "get",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -2185,9 +2179,6 @@ describe("consolidated tools — registration and behavior", () => {
         action: "put",
         path: "note.md",
         content: "body",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.putContent).toHaveBeenCalledWith("note.md", "body");
     });
@@ -2197,9 +2188,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "put",
         content: "body",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -2209,9 +2197,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "put",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -2224,9 +2209,6 @@ describe("consolidated tools — registration and behavior", () => {
         action: "append",
         path: "note.md",
         content: "extra",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.appendContent).toHaveBeenCalledWith("note.md", "extra");
     });
@@ -2280,9 +2262,6 @@ describe("consolidated tools — registration and behavior", () => {
       await getTool("vault").handler({
         action: "delete",
         path: "note.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(client.deleteFile).toHaveBeenCalledWith("note.md");
     });
@@ -2291,9 +2270,6 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup();
       const result = await getTool("vault").handler({
         action: "delete",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
     });
@@ -3780,9 +3756,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("CONNECTION ERROR");
@@ -3795,9 +3768,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("AUTH ERROR");
@@ -3827,9 +3797,6 @@ describe("consolidated tools — registration and behavior", () => {
       const result = await getTool("vault").handler({
         action: "get",
         path: "x.md",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("NOT SUPPORTED");
@@ -3842,9 +3809,6 @@ describe("consolidated tools — registration and behavior", () => {
       );
       const result = await getTool("vault").handler({
         action: "list",
-        useRegex: false,
-        caseSensitive: true,
-        replaceAll: true,
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("ERROR: unexpected");

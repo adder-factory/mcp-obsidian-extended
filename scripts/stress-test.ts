@@ -267,12 +267,13 @@ async function testCacheRebuildUnderLoad(
     (_, i) => `${STRESS_PREFIX}cache_${String(i)}.md`,
   );
   await Promise.all(
-    files.map((f, i) =>
-      client.putContent(
-        f,
-        `# Cache File ${String(i)}\n\n[[${files[(i + 1) % fileCount] ?? ""}]]\n`,
-      ),
-    ),
+    files.map((f, i) => {
+      const next = files[(i + 1) % fileCount];
+      if (next === undefined) {
+        throw new Error("unreachable: index always in bounds");
+      }
+      return client.putContent(f, `# Cache File ${String(i)}\n\n[[${next}]]\n`);
+    }),
   );
 
   const cache = new VaultCache(client, 60_000);

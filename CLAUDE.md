@@ -39,7 +39,12 @@ API reference: @docs/cc-reference.md
 
 ## TypeScript Rules
 
-- STRICT MODE: `strict: true` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noPropertyAccessFromIndexSignature` + `noImplicitOverride` + `isolatedModules`
+- STRICT MODE: `strict: true` with the following flags enabled:
+  - `noUncheckedIndexedAccess`
+  - `exactOptionalPropertyTypes`
+  - `noPropertyAccessFromIndexSignature`
+  - `noImplicitOverride`
+  - `isolatedModules`
 - ESM only: `"type": "module"` in package.json, use `.js` extensions in import paths
 - NEVER use `any` — use `unknown` and narrow with type guards. ESLint `no-explicit-any` is set to error.
 - NEVER use `as` type assertions unless provably safe — prefer type narrowing
@@ -96,7 +101,7 @@ API reference: @docs/cc-reference.md
 - Early returns over deep nesting
 - Max function length: ~50 lines — extract helpers if longer
 - Exception: `withFileLock` uses `.then(fn, fn)` for its mutex-queue pattern — this is intentional and documented in obsidian.ts
-- Exception: `.then(onSuccess, onError)` two-argument form is allowed for fire-and-forget background tasks where you need to catch only the promise rejection, not errors in the success handler
+- Default to `async/await`; exception: `.then(onSuccess, onError)` two-argument form is allowed only for fire-and-forget background tasks where you intentionally catch only the original promise rejection, not errors thrown in the success handler
 
 ## Git Workflow
 
@@ -182,6 +187,8 @@ opening a PR must include Qwen.
 The gate invokes `npm test -- --coverage`. Your project's `test` script
 must be plain (e.g. `"test": "vitest run"`), without a hardcoded
 `--coverage` flag — otherwise the runner sees a duplicate flag and fails.
+Keep coverage as a separate script (e.g. `"test:coverage": "vitest run --coverage"`),
+which is consistent with the `npm run test:coverage` command above.
 Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 
 ### Branch strategy

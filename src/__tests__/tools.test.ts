@@ -2134,7 +2134,7 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — list_dir action", () => {
     it("calls client.listFilesInDir with path", async () => {
       const { client, getTool } = setup();
-      const result = await getTool("vault").handler({
+      await getTool("vault").handler({
         action: "list_dir",
         path: "mydir",
         useRegex: false,

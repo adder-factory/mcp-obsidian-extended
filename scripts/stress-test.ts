@@ -433,7 +433,7 @@ async function testMixedWorkload(
 
   return {
     name: "Mixed concurrent workload",
-    passed: successes >= totalOps - 2, // allow 2 failures for race conditions
+    passed: successes === totalOps, // require all operations to succeed
     duration,
     ops: totalOps,
     details: `${String(successes)}/${String(totalOps)} succeeded in ${fmt(duration)}, ${fmt(duration / totalOps)}/op`,

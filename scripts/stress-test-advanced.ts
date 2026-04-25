@@ -53,7 +53,11 @@ function loadDotenv(): void {
 }
 
 function pick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
+  const value = arr[Math.floor(Math.random() * arr.length)];
+  if (value === undefined) {
+    throw new Error("pick() requires a non-empty array");
+  }
+  return value;
 }
 
 function fmt(ms: number): string {

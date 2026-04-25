@@ -2118,7 +2118,11 @@ describe("consolidated tools — registration and behavior", () => {
     return { client, cache, getTool };
   }
 
-  function withVaultDefaults<T extends Record<string, unknown>>(
+  function withVaultDefaults<T extends Record<string, unknown>>(args: T): T {
+    return args;
+  }
+
+  function withSearchReplaceDefaults<T extends Record<string, unknown>>(
     args: T,
   ): T & {
     useRegex: boolean;

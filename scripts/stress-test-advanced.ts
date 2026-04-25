@@ -224,7 +224,8 @@ async function scenario1HeadingMismatch(
   const stats = new Stats();
   const durationMs = 3 * 60 * 1000;
   const fileCount = 20;
-  const headings = ["H1", "H2", "H3", "H4", "H5"];
+  const headings = ["H1", "H2", "H3", "H4", "H5"] as const;
+  const [h1, h2, h3, h4, h5] = headings;
   const startTime = Date.now();
 
   write(
@@ -236,7 +237,12 @@ async function scenario1HeadingMismatch(
   for (let i = 0; i < fileCount; i++) {
     const f = `${STRESS_PREFIX}heading_${String(i).padStart(2, "0")}.md`;
     files.push(f);
-    const content = `# ${headings[0]}\n\nH1 content\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+    const content = `${headings
+      .map((heading, index) => {
+        const level = index === 0 ? "#" : "##";
+        return `${level} ${heading}\n\nH${String(index + 1)} content`;
+      })
+      .join("\n\n")}\n`;
     await client.putContent(f, content);
   }
 
@@ -248,6 +254,21 @@ async function scenario1HeadingMismatch(
   let writerOps = 0;
   let patcherOps = 0;
 
+  interface HeadingSection {
+    readonly heading: string;
+    readonly body: string;
+  }
+
+  const buildHeadingContent = (
+    title: string,
+    sections: ReadonlyArray<HeadingSection>,
+  ): string => {
+    const sectionsText = sections
+      .map((s) => `## ${s.heading}\n\n${s.body}`)
+      .join("\n\n");
+    return `# ${title}\n\nH1 content\n\n${sectionsText}\n`;
+  };
+
   // Writer: restructure headings on random files
   const writerWork = async (): Promise<void> => {
     while (Date.now() < deadline) {
@@ -256,13 +277,28 @@ async function scenario1HeadingMismatch(
       let newContent: string;
       if (variant === 0) {
         // Rename H2 -> H2_renamed
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## H2_renamed\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(h1, [
+          { heading: "H2_renamed", body: "H2 content" },
+          { heading: h3, body: "H3 content" },
+          { heading: h4, body: "H4 content" },
+          { heading: h5, body: "H5 content" },
+        ]);
       } else if (variant === 1) {
         // Add a new heading
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## NewHeading\n\nNew stuff\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[3]}\n\nH4 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(h1, [
+          { heading: "NewHeading", body: "New stuff" },
+          { heading: h2, body: "H2 content" },
+          { heading: h3, body: "H3 content" },
+          { heading: h4, body: "H4 content" },
+          { heading: h5, body: "H5 content" },
+        ]);
       } else {
         // Remove H4
-        newContent = `# ${headings[0]}\n\nH1 content\n\n## ${headings[1]}\n\nH2 content\n\n## ${headings[2]}\n\nH3 content\n\n## ${headings[4]}\n\nH5 content\n`;
+        newContent = buildHeadingContent(h1, [
+          { heading: h2, body: "H2 content" },
+          { heading: h3, body: "H3 content" },
+          { heading: h5, body: "H5 content" },
+        ]);
       }
       await timedOp(stats, "heading:write", () =>
         client.putContent(file, newContent),
@@ -282,7 +318,7 @@ async function scenario1HeadingMismatch(
         client.patchContent(file, `\nPatched under ${heading} at ${uid()}\n`, {
           operation: "append",
           targetType: "heading",
-          target: `${headings[0]}::${heading}`,
+          target: `${h1}::${heading}`,
         }),
       );
       patcherOps++;

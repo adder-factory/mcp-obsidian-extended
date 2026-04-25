@@ -14,8 +14,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Module mocks — must be hoisted before imports
 // ---------------------------------------------------------------------------
 
-vi.mock("../config.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../config.js")>();
+vi.mock("../config.js", async () => {
+  const actual = await import("../config.js");
   return {
     ...actual,
     saveConfigToFile: vi.fn(),

@@ -313,7 +313,11 @@ async function scenario1HeadingMismatch(
   const patcherWork = async (): Promise<void> => {
     while (Date.now() < deadline) {
       const file = pick(files);
-      const heading = pick(headings.slice(1)); // Pick from H2-H5
+      const patchableHeadings = headings.slice(1); // Pick from H2-H5
+      if (patchableHeadings.length === 0) {
+        break;
+      }
+      const heading = pick(patchableHeadings);
       await timedOp(stats, "heading:patch", () =>
         client.patchContent(file, `\nPatched under ${heading} at ${uid()}\n`, {
           operation: "append",

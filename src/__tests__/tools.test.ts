@@ -592,7 +592,12 @@ describe("tool metadata — descriptions and schema hints", () => {
     return getRegistered().map(getTool);
   }
 
-  for (const mode of ["granular", "consolidated"] as const) {
+  const TOOL_MODES: Array<Parameters<typeof enumerateAllTools>[0]> = [
+    "granular",
+    "consolidated",
+  ];
+
+  for (const mode of TOOL_MODES) {
     describe(`${mode} mode (preset: full)`, () => {
       it("every tool has a non-empty description ≥ 10 chars and ≤ 15 words", () => {
         const tools = enumerateAllTools(mode);

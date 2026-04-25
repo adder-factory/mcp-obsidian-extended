@@ -131,7 +131,7 @@ jobs:
       # CE task and must be polled via /api/qualitygates/project_status.
       # Without the paired quality-gate-action, a failing QG is silently
       # reported as "SonarQube pass" on every PR.
-      - uses: SonarSource/sonarqube-scan-action@v5
+      - uses: SonarSource/sonarqube-scan-action@v6
         if: env.SONAR_TOKEN != ''
 
       - uses: SonarSource/sonarqube-quality-gate-action@v1.2.0

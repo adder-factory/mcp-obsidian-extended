@@ -188,11 +188,12 @@ upload not verdict — Issue #7).
 
 ## Verification Before Completion
 
-Before reporting a task complete, verify ALL of the following:
+Before reporting a task complete, verify ALL the following:
 
 1. The relevant gate or check actually ran (not skipped)
 2. Exit code was checked, not just process completion
-3. The metric the task targeted actually moved (not just "tests pass")
+3. The specific outcome or metric the task targeted actually changed (not
+   just "tests pass")
 4. Downstream consumers not broken (run dependent tests if changes touch
    shared code)
 5. The reported state matches the actual state (no hallucinated "all green")
@@ -210,7 +211,7 @@ next. Format per stage:
 1. Action — what the stage does
 2. Expected outcome — what success looks like, measurable
 3. Verification command/check — how to confirm the outcome
-4. Stop condition — what triggers escalation vs. proceeding
+4. Escalation trigger — what triggers stopping for human help vs. proceeding
 
 Do NOT batch verification at end of all stages. A failed early stage that
 propagates is harder to diagnose than one caught immediately.

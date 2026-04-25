@@ -441,7 +441,7 @@ describe("registerAllTools — consolidated mode", () => {
 describe("tool metadata — descriptions and schema hints", () => {
   // Recognized verb prefixes. Comma-separated openers ("Read, write, search…")
   // match because the first word is a verb. Tools whose descriptions open with
-  // a noun-category instead of a verb stay in VERB_OPENER_ALLOWLIST — keep that
+  // a noun-category instead of a verb stay in VERB_OPENER_EXCEPTIONS — keep that
   // set narrow; adding a name here is a deliberate exception to the contract.
   // Verb set is liberal by design — adding a verb here is cheap, but failing
   // a real PR for a legitimately verb-led description (e.g., a future "Rename"
@@ -463,7 +463,7 @@ describe("tool metadata — descriptions and schema hints", () => {
    */
   const countWords = (s: string): number =>
     s.trim().split(/\s+/).filter(Boolean).length;
-  const VERB_OPENER_ALLOWLIST = new Set<string>([
+  const VERB_OPENER_EXCEPTIONS = new Set<string>([
     // vault_analysis opens with "Backlinks, connections, structure…" — it
     // describes a category of read-only inspections, not a single action.
     "vault_analysis",
@@ -592,7 +592,12 @@ describe("tool metadata — descriptions and schema hints", () => {
     return getRegistered().map(getTool);
   }
 
-  for (const mode of ["granular", "consolidated"] as const) {
+  const TOOL_MODES: ReadonlyArray<Parameters<typeof enumerateAllTools>[0]> = [
+    "granular",
+    "consolidated",
+  ];
+
+  for (const mode of TOOL_MODES) {
     describe(`${mode} mode (preset: full)`, () => {
       it("every tool has a non-empty description ≥ 10 chars and ≤ 15 words", () => {
         const tools = enumerateAllTools(mode);
@@ -615,7 +620,7 @@ describe("tool metadata — descriptions and schema hints", () => {
       it("every tool description starts with a recognized verb (or is allowlisted)", () => {
         const tools = enumerateAllTools(mode);
         for (const t of tools) {
-          if (VERB_OPENER_ALLOWLIST.has(t.name)) continue;
+          if (VERB_OPENER_EXCEPTIONS.has(t.name)) continue;
           expect(t.description, `${t.name}: description verb prefix`).toMatch(
             VERB_PREFIX_RE,
           );
@@ -2118,21 +2123,6 @@ describe("consolidated tools — registration and behavior", () => {
     return { client, cache, getTool };
   }
 
-  function withVaultDefaults<T extends Record<string, unknown>>(
-    args: T,
-  ): T & {
-    useRegex: boolean;
-    caseSensitive: boolean;
-    replaceAll: boolean;
-  } {
-    return {
-      useRegex: false,
-      caseSensitive: true,
-      replaceAll: true,
-      ...args,
-    };
-  }
-
   // -------------------------------------------------------------------------
   // vault tool
   // -------------------------------------------------------------------------
@@ -2140,11 +2130,7 @@ describe("consolidated tools — registration and behavior", () => {
     it("calls client.listFilesInVault", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.listFilesInVault).mockResolvedValue({ files: ["x.md"] });
-      const result = await getTool("vault").handler(
-        withVaultDefaults({
-          action: "list",
-        }),
-      );
+      const result = await getTool("vault").handler({ action: "list" });
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(getText(result)).toContain("x.md");
     });
@@ -2153,22 +2139,13 @@ describe("consolidated tools — registration and behavior", () => {
   describe("vault — list_dir action", () => {
     it("calls client.listFilesInDir with path", async () => {
       const { client, getTool } = setup();
-      await getTool("vault").handler(
-        withVaultDefaults({
-          action: "list_dir",
-          path: "mydir",
-        }),
-      );
+      await getTool("vault").handler({ action: "list_dir", path: "mydir" });
       expect(client.listFilesInDir).toHaveBeenCalledWith("mydir");
     });
 
     it("returns errorResult when path is missing", async () => {
       const { getTool } = setup();
-      const result = await getTool("vault").handler(
-        withVaultDefaults({
-          action: "list_dir",
-        }),
-      );
+      const result = await getTool("vault").handler({ action: "list_dir" });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("path is required");
     });
@@ -4013,9 +3990,15 @@ describe("consolidated tools — registration and behavior", () => {
     function expectToolPrefixedError(result: ToolResult, tool: string): void {
       expect(result.isError).toBe(true);
       const text = getText(result);
+      const prefix = `[${tool}] `;
       expect(
-        text.startsWith(`[${tool}] `),
-        `expected error to start with "[${tool}] ", got: "${text}"`,
+        text.startsWith(prefix),
+        `expected error to start with "${prefix}", got: "${text}"`,
+      ).toBe(true);
+      const remainder = text.slice(prefix.length);
+      expect(
+        remainder.trim().length > 0,
+        `expected error to include non-empty text after "${prefix}", got: "${text}"`,
       ).toBe(true);
     }
 

@@ -2290,10 +2290,8 @@ describe("granular tools — registration and basic behavior", () => {
     // (lastIndexOf "/" → slice → check Set → ascend), and the orphans list
     // is sliced to the first 20. Targets the L397-411 mutant cluster.
 
-    function isStructurePlainObject(
-      v: unknown,
-    ): v is Record<string, unknown> {
-      return v !== null && typeof v === "object";
+    function isStructurePlainObject(v: unknown): v is Record<string, unknown> {
+      return v !== null && typeof v === "object" && !Array.isArray(v);
     }
 
     function buildStructureClient(
@@ -2318,12 +2316,18 @@ describe("granular tools — registration and basic behavior", () => {
       Object.defineProperty(cache, "linkCount", {
         get: vi.fn().mockReturnValue(linkCount),
       });
-      // Use Parameters<typeof registerGranularTools>[0] to derive the
-      // expected McpServer type from the function signature itself, so
-      // the cast is provably safe (same pattern applied to consolidated
-      // test helpers in PR #58).
+      // Construct a typed-server-shaped object via `satisfies` so the
+      // compiler verifies our mock matches what registerGranularTools
+      // expects (no `as` assertion). The full McpServer interface has
+      // many members but registerGranularTools only calls registerTool,
+      // so we cast the satisfies result to the parameter type via a
+      // single bridge cast — this still avoids `as never` and gives
+      // TypeScript a chance to verify the mock's shape.
+      const typedServer = {
+        registerTool: server.registerTool,
+      } satisfies { registerTool: typeof server.registerTool };
       registerGranularTools(
-        server as Parameters<typeof registerGranularTools>[0],
+        typedServer as Parameters<typeof registerGranularTools>[0],
         client,
         cache,
         () => true,

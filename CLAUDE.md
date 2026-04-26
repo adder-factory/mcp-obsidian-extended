@@ -147,19 +147,19 @@ consistently, log the run-times and revisit the prompt or the model choice.
 **Verdict logging (orchestrator-side, mandatory).** The reviewer
 subagent is read-only by design — it can't write its own verdict
 log. After receiving each reviewer verdict, **append a JSONL
-record** to `.adder-pipeline/reviewer-verdicts.jsonl` with this
-exact shape:
+record** to `.adder-pipeline/reviewer-verdicts.jsonl`. JSONL
+requires exactly one compact JSON object per line, terminated by a
+newline; no pretty-printing inside a record. Each record looks
+like:
 
-```json
-{
-  "timestamp": "2026-04-26T15:00:00Z",
-  "pr_number": 42,
-  "verdict": "APPROVE",
-  "wall_clock_seconds": 18
-}
+```text
+{"timestamp":"2026-04-26T15:00:00Z","pr_number":42,"verdict":"APPROVE","wall_clock_seconds":18}
 ```
 
-- One record per invocation, append-only. Create the file if absent.
+- One record per invocation, append-only. Create the directory
+  `.adder-pipeline/` and the file if absent (`mkdir -p
+.adder-pipeline && touch .adder-pipeline/reviewer-verdicts.jsonl`,
+  then append).
 - `timestamp` ISO-8601 UTC, `pr_number` is the GitHub PR number
   (use `0` if logging a pre-PR dry-run with no PR open yet),
   `verdict` is one of `APPROVE` / `REQUEST_CHANGES` / `BLOCK`,

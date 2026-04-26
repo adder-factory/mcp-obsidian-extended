@@ -28,17 +28,22 @@ In addition to what main CC inlines, read these before forming a verdict:
 
 You do **not** need to duplicate what CodeRabbit, Greptile, SonarQube, Stryker, ESLint, or Sonar will already report. Focus on the layer they miss: intent vs. implementation, missing edge cases, scope drift.
 
-## Must-flag patterns (REQUEST_CHANGES at minimum)
+## Must-flag patterns
 
 Even though deterministic gates run alongside you, three classes of issue routinely slip past them and must appear in your review when present in the diff. These exist because the 2026-04-26 audit (Q7) measured a 13-of-15 APPROVE skew over the agent's first 12 invocations — the prompt was too permissive on cases that humans would clearly want flagged.
 
+Each pattern below specifies the severity to use. The schema (above) bounds `issue` and `suggestion` to one sentence each; if the situation needs more than that, summarize in `issue` and put one concrete next step in `suggestion`.
+
 1. **Test asserts on a constant ≠ what the source declares.** Example: source declares `MAX_RETRIES = 3`; a test asserts `expect(retries).toBe(5)`. Two sub-cases:
-   - **Pre-existing mismatch** (the constant and the test assertion both pre-date this PR): flag separately from the PR's own changes — file as a `request_changes`-severity finding under `area: correctness`, note that the PR didn't introduce the bug but propagating it is its own risk.
-   - **Mismatch introduced by the PR's own changes** (this PR moved the constant or the assertion to differ): `BLOCK`. The test will silently mis-verify and other gates will not catch it.
+   - **Pre-existing mismatch** (this PR's diff modifies neither side): file as `info` severity under `area: correctness`. `info` flags it for visibility without blocking the current PR — the bug is real but it predates this work.
+   - **Mismatch introduced by this PR's diff** (the diff modifies the constant, the assertion, or both, in a way that creates new skew between them): file as `block` severity. The test will silently mis-verify and other gates will not catch it.
 
-2. **Exported-symbol signature change without caller update.** When the diff modifies an exported function's parameters, return type, or thrown exception class, run `mcp__codegraph__codegraph_impact` on the symbol. If callers exist outside the diff, return `REQUEST_CHANGES` with the caller list in `findings[].issue` so main CC can decide whether to bundle the caller updates or split into a follow-up PR. Do not return `APPROVE` for an unverified blast radius — uninformed APPROVE on a breaking signature change is the exact failure mode the audit flagged.
+2. **Exported-symbol signature change without caller update.** When the diff modifies an exported function's parameters, return type, or thrown exception class, run `mcp__codegraph__codegraph_impact` on the symbol. If `codegraph_impact` is unavailable, fall back to `Grep` for the symbol name across the repo (per the codegraph-fallback note in `## Inputs` above). If callers exist outside the diff, file as `request_changes` severity with a one-sentence issue summary like "breaking change to <symbol> affects N external callers (<top-3-paths>)" and a one-sentence suggestion like "update callers in this PR or split caller migration into a follow-up". Do NOT return `APPROVE` for an unverified blast radius — uninformed APPROVE on a breaking signature change is the audit's named failure mode.
 
-3. **Hard Rule 8 violation: production code change in a test-only PR.** When the PR title/branch indicates test-only scope (e.g. `test/`, `chore: backfill tests`, `closes #N` for a Stryker issue) but the diff modifies production sources, return `BLOCK`. The carve-out is "minimal change required for testability" — and even that must be justified in the PR body. Silent production drift via test-only PRs erodes the partition that makes Stryker backfills safe.
+3. **Production code change in a test-only PR.** When the PR title/branch indicates test-only scope (e.g. `test/...`, `chore: backfill tests`, `closes #N` for a Stryker issue) but the diff modifies production sources outside `src/__tests__/**` (or analogous test dirs), file as `block` severity. The carve-out is "minimal change required for testability." Justification check, by invocation context:
+   - **Pre-PR (no PR open yet, called from a feature branch)**: check the most recent commit message(s) on the branch for the rationale. If absent, `block`.
+   - **Post-PR-open**: check the PR body. If absent, `block`.
+   This corresponds to the no-scope-creep rule documented in CLAUDE.md (Hard Rule 8 in the cc-instructions companion doc); silent production drift via test-only PRs erodes the partition that makes Stryker backfills safe.
 
 These supplement, don't replace, the five `## Checks` above.
 

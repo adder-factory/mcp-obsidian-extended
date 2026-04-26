@@ -761,6 +761,13 @@ function createMockedClient(overrides: Partial<Config> = {}): {
   return { client, mockRequest };
 }
 
+/** Installs a no-op spy on process.stderr.write and returns it for assertions. */
+function spyOnStderr(): ReturnType<
+  typeof vi.spyOn<typeof process.stderr, "write">
+> {
+  return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+}
+
 function okJson(data: unknown): RequestResult {
   return {
     statusCode: 200,
@@ -981,6 +988,16 @@ describe("ObsidianClient — getFileContents", () => {
 // ObsidianClient — putContent
 // ---------------------------------------------------------------------------
 describe("ObsidianClient — putContent", () => {
+  // Restore vi.spyOn-installed mocks (notably the file-level
+  // process.stderr.write spy) between tests so .mock.calls history
+  // doesn't leak from a "warns" test into a subsequent "does NOT warn"
+  // assertion. The file-level beforeEach re-installs the spy, but
+  // vi.spyOn on the same property returns the same mock reference and
+  // does not auto-clear call history.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("writes content successfully", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());
@@ -1019,9 +1036,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warns on write verification mismatch", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1038,9 +1053,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warns on write verification read failure", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockRejectedValueOnce(new Error("read failed"));
@@ -1075,6 +1088,146 @@ describe("ObsidianClient — putContent", () => {
       "/vault/note.md",
       expect.objectContaining({ body: "" }),
     );
+  });
+
+  // --- Stryker mutation backfill: header shape, status acceptance, verify branches ---
+
+  it("sends Content-Type: text/markdown on the PUT request", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.putContent("note.md", "body");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("accepts 200 OK in addition to 204 No Content", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.putContent("note.md", "body")).resolves.toBeUndefined();
+  });
+
+  it("does NOT call verify-read when verifyWrites is disabled (default)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.putContent("note.md", "body");
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("verify-read sends Accept: text/markdown header", async () => {
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "matching",
+    });
+
+    await client.putContent("note.md", "matching");
+    const verifyHeaders = getCallHeaders(mockRequest.mock.calls[1]);
+    expect(verifyHeaders["Accept"]).toBe("text/markdown");
+    // The verify call must be a GET to the same path
+    expect(mockRequest.mock.calls[1]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[1]?.[1]).toBe("/vault/note.md");
+  });
+
+  it("does NOT warn when verify-read content matches written content", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "exact match",
+    });
+
+    await client.putContent("note.md", "exact match");
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((c) => c.includes("Write verification failed"))).toBe(
+      false,
+    );
+    expect(
+      calls.some((c) => c.includes("Write verification inconclusive")),
+    ).toBe(false);
+  });
+
+  it("considers content matched when only surrounding whitespace differs", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "  body  \n",
+    });
+
+    await client.putContent("note.md", "body");
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((c) => c.includes("Write verification failed"))).toBe(
+      false,
+    );
+  });
+
+  it("warns 'inconclusive' when verify-read returns non-200 status", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 503,
+      headers: {},
+      body: "service unavailable",
+    });
+
+    await client.putContent("note.md", "body");
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const inconclusive = calls.find((c) =>
+      c.includes("Write verification inconclusive"),
+    );
+    expect(inconclusive).toBeDefined();
+    expect(inconclusive).toContain("note.md");
+    expect(inconclusive).toContain("503");
+    // Must NOT also emit the mismatch warning when status was non-200
+    expect(calls.some((c) => c.includes("Write verification failed"))).toBe(
+      false,
+    );
+  });
+
+  it("warning text 'failed' includes 'content mismatch' explanation", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "different",
+    });
+
+    await client.putContent("note.md", "expected");
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const failed = calls.find((c) => c.includes("Write verification failed"));
+    expect(failed).toContain("note.md");
+    expect(failed).toContain("content mismatch");
+  });
+
+  it("read-failure warning includes the underlying error message", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ verifyWrites: true });
+    mockRequest.mockResolvedValueOnce(ok204());
+    mockRequest.mockRejectedValueOnce(new Error("ECONNRESET"));
+
+    await client.putContent("note.md", "body");
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const readFailed = calls.find((c) =>
+      c.includes("Write verification could not read back"),
+    );
+    expect(readFailed).toContain("note.md");
+    expect(readFailed).toContain("ECONNRESET");
   });
 });
 

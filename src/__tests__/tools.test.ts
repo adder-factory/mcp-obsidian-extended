@@ -2284,6 +2284,106 @@ describe("granular tools — registration and basic behavior", () => {
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
     });
 
+    // --- Stryker mutation backfill: buildVaultStructure (10 survivors) ---
+    //
+    // The directory-traversal loop walks each file path one slash at a time
+    // (lastIndexOf "/" → slice → check Set → ascend), and the orphans list
+    // is sliced to the first 20. Targets the L397-411 mutant cluster.
+
+    function buildStructureClient(
+      fileList: ReadonlyArray<string>,
+      orphans: ReadonlyArray<string> = [],
+      noteCount = fileList.length,
+      linkCount = 0,
+      edgeCount = 0,
+    ): ReturnType<typeof setup> {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(true);
+      vi.mocked(cache.getOrphanNotes).mockReturnValue(orphans as string[]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getEdgeCount).mockReturnValue(edgeCount);
+      vi.mocked(cache.getFileList).mockReturnValue(fileList as string[]);
+      Object.defineProperty(cache, "noteCount", {
+        get: vi.fn().mockReturnValue(noteCount),
+      });
+      Object.defineProperty(cache, "linkCount", {
+        get: vi.fn().mockReturnValue(linkCount),
+      });
+      registerGranularTools(
+        server as never,
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      return { client, cache, getTool };
+    }
+
+    async function callVaultStructure(
+      getTool: (name: string) => CapturedTool,
+      limit = 10,
+    ): Promise<Record<string, unknown>> {
+      const result = await getTool("get_vault_structure").handler({ limit });
+      const parsed: unknown = JSON.parse(getText(result));
+      if (parsed === null || typeof parsed !== "object") {
+        throw new Error("expected object response");
+      }
+      return parsed as Record<string, unknown>;
+    }
+
+    it("counts unique directories across nested paths (no duplicates, parents tracked)", async () => {
+      // a/b/c/note.md → directories: "a/b/c", "a/b", "a"
+      // a/b/other.md  → directories: "a/b" (already tracked, BREAK), "a" (skipped)
+      // x/y.md        → directories: "x"
+      // root.md       → no directories
+      // Expected unique: { "a/b/c", "a/b", "a", "x" } → 4
+      const { getTool } = buildStructureClient([
+        "a/b/c/note.md",
+        "a/b/other.md",
+        "x/y.md",
+        "root.md",
+      ]);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(4);
+    });
+
+    it("treats files at the vault root as zero directories", async () => {
+      const { getTool } = buildStructureClient(["a.md", "b.md", "c.md"]);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(0);
+    });
+
+    it("dedupes ancestor directories (early-break optimization)", async () => {
+      // 100 sibling files in deep/nested/dir/ should produce ONLY 3 dirs
+      // ("deep/nested/dir", "deep/nested", "deep"), not 100 × 3 = 300.
+      // The `break` on dirs.has(dir) ensures parents are skipped once seen.
+      const fileList = Array.from(
+        { length: 100 },
+        (_, i) => `deep/nested/dir/file${i}.md`,
+      );
+      const { getTool } = buildStructureClient(fileList);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(3);
+    });
+
+    it("slices orphans to first 20 even when cache returns more", async () => {
+      const orphans = Array.from({ length: 35 }, (_, i) => `orphan${i}.md`);
+      const { getTool } = buildStructureClient([], orphans);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["orphanCount"]).toBe(35); // total count preserved
+      expect(Array.isArray(parsed["orphans"])).toBe(true);
+      expect((parsed["orphans"] as unknown[]).length).toBe(20); // sliced
+    });
+
+    it("returns all orphans when cache returns ≤ 20", async () => {
+      const orphans = ["a.md", "b.md", "c.md"];
+      const { getTool } = buildStructureClient([], orphans);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["orphanCount"]).toBe(3);
+      expect(parsed["orphans"]).toEqual(["a.md", "b.md", "c.md"]);
+    });
+
     it("succeeds when cache becomes ready within the wait window", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();

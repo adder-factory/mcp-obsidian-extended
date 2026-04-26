@@ -2750,12 +2750,29 @@ describe("consolidated tools — registration and behavior", () => {
   }
 
   describe("vault — Zod schema validation (Stryker backfill)", () => {
+    // Action tuple is the source of truth. The payloads-record type below
+    // requires a payload for every action AND only those actions
+    // (bidirectional type safety, no `as` casts on `Object.keys()`).
+    //
     // Per-action minimal valid payloads. All non-action fields are
     // currently `.optional()` in the source schema, so `{action}` alone
     // parses today — but if Zod gains conditional required fields per
     // action (via `.refine` etc.), passing the realistic minimum keeps
     // these tests focused on the enum/default mutants they target.
-    const VAULT_PAYLOADS = {
+    const VAULT_ACTIONS = [
+      "list",
+      "list_dir",
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+      "search_replace",
+      "move",
+    ] as const;
+    const VAULT_PAYLOADS: Readonly<
+      Record<(typeof VAULT_ACTIONS)[number], Readonly<Record<string, unknown>>>
+    > = {
       list: { action: "list" },
       list_dir: { action: "list_dir", path: "dir" },
       get: { action: "get", path: "note.md" },
@@ -2777,10 +2794,7 @@ describe("consolidated tools — registration and behavior", () => {
         replace: "y",
       },
       move: { action: "move", source: "a.md", destination: "b.md" },
-    } as const;
-    const VAULT_ACTIONS = Object.keys(VAULT_PAYLOADS) as ReadonlyArray<
-      keyof typeof VAULT_PAYLOADS
-    >;
+    };
 
     it.each(VAULT_ACTIONS)("accepts action: %s", (action) => {
       const schema = getInputSchema("vault");
@@ -2867,7 +2881,19 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("active_file — Zod schema validation (Stryker backfill)", () => {
-    const ACTIVE_FILE_PAYLOADS = {
+    const ACTIVE_FILE_ACTIONS = [
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+    ] as const;
+    const ACTIVE_FILE_PAYLOADS: Readonly<
+      Record<
+        (typeof ACTIVE_FILE_ACTIONS)[number],
+        Readonly<Record<string, unknown>>
+      >
+    > = {
       get: { action: "get" },
       put: { action: "put", content: "body" },
       append: { action: "append", content: "body" },
@@ -2879,10 +2905,7 @@ describe("consolidated tools — registration and behavior", () => {
         target: "H",
       },
       delete: { action: "delete" },
-    } as const;
-    const ACTIVE_FILE_ACTIONS = Object.keys(
-      ACTIVE_FILE_PAYLOADS,
-    ) as ReadonlyArray<keyof typeof ACTIVE_FILE_PAYLOADS>;
+    };
 
     it.each(ACTIVE_FILE_ACTIONS)("accepts action: %s", (action) => {
       const schema = getInputSchema("active_file");
@@ -2945,13 +2968,16 @@ describe("consolidated tools — registration and behavior", () => {
   // -------------------------------------------------------------------------
 
   describe("commands — Zod schema validation (Stryker backfill)", () => {
-    const COMMANDS_PAYLOADS = {
+    const COMMANDS_ACTIONS = ["list", "execute"] as const;
+    const COMMANDS_PAYLOADS: Readonly<
+      Record<
+        (typeof COMMANDS_ACTIONS)[number],
+        Readonly<Record<string, unknown>>
+      >
+    > = {
       list: { action: "list" },
       execute: { action: "execute", commandId: "workspace:next-tab" },
-    } as const;
-    const COMMANDS_ACTIONS = Object.keys(COMMANDS_PAYLOADS) as ReadonlyArray<
-      keyof typeof COMMANDS_PAYLOADS
-    >;
+    };
 
     it.each(COMMANDS_ACTIONS)("accepts action: %s", (action) => {
       const schema = getInputSchema("commands");
@@ -2976,14 +3002,14 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("search — Zod schema validation (Stryker backfill)", () => {
-    const SEARCH_PAYLOADS = {
+    const SEARCH_TYPES = ["simple", "jsonlogic", "dataview"] as const;
+    const SEARCH_PAYLOADS: Readonly<
+      Record<(typeof SEARCH_TYPES)[number], Readonly<Record<string, unknown>>>
+    > = {
       simple: { type: "simple", query: "term" },
       jsonlogic: { type: "jsonlogic", jsonQuery: { glob: ["*.md"] } },
       dataview: { type: "dataview", query: 'TABLE FROM ""' },
-    } as const;
-    const SEARCH_TYPES = Object.keys(SEARCH_PAYLOADS) as ReadonlyArray<
-      keyof typeof SEARCH_PAYLOADS
-    >;
+    };
 
     it.each(SEARCH_TYPES)("accepts type: %s", (type) => {
       const schema = getInputSchema("search");
@@ -3004,7 +3030,19 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("periodic_note — Zod schema validation (Stryker backfill)", () => {
-    const PERIODIC_PAYLOADS = {
+    const PERIODIC_ACTIONS = [
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+    ] as const;
+    const PERIODIC_PAYLOADS: Readonly<
+      Record<
+        (typeof PERIODIC_ACTIONS)[number],
+        Readonly<Record<string, unknown>>
+      >
+    > = {
       get: { action: "get", period: "daily" },
       put: { action: "put", period: "daily", content: "body" },
       append: { action: "append", period: "daily", content: "body" },
@@ -3017,10 +3055,16 @@ describe("consolidated tools — registration and behavior", () => {
         target: "H",
       },
       delete: { action: "delete", period: "daily" },
-    } as const;
-    const PERIODIC_ACTIONS = Object.keys(PERIODIC_PAYLOADS) as ReadonlyArray<
-      keyof typeof PERIODIC_PAYLOADS
-    >;
+    };
+    // Periodic-note period enum (from periodSchema in src/schemas.ts).
+    // Tested here because handler-level tests bypass Zod validation.
+    const PERIODS = [
+      "daily",
+      "weekly",
+      "monthly",
+      "quarterly",
+      "yearly",
+    ] as const;
 
     it.each(PERIODIC_ACTIONS)("accepts action: %s", (action) => {
       const schema = getInputSchema("periodic_note");
@@ -3034,11 +3078,28 @@ describe("consolidated tools — registration and behavior", () => {
       ).toThrow();
     });
 
-    // Numeric constraints on month (1-12) and day (1-31). Stryker mutates
-    // .min(1).max(12) → .min(1).min(12) (both bounds same direction) etc.
-    // Tests must exercise BOTH bounds (lower and upper) to kill the mutants.
+    // periodSchema enum coverage — kills mutants on the shared periodSchema
+    // ArrayDeclaration / StringLiteral entries (in src/schemas.ts) when
+    // exercised through any tool that uses it.
+    it.each(PERIODS)("accepts period: %s", (period) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() => schema.parse({ action: "get", period })).not.toThrow();
+    });
 
-    it.each([0, -1, 13, 100])("rejects invalid month: %i", (month) => {
+    it("rejects a period outside the enum", () => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({ action: "get", period: "fortnightly" }),
+      ).toThrow();
+    });
+
+    // Numeric constraints on month (1-12) and day (1-31). Stryker mutates
+    // .min(1).max(12) → .min(1).min(12) (both bounds same direction) AND
+    // can remove the .int() constraint entirely. Tests exercise BOTH bounds
+    // AND the integer constraint (with non-integer values like 1.5/15.5)
+    // to kill all three mutant categories.
+
+    it.each([0, -1, 1.5, 13, 100])("rejects invalid month: %s", (month) => {
       const schema = getInputSchema("periodic_note");
       expect(() =>
         schema.parse({
@@ -3064,7 +3125,7 @@ describe("consolidated tools — registration and behavior", () => {
       ).not.toThrow();
     });
 
-    it.each([0, -1, 32, 100])("rejects invalid day: %i", (day) => {
+    it.each([0, -1, 15.5, 32, 100])("rejects invalid day: %s", (day) => {
       const schema = getInputSchema("periodic_note");
       expect(() =>
         schema.parse({
@@ -3111,13 +3172,13 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   describe("recent — Zod schema validation (Stryker backfill)", () => {
-    const RECENT_PAYLOADS = {
+    const RECENT_TYPES = ["changes", "periodic_notes"] as const;
+    const RECENT_PAYLOADS: Readonly<
+      Record<(typeof RECENT_TYPES)[number], Readonly<Record<string, unknown>>>
+    > = {
       changes: { type: "changes" },
       periodic_notes: { type: "periodic_notes", period: "daily" },
-    } as const;
-    const RECENT_TYPES = Object.keys(RECENT_PAYLOADS) as ReadonlyArray<
-      keyof typeof RECENT_PAYLOADS
-    >;
+    };
 
     it.each(RECENT_TYPES)("accepts type: %s", (type) => {
       const schema = getInputSchema("recent");
@@ -3136,22 +3197,31 @@ describe("consolidated tools — registration and behavior", () => {
       expect(parsed["limit"]).toBe(10);
     });
 
-    it("rejects limit < 1 (min(1) constraint)", () => {
+    // limit constraint — kills mutants on .int() and .min(1).
+    it.each([0, -1, 1.5])("rejects invalid limit: %s", (limit) => {
       const schema = getInputSchema("recent");
-      expect(() => schema.parse({ type: "changes", limit: 0 })).toThrow();
+      expect(() => schema.parse({ type: "changes", limit })).toThrow();
     });
   });
 
   describe("vault_analysis — Zod schema validation (Stryker backfill)", () => {
-    const VAULT_ANALYSIS_PAYLOADS = {
+    const VAULT_ANALYSIS_ACTIONS = [
+      "backlinks",
+      "connections",
+      "structure",
+      "refresh",
+    ] as const;
+    const VAULT_ANALYSIS_PAYLOADS: Readonly<
+      Record<
+        (typeof VAULT_ANALYSIS_ACTIONS)[number],
+        Readonly<Record<string, unknown>>
+      >
+    > = {
       backlinks: { action: "backlinks", path: "note.md" },
       connections: { action: "connections", path: "note.md" },
       structure: { action: "structure" },
       refresh: { action: "refresh" },
-    } as const;
-    const VAULT_ANALYSIS_ACTIONS = Object.keys(
-      VAULT_ANALYSIS_PAYLOADS,
-    ) as ReadonlyArray<keyof typeof VAULT_ANALYSIS_PAYLOADS>;
+    };
 
     it.each(VAULT_ANALYSIS_ACTIONS)("accepts action: %s", (action) => {
       const schema = getInputSchema("vault_analysis");
@@ -3170,9 +3240,10 @@ describe("consolidated tools — registration and behavior", () => {
       expect(parsed["limit"]).toBe(10);
     });
 
-    it("rejects limit < 1 (min(1) constraint)", () => {
+    // limit constraint — kills mutants on .int() and .min(1).
+    it.each([0, -1, 1.5])("rejects invalid limit: %s", (limit) => {
       const schema = getInputSchema("vault_analysis");
-      expect(() => schema.parse({ action: "structure", limit: 0 })).toThrow();
+      expect(() => schema.parse({ action: "structure", limit })).toThrow();
     });
   });
 

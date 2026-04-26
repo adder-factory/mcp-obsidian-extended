@@ -1,5 +1,7 @@
 .adder-pipeline/
 .github/workflows/pipeline.yml
+.github/workflows/stryker-affected.yml
+.github/workflows/stryker-full.yml
 knip.json
 
 # Tool-generated (managed by external tools, not ours to format)

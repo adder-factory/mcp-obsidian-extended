@@ -1,0 +1,157 @@
+name: Stryker (affected)
+
+# Feature-branch Stryker: only mutates source files actually changed in the
+# PR diff. Steady-state wall-clock target: <2 min. Bootstrap (first run, no
+# cache) may take up to 30 min — see timeout-minutes below.
+#
+# Companion to stryker-full.yml (which runs nightly + on every push to main
+# and populates the incremental cache that this workflow restores from).
+#
+# Background: 2026-04-26 audit Q4 found Stryker was 93 % of Pipeline-gate
+# wall-clock (~16 min of 17 min) on every PR, including doc-only and
+# test-only PRs that didn't touch any mutation-relevant source. Partitioning
+# into "affected on PRs / full nightly + on main" cuts feature-branch CI
+# turnaround by ~10x in steady state.
+
+on:
+  pull_request:
+    branches: [main]
+
+# One concurrent run per PR — cancel in-progress on new push.
+concurrency:
+  group: stryker-affected-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  stryker-affected:
+    name: Stryker (affected)
+    runs-on: ubuntu-latest
+    # Generous timeout for bootstrap (first run after partition lands has no
+    # cache to restore from — falls back to a full sweep, ~16-20 min). After
+    # one stryker-full.yml run on main has populated the cache, steady state
+    # is <2 min for typical PR sizes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history to diff against PR base. Shallow clones break
+          # `git diff origin/<base>...HEAD` for any non-trivial PR.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      # Skip cleanly when the target repo doesn't have a Stryker config —
+      # mirrors pipeline.yml's hashFiles guard so opt-in projects don't see
+      # spurious failures.
+      - name: Detect Stryker config
+        id: detect
+        run: |
+          if [ -f stryker.conf.mjs ] || [ -f stryker.conf.js ] || [ -f stryker.config.json ]; then
+            echo "present=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=0" >> "$GITHUB_OUTPUT"
+            echo "No Stryker config — skipping affected mutation testing."
+          fi
+
+      # Compute the list of source files actually changed in this PR. We
+      # restrict to *.ts under src/ (mutation surface) and exclude test
+      # files (Stryker doesn't mutate them).
+      #
+      # If the diff contains zero qualifying files, we exit successfully
+      # without invoking Stryker at all. Test-only and doc-only PRs land in
+      # this branch — the nightly stryker-full.yml validates the aggregate
+      # for them.
+      - name: Compute affected source files
+        id: affected
+        if: steps.detect.outputs.present == '1'
+        run: |
+          set -euo pipefail
+          BASE="${{ github.base_ref }}"
+          # Need the FULL history of the base branch so the three-dot diff
+          # below can locate the merge-base. `actions/checkout@v4` with
+          # `fetch-depth: 0` already fetched all history of the PR ref, but
+          # the base branch is not always populated as a tracked remote ref
+          # in the PR-event context — fetch it explicitly without a depth
+          # cap. A shallow fetch (`--depth=1`) silently breaks the three-dot
+          # diff on any PR with more than one commit since branching, which
+          # combined with `|| true` was a silent-pass failure mode (no
+          # mutation testing, gate appears green) — flagged by reviewer
+          # subagent on PR review of this very change.
+          git fetch --no-tags origin "$BASE"
+          # Three-dot diff finds files changed since merge-base of HEAD and
+          # base — i.e. files this PR changed, ignoring concurrent main
+          # commits. AMRC = Added / Modified / Renamed / Copied (Copied
+          # files often arrive with content modifications and should be
+          # mutated alongside ordinary modifications).
+          # No `|| true` — a real error (e.g. bad ref, missing merge-base)
+          # must fail the gate, not silently skip Stryker.
+          CHANGED=$(git diff --name-only --diff-filter=AMRC "origin/$BASE...HEAD" -- 'src/**/*.ts' \
+            | grep -vE '\.test\.ts$|\.spec\.ts$' || true)
+          # `grep` exits 1 when no lines match — that is the legitimate
+          # "no qualifying files" path, so `|| true` here is correct
+          # (different from suppressing a `git fetch`/`git diff` failure).
+          if [ -z "$CHANGED" ]; then
+            echo "empty=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::No qualifying src/**/*.ts changes — Stryker affected step skipped. Aggregate validation deferred to nightly stryker-full.yml."
+          else
+            # Stryker --mutate accepts a comma-separated glob list.
+            MUTATE=$(printf '%s\n' "$CHANGED" | paste -sd, -)
+            echo "mutate=$MUTATE" >> "$GITHUB_OUTPUT"
+            echo "Affected files for mutation:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  /'
+          fi
+
+      # Restore the incremental cache populated by stryker-full.yml on main.
+      #
+      # Cache-key strategy (replaces the prior `github.sha`-based key that
+      # forced a fresh save on every commit — 2026-04-26 audit Q4 finding):
+      #
+      # - Primary key hashes the inputs that actually invalidate Stryker's
+      #   per-file mutant state: stryker.conf.mjs (mutate globs, threshold,
+      #   carve-outs), package-lock.json (test-runner deps, mutator versions),
+      #   and src/**/*.ts (the mutation surface itself).
+      # - Restore-keys fall back to base-branch cache (typically main) and
+      #   then any cache for the OS — so the first run of any feature branch
+      #   inherits main's most recent populated cache.
+      # - Removed `${{ github.sha }}` — it changed every commit and forced a
+      #   fresh save, exhausting cache quota with near-duplicate entries.
+      - name: Restore Stryker incremental cache
+        id: stryker_cache
+        if: steps.detect.outputs.present == '1' && steps.affected.outputs.empty != '1'
+        uses: actions/cache@v4
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ runner.os }}-${{ hashFiles('stryker.conf.mjs', 'stryker.conf.js', 'stryker.config.json', 'package-lock.json') }}-${{ hashFiles('src/**/*.ts') }}
+          restore-keys: |
+            stryker-incremental-${{ runner.os }}-${{ hashFiles('stryker.conf.mjs', 'stryker.conf.js', 'stryker.config.json', 'package-lock.json') }}-
+            stryker-incremental-${{ runner.os }}-
+
+      - name: Stryker cache stats
+        if: steps.detect.outputs.present == '1' && steps.affected.outputs.empty != '1'
+        run: 'echo "Stryker incremental cache hit: ${{ steps.stryker_cache.outputs.cache-hit }}"'
+
+      # Run Stryker over only the affected files. --incremental still applies:
+      # within the affected set, files whose hashes match the cached state
+      # skip re-mutation; only files whose hash changed get re-tested.
+      #
+      # Caveat: --mutate overrides the config's `mutate` glob entirely. If
+      # the target repo has carve-outs (e.g. `!src/index.ts`) declared in
+      # stryker.conf.mjs, those are NOT honored when we pass --mutate. The
+      # workflow filter excludes test files explicitly; carved-out src files
+      # still slip through if the PR happens to touch one. In practice
+      # carve-outs are typically entry-point wiring that PRs rarely touch,
+      # and the nightly stryker-full.yml does respect the config — so the
+      # aggregate score remains correct on main even if a feature branch
+      # transiently re-mutates a carved-out file.
+      - name: Stryker (affected)
+        if: steps.detect.outputs.present == '1' && steps.affected.outputs.empty != '1'
+        run: npx stryker run --incremental --mutate "${{ steps.affected.outputs.mutate }}"

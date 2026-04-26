@@ -1,0 +1,83 @@
+name: Stryker (full)
+
+# Full-sweep Stryker: runs nightly and on every push to main.
+#
+# Two roles:
+#   1. Catch incremental-cache staleness. Stryker --incremental invalidates
+#      only on source-file changes, not test-file changes — meaning a chain
+#      of test-only PRs can drift the reported aggregate from reality. The
+#      2026-04-26 audit observed this: incremental was reporting 79.59 %
+#      while a fresh full run revealed the true 81.34 %.
+#   2. Populate the incremental cache that stryker-affected.yml restores
+#      from. Without a populated main-branch cache, every PR's first run is
+#      a cold sweep (~16-20 min) — the partition only delivers <2 min
+#      feature-branch turnaround once main has a fresh cache to hand off.
+#
+# Schedule: 05:00 UTC daily. The exact hour matters less than picking a
+# time that doesn't collide with peak human PR review hours (so cache
+# write doesn't race feature-branch reads).
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+    # Manual trigger so a human can pre-warm the cache after a config
+    # change without waiting for the next nightly cron — useful right
+    # after the partition lands or after a Stryker config bump.
+
+# Don't cancel in-progress full runs on new pushes — full sweeps are
+# expensive to redo and the cache they produce is valuable. Let them
+# complete; the next push picks up its own run.
+concurrency:
+  group: stryker-full-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  stryker-full:
+    name: Stryker (full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Detect Stryker config
+        id: detect
+        run: |
+          if [ -f stryker.conf.mjs ] || [ -f stryker.conf.js ] || [ -f stryker.config.json ]; then
+            echo "present=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=0" >> "$GITHUB_OUTPUT"
+            echo "No Stryker config — skipping full mutation testing."
+          fi
+
+      # Full sweep starts from a clean cache by design — that is the whole
+      # point of the workflow, to catch incremental-cache staleness. Save
+      # the resulting cache afterward so feature branches can restore from
+      # it. Cache key matches stryker-affected.yml so restores hit cleanly.
+      - name: Stryker (full sweep)
+        if: steps.detect.outputs.present == '1'
+        run: |
+          rm -f reports/stryker-incremental.json
+          npx stryker run
+
+      - name: Save Stryker incremental cache
+        if: steps.detect.outputs.present == '1' && success() && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: actions/cache/save@v4
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ runner.os }}-${{ hashFiles('stryker.conf.mjs', 'stryker.conf.js', 'stryker.config.json', 'package-lock.json') }}-${{ hashFiles('src/**/*.ts') }}

@@ -39,6 +39,7 @@ import { registerAllTools } from "../tools.js";
 import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
+import { setCompactResponses } from "../obsidian.js";
 import type { VaultCache, CachedNote } from "../cache.js";
 import {
   ObsidianApiError,
@@ -54,6 +55,13 @@ import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 beforeEach(() => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  // Clear stale call history on the file-scoped saveConfigToFile mock.
+  // vi.restoreAllMocks() in the afterEach below restores spies but does
+  // NOT clear call history on module mocks — without this, tests that
+  // assert via toHaveBeenLastCalledWith could be satisfied by a prior
+  // test's call. File-scoped so EVERY test (not just the configure-set
+  // describe block) starts with an empty history.
+  vi.mocked(saveConfigToFile).mockClear();
 });
 
 afterEach(() => {
@@ -1814,6 +1822,265 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(getText(result)).toContain("Restart the server");
     });
+
+    // --- Stryker mutation backfill: parseBoolValue + parsePosIntValue + CONFIG_UPDATE_PARSERS ---
+
+    // parseBoolValue is private; exercise via the boolean settings (debug,
+    // compactResponses, verifyWrites). Each `true`/`false` string must parse
+    // and any other input must be rejected. Tests the L119/L120 string-equality
+    // mutants ("true" → "", "false" → "").
+
+    it.each([
+      ["true", true],
+      ["false", false],
+    ])("parses debug='%s' to boolean %s", async (input, expected) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: input,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        debug: expected,
+      });
+    });
+
+    it.each(["TRUE", "True", "1", "0", "yes", "no", ""])(
+      "rejects non-boolean debug value '%s' and does not write config",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "debug",
+          value,
+        });
+        expect(result.isError).toBe(true);
+        expect(getText(result)).toContain("Invalid value");
+        expect(saveConfigToFile).not.toHaveBeenCalled();
+      },
+    );
+
+    // parsePosIntValue is private; exercise via timeout (min=1) and
+    // maxResponseChars (min=0). Tests:
+    //   - empty string rejected (L131 trim guard)
+    //   - non-numeric rejected (L132 Number cast)
+    //   - non-finite rejected (Infinity, NaN)
+    //   - non-integer rejected (decimals like 1.5)
+    //   - below-min rejected (timeout < 1, maxResponseChars < 0)
+
+    it.each([
+      ["", "empty string"],
+      [" ", "whitespace-only"],
+      ["abc", "non-numeric text"],
+      ["1.5", "decimal"],
+      ["NaN", "literal NaN"],
+      ["Infinity", "literal Infinity"],
+      ["0", "below min=1"],
+      ["-5", "negative"],
+    ])("rejects timeout=%j (%s) and does not write config", async (value) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value,
+      });
+      expect(result.isError).toBe(true);
+      expect(saveConfigToFile).not.toHaveBeenCalled();
+    });
+
+    it("accepts maxResponseChars=0 (min=0 boundary)", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "0",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 0 },
+      });
+    });
+
+    it("rejects maxResponseChars=-1 (below min=0) and does not write config", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "-1",
+      });
+      expect(result.isError).toBe(true);
+      expect(saveConfigToFile).not.toHaveBeenCalled();
+    });
+
+    // CONFIG_UPDATE_PARSERS Map entries — each setting must route to its
+    // parser and produce the correct nested update shape. Kills the
+    // ArrayDeclaration mutants on each Map row (parser deletion would
+    // mean the setting is not recognized, returning "Unknown setting").
+
+    it("compactResponses=true produces { compactResponses: true }", async () => {
+      const { getTool } = setup();
+      try {
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "compactResponses",
+          value: "true",
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          compactResponses: true,
+        });
+      } finally {
+        // Reset module-level state — the configure handler calls
+        // setCompactResponses(true) as an immediate side-effect, which
+        // would otherwise leak into other tests using jsonResult().
+        setCompactResponses(false);
+      }
+    });
+
+    it("verifyWrites=true produces { reliability: { verifyWrites: true } }", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "verifyWrites",
+        value: "true",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { verifyWrites: true },
+      });
+    });
+
+    it.each(["granular", "consolidated"])(
+      "toolMode='%s' produces { tools: { mode: '%s' } }",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "toolMode",
+          value,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          tools: { mode: value },
+        });
+      },
+    );
+
+    it.each(["full", "read-only", "minimal", "safe"])(
+      "toolPreset='%s' produces { tools: { preset: '%s' } }",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "toolPreset",
+          value,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          tools: { preset: value },
+        });
+      },
+    );
+
+    // --- Additional happy-path / negative coverage (CodeRabbit cycle-5 ask) ---
+
+    // parsePosIntValue boundary + larger integer (timeout, min=1)
+    it.each([
+      ["1", 1],
+      ["60000", 60000],
+      ["2147483647", 2147483647],
+    ])("accepts timeout=%s and saves as %i", async (value, expected) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { timeout: expected },
+      });
+    });
+
+    it("accepts maxResponseChars=10 (typical positive integer)", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "10",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 10 },
+      });
+    });
+
+    // Boolean false-path — kills a separate StringLiteral mutant on
+    // parseBoolValue("false") and the wrap-as-{ key: false } shape.
+    it("compactResponses=false produces { compactResponses: false }", async () => {
+      const { getTool } = setup();
+      try {
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "compactResponses",
+          value: "false",
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          compactResponses: false,
+        });
+      } finally {
+        // configure handler ALSO calls setCompactResponses(false) for false;
+        // explicit reset for symmetry with the =true test above.
+        setCompactResponses(false);
+      }
+    });
+
+    it("verifyWrites=false produces { reliability: { verifyWrites: false } }", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "verifyWrites",
+        value: "false",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { verifyWrites: false },
+      });
+    });
+
+    // Invalid enum value rejection for toolPreset (existing test covers
+    // toolMode invalid; add the symmetric one for toolPreset).
+    it("rejects invalid toolPreset value and does not write config", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolPreset",
+        value: "experimental", // not in enum
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Invalid value");
+      expect(saveConfigToFile).not.toHaveBeenCalled();
+    });
+
+    // Empty/whitespace string → "Invalid value" error message contract for
+    // boolean settings (parseBoolValue returns undefined → handler returns
+    // errorResult with "Invalid value").
+    it.each(["", "   ", "\n", "\t"])(
+      "rejects empty/whitespace boolean value '%s' with 'Invalid value' and does not write config",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "verifyWrites",
+          value,
+        });
+        expect(result.isError).toBe(true);
+        expect(getText(result)).toContain("Invalid value");
+        expect(saveConfigToFile).not.toHaveBeenCalled();
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

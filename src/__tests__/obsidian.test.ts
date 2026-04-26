@@ -3673,3 +3673,303 @@ describe("ObsidianClient — periodic notes (current) — Stryker backfill", () 
     await expect(client.deletePeriodicNote("daily")).resolves.toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ObsidianClient — case-insensitive fallback (Stryker mutation backfill)
+// ---------------------------------------------------------------------------
+//
+// requestWithFallback (lines 806-834) and findCaseInsensitivePath (lines
+// 841-885) jointly implement the case-insensitive 404-recovery path. Only
+// one existing test exercises the happy path; many surviving Stryker
+// mutants are in the conditional guards, the listing/parsing pipeline,
+// and the match-uniqueness check. Each test below targets a specific
+// mutant cluster.
+
+describe("ObsidianClient — case-insensitive fallback (mutation backfill)", () => {
+  // Restore mocks + reset module debug state between tests in this block —
+  // consistent with the other describe blocks in this file (lines 1609,
+  // 2205, 3260, 3467) and prevents stderr-spy / debug-flag leakage when
+  // an earlier test enables debug or installs a spy. Gemini medium @ #67.
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDebugEnabled(false);
+  });
+
+  // requestWithFallback L824: `res.statusCode === 404 && method === "GET"` —
+  // both halves of the AND tested independently. Status side via
+  // getFileContents (public GET method); method side via direct invocation
+  // of the private method (no public non-GET caller of requestWithFallback).
+
+  it("does NOT trigger fallback when status is non-404 (e.g. 500)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 500,
+      headers: {},
+      body: JSON.stringify({ message: "Internal error" }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    // Only ONE call — no fallback listing was attempted.
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT trigger fallback when status is 400", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 400,
+      headers: {},
+      body: JSON.stringify({ message: "Bad request" }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // requestWithFallback L824: method === "GET" half — non-GET methods MUST
+  // NOT attempt fallback even on 404. The only public caller of
+  // requestWithFallback today is getFileContents (GET); to exercise the
+  // method-side guard we invoke the private method directly via a typed
+  // bracket-access bridge. CodeRabbit major @ #67. The cast is provably
+  // safe: requestWithFallback exists at runtime, and the bridge type
+  // matches its signature exactly.
+
+  it("does NOT trigger fallback when method is non-GET, even on 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+
+    const requestWithFallback = (
+      client as unknown as Record<
+        string,
+        (
+          method: string,
+          basePath: string,
+          filePath: string,
+          options?: Record<string, unknown>,
+        ) => Promise<RequestResult>
+      >
+    )["requestWithFallback"];
+    if (!requestWithFallback)
+      throw new Error("requestWithFallback not found on client");
+
+    const res = await requestWithFallback.call(
+      client,
+      "PUT",
+      "/vault/",
+      "Notes/MyFile.md",
+    );
+    expect(res.statusCode).toBe(404);
+    // Single call — no listing/retry attempted because method !== "GET".
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // findCaseInsensitivePath L850: listRes.statusCode !== 200 → undefined
+  it("returns 404 (no fallback) when vault listing itself returns non-200", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 500,
+      headers: {},
+      body: "internal error",
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    // 2 calls: original 404 + listing → no retry.
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // findCaseInsensitivePath L854/L862: parsed body must be an object with
+  // a "files" key that is an array.
+  it("returns 404 (no fallback) when listing body is not valid JSON", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "not json at all",
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 404 (no fallback) when listing JSON has no 'files' key", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ other: "shape" }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 404 (no fallback) when 'files' value is not an array", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: "not an array" }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // findCaseInsensitivePath L867: filter to strings only
+  it("ignores non-string entries in the files listing during case-insensitive match", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({
+        files: [123, null, { not: "string" }, "Notes/myfile.md"],
+      }),
+    });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "found via case-insensitive",
+    });
+    const result = await client.getFileContents("Notes/MyFile.md");
+    expect(result).toBe("found via case-insensitive");
+  });
+
+  // findCaseInsensitivePath L870: directories (paths ending in /) excluded
+  it("excludes directory entries (ending in '/') from case-insensitive match", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    // "notes/myfile.md/" looks like a case-match but has a trailing slash — must be ignored.
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: ["notes/myfile.md/"] }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // findCaseInsensitivePath L874: matches.length === 1 — ambiguous (>1) returns undefined
+  it("returns 404 (no retry) when 2+ case-insensitive matches found (ambiguous)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      // Two distinct files that both match "notes/myfile.md" case-insensitively
+      body: JSON.stringify({
+        files: ["Notes/MYFILE.md", "Notes/MyFile.MD"],
+      }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    // Only listing was attempted (2 calls), no retry due to ambiguity.
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // findCaseInsensitivePath L874: matches.length === 0 — true 404
+  it("returns 404 (no retry) when zero case-insensitive matches", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: ["completely/unrelated.md"] }),
+    });
+    await expect(client.getFileContents("Notes/MyFile.md")).rejects.toThrow(
+      ObsidianApiError,
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // findCaseInsensitivePath L877: log message exact format with arrow.
+  // Block-level afterEach handles setDebugEnabled(false) reset (Gemini @ #67).
+  it("logs case-insensitive fallback at debug level with exact 'X → Y' format", async () => {
+    const { client, mockRequest } = createMockedClient({ debug: true });
+    setDebugEnabled(true);
+    const spy = spyOnStderr();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: ["Notes/myfile.md"] }),
+    });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "found",
+    });
+    await client.getFileContents("Notes/MyFile.md");
+    // Exact log line: '[debug] Case-insensitive fallback: "<input>" → "<corrected>"\n'
+    expect(spy).toHaveBeenCalledWith(
+      '[debug] Case-insensitive fallback: "Notes/MyFile.md" → "Notes/myfile.md"\n',
+    );
+  });
+
+  // findCaseInsensitivePath L882: catch block — any thrown error returns
+  // undefined. CodeRabbit major @ #67: assert exact preserved status (404)
+  // + retry-call-count, not just the error type, to catch regressions
+  // that swap the status code or accidentally trigger a real retry.
+  it("swallows errors thrown during fallback listing and returns the original 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    // Listing call rejects (e.g., network error) — caught silently.
+    mockRequest.mockRejectedValueOnce(new Error("network down"));
+    const err = await client
+      .getFileContents("Notes/MyFile.md")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ObsidianApiError);
+    expect((err as ObsidianApiError).statusCode).toBe(404);
+    // 2 calls: original 404 + listing-rejected; no third (no retry).
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  // requestWithFallback: corrected path is re-encoded before retry. Asserts
+  // that the retry call uses the corrected (case-fixed) path, not the
+  // original.
+  it("retries with the case-corrected path verbatim (asserts the retry URL)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: JSON.stringify({ files: ["Notes/myfile.md"] }),
+    });
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 200,
+      headers: {},
+      body: "ok",
+    });
+    await client.getFileContents("Notes/MyFile.md");
+    // 3rd call (the retry) must hit the CORRECTED path, not the original.
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/vault/Notes/myfile.md");
+  });
+
+  // sanitizeFilePath upstream guard — traversal paths reject before
+  // any HTTP call. Renamed + tightened per CodeRabbit minor @ #67 to
+  // assert the SPECIFIC sanitize message rather than any throw.
+  it("throws sanitize error and does not attempt fallback when path is invalid", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce(notFound());
+    // The .. would throw inside sanitizeFilePath; getFileContents itself
+    // also calls sanitize first, so this won't reach the listing.
+    await expect(client.getFileContents("../etc/passwd")).rejects.toThrow(
+      "Path traversal not allowed",
+    );
+    // No fallback listing attempted because sanitize throws upstream.
+    expect(mockRequest).toHaveBeenCalledTimes(0);
+  });
+});

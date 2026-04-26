@@ -144,6 +144,33 @@ drift — surfaced before code goes public.
 Time budget: ~120 seconds. If the reviewer takes longer than that
 consistently, log the run-times and revisit the prompt or the model choice.
 
+**Verdict logging (orchestrator-side, mandatory).** The reviewer
+subagent is read-only by design — it can't write its own verdict
+log. After receiving each reviewer verdict, **append a JSONL
+record** to `.adder-pipeline/reviewer-verdicts.jsonl` with this
+exact shape:
+
+```json
+{
+  "timestamp": "2026-04-26T15:00:00Z",
+  "pr_number": 42,
+  "verdict": "APPROVE",
+  "wall_clock_seconds": 18
+}
+```
+
+- One record per invocation, append-only. Create the file if absent.
+- `timestamp` ISO-8601 UTC, `pr_number` is the GitHub PR number
+  (use `0` if logging a pre-PR dry-run with no PR open yet),
+  `verdict` is one of `APPROVE` / `REQUEST_CHANGES` / `BLOCK`,
+  `wall_clock_seconds` is the integer seconds the agent took.
+- The log feeds the weekly distribution check that drives the
+  prompt-tightness re-evaluation; see
+  `~/projects/code-review-pipeline/pipeline-state.md` "Reviewer
+  subagent" for the keep/tune criteria.
+- Do this even when the verdict is `APPROVE`. The denominator is as
+  important as the numerator.
+
 ## Mutation Testing — Ratchet Policy (active, post-floor)
 
 Stryker `thresholds.break` is currently set to **80** in

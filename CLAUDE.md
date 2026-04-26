@@ -310,14 +310,15 @@ propagates is harder to diagnose than one caught immediately.
 
 ## Spec Drift Prevention
 
-Adding a new gate, reviewer, or pipeline step requires a PR to
-`~/projects/code-review-pipeline/pipeline-state.md` FIRST, before the
-implementing PR. The `pipeline-state.md` update is part of the
-implementing PR's diff or immediately precedes it.
-
-Removing a gate, reviewer, or step requires the same — a
-`pipeline-state.md` PR documenting the removal alongside or immediately
-preceding the change.
+Any addition or removal of a gate, reviewer, or pipeline step must be
+recorded in `~/projects/code-review-pipeline/pipeline-state.md`. Because
+`pipeline-state.md` lives in a separate filesystem location from this
+repo (it is vault-adjacent, not part of any repo's diff), the rule is:
+**commit the `pipeline-state.md` update alongside or immediately before
+the implementing PR**. "Alongside" means in the same working session;
+"immediately before" means no other implementing PR lands between the
+state-doc update and the change it documents. The state document must
+always reflect what `main` actually runs.
 
 Drift erodes trust. Every drift item caught in the 2026-04-26 audit (Q5
 in `~/projects/code-review-pipeline/build-log.md`) happened because this
@@ -396,9 +397,17 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    recorded in `~/projects/code-review-pipeline/pipeline-state.md`.
 3. Dependabot runs on dep-related PRs
 4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
-   advisory-reviewer threads with the same rigor — nitpicks count — but apply
-   Hard Rule 8 triage when an advisory reviewer disagrees with CodeRabbit or
-   the project's CLAUDE.md conventions.
+   advisory-reviewer threads with the same rigor — nitpicks count. When an
+   advisory reviewer disagrees with CodeRabbit or with this CLAUDE.md, the
+   triage rule is:
+   - **Convergent finding** (≥2 reviewers flag the same issue): auto-apply.
+   - **CodeRabbit vs. advisory disagreement**: prefer CodeRabbit (the
+     required reviewer); auto-dismiss the advisory finding with a one-line
+     reason in the PR body.
+   - **Advisory finding contradicts an explicit rule in this CLAUDE.md**:
+     auto-dismiss; cite the CLAUDE.md section in the dismissal note.
+   - **Substantive disagreement that doesn't fit the above** (e.g. two
+     incompatible fixes, both defensible): stop and ask the human.
 5. If reviewers disagree substantively (e.g. CodeRabbit and Gemini propose
    incompatible fixes), stop and ask the human — do not oscillate between
    the two reviewers' preferred approaches.

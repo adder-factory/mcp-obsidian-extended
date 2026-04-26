@@ -115,8 +115,10 @@ jobs:
         run: semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off --quiet .
 
       # Qwen step intentionally omitted — runs locally only via
-      # scripts/pre-pr.sh (spec step 15). CI relies on CodeRabbit + CodeAnt
-      # for the post-push AI review perspective.
+      # scripts/pre-pr.sh (spec step 15). CI relies on CodeRabbit (required)
+      # plus advisory reviewers (Gemini, Greptile, CodeQL) for the post-push
+      # AI review perspective. The live reviewer roster lives in
+      # ~/projects/code-review-pipeline/pipeline-state.md.
 
   sonar:
     name: SonarQube

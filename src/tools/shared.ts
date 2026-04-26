@@ -456,9 +456,23 @@ export async function handleRecentChanges(
         return { path: fp, mtime: 0 };
       }),
     );
-    for (const r of results) {
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j];
+      if (r === undefined) continue;
       if (r.status === "fulfilled") {
         withStats.push(r.value);
+      } else {
+        // Surface partial-data-loss conditions (CLAUDE.md: "NEVER swallow
+        // errors silently — always log or rethrow"). The recent-changes
+        // result is a best-effort summary, so a per-file failure shouldn't
+        // abort the whole call — but it must be observable.
+        const failedPath = batch[j] ?? "<unknown>";
+        const reason =
+          r.reason instanceof Error ? r.reason.message : String(r.reason);
+        log(
+          "warn",
+          `recent_changes: skipping ${failedPath} (read failed: ${reason})`,
+        );
       }
     }
   }

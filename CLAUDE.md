@@ -163,6 +163,11 @@ policy is now in effect.
   `(new_score − 1pp)` so it always sits ~1pp below the current kill
   rate — tight enough to catch a regression, loose enough to tolerate
   incremental-cache noise. Hard floor: never drop below 80.
+  **Stryker invariant `high >= low >= break` must hold.** When
+  bumping `break` above 80, also bump `low` and `high` so the
+  inequality stays valid (e.g. all three to the new value, or
+  `low = break` and `high = 100` if you want a high-band signal).
+  Failing to do so produces a Stryker config error at gate time.
 - **Tests-only for kill-rate work.** Hard Rule 8 applies: PRs that
   exist primarily to raise the mutation score add tests, not
   production code, unless a minimal change is genuinely required to
@@ -184,10 +189,13 @@ policy is now in effect.
   More than 5 carve-outs ⇒ escalate for human policy review. Current
   count is tracked in `stryker.conf.mjs` via grep-able
   `// Carve-out N/5: <path>` comments.
+
 - **Re-baseline after each merge that moves the score.** Update the
   score-history comment in `stryker.conf.mjs` (the in-repo
-  authoritative record) and bump `thresholds.break` per the ratchet
-  formula above.
+  authoritative record) and bump the entire `thresholds` object per
+  the ratchet formula above — remember `high >= low >= break` so
+  `low` and `high` move with `break` whenever `break` exceeds the
+  current `low` value.
 - **Beware incremental-cache staleness.** Stryker's `--incremental`
   cache invalidates on source-file changes but NOT on test-file
   changes — meaning test-only PRs may report a stale aggregate that

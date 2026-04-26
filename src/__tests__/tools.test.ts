@@ -3732,10 +3732,8 @@ describe("consolidated tools — registration and behavior", () => {
     }
 
     /**
-     * Builds a properly-typed CachedNote. Returns `unknown` so the caller
-     * passes it through `vi.mocked(...).mockReturnValue(... as never)` is
-     * not needed — the mock typing accepts `unknown[]` via the cache
-     * interface contract.
+     * Builds a CachedNote-shaped object for recent-changes cache-path tests.
+     * Keeps test data strongly typed without unsafe broad casts.
      */
     function makeCachedNote(
       path: string,

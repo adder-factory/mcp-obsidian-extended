@@ -761,6 +761,13 @@ function createMockedClient(overrides: Partial<Config> = {}): {
   return { client, mockRequest };
 }
 
+/** Installs a no-op spy on process.stderr.write and returns it for assertions. */
+function spyOnStderr(): ReturnType<
+  typeof vi.spyOn<typeof process.stderr, "write">
+> {
+  return vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+}
+
 function okJson(data: unknown): RequestResult {
   return {
     statusCode: 200,
@@ -1029,9 +1036,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warns on write verification mismatch", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1048,9 +1053,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warns on write verification read failure", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockRejectedValueOnce(new Error("read failed"));
@@ -1135,9 +1138,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("does NOT warn when verify-read content matches written content", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1157,9 +1158,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("considers content matched when only surrounding whitespace differs", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1176,9 +1175,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warns 'inconclusive' when verify-read returns non-200 status", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1202,9 +1199,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("warning text 'failed' includes 'content mismatch' explanation", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockResolvedValueOnce({
@@ -1221,9 +1216,7 @@ describe("ObsidianClient — putContent", () => {
   });
 
   it("read-failure warning includes the underlying error message", async () => {
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockImplementation(() => true);
+    const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient({ verifyWrites: true });
     mockRequest.mockResolvedValueOnce(ok204());
     mockRequest.mockRejectedValueOnce(new Error("ECONNRESET"));

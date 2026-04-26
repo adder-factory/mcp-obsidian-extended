@@ -2936,6 +2936,247 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Stryker mutation backfill: Zod-schema validation for the rest of the
+  // consolidated tools (commands, search, periodic_note, batch_get, recent,
+  // vault_analysis). Reuses isParseable / isRecord / getInputSchema helpers
+  // defined above. Each describe block targets the tool's surviving mutants
+  // (action enums, numeric constraints, message literals) via direct schema
+  // round-trip, since handler-level tests bypass Zod entirely.
+  // -------------------------------------------------------------------------
+
+  describe("commands — Zod schema validation (Stryker backfill)", () => {
+    const COMMANDS_PAYLOADS = {
+      list: { action: "list" },
+      execute: { action: "execute", commandId: "workspace:next-tab" },
+    } as const;
+    const COMMANDS_ACTIONS = Object.keys(COMMANDS_PAYLOADS) as ReadonlyArray<
+      keyof typeof COMMANDS_PAYLOADS
+    >;
+
+    it.each(COMMANDS_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getInputSchema("commands");
+      expect(() => schema.parse(COMMANDS_PAYLOADS[action])).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getInputSchema("commands");
+      expect(() => schema.parse({ action: "invalid_command" })).toThrow();
+    });
+
+    it("execute returns exactly 'Executed: <commandId>' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.executeCommand).mockResolvedValue();
+      const result = await getTool("commands").handler({
+        action: "execute",
+        commandId: "workspace:next-tab",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toBe("Executed: workspace:next-tab");
+    });
+  });
+
+  describe("search — Zod schema validation (Stryker backfill)", () => {
+    const SEARCH_PAYLOADS = {
+      simple: { type: "simple", query: "term" },
+      jsonlogic: { type: "jsonlogic", jsonQuery: { glob: ["*.md"] } },
+      dataview: { type: "dataview", query: 'TABLE FROM ""' },
+    } as const;
+    const SEARCH_TYPES = Object.keys(SEARCH_PAYLOADS) as ReadonlyArray<
+      keyof typeof SEARCH_PAYLOADS
+    >;
+
+    it.each(SEARCH_TYPES)("accepts type: %s", (type) => {
+      const schema = getInputSchema("search");
+      expect(() => schema.parse(SEARCH_PAYLOADS[type])).not.toThrow();
+    });
+
+    it("rejects a type outside the enum", () => {
+      const schema = getInputSchema("search");
+      expect(() => schema.parse({ type: "fuzzy" })).toThrow();
+    });
+
+    it("contextLength defaults to 100 when omitted", () => {
+      const schema = getInputSchema("search");
+      const parsed = schema.parse(SEARCH_PAYLOADS["simple"]);
+      if (!isRecord(parsed)) throw new Error("expected object");
+      expect(parsed["contextLength"]).toBe(100);
+    });
+  });
+
+  describe("periodic_note — Zod schema validation (Stryker backfill)", () => {
+    const PERIODIC_PAYLOADS = {
+      get: { action: "get", period: "daily" },
+      put: { action: "put", period: "daily", content: "body" },
+      append: { action: "append", period: "daily", content: "body" },
+      patch: {
+        action: "patch",
+        period: "daily",
+        content: "body",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+      delete: { action: "delete", period: "daily" },
+    } as const;
+    const PERIODIC_ACTIONS = Object.keys(PERIODIC_PAYLOADS) as ReadonlyArray<
+      keyof typeof PERIODIC_PAYLOADS
+    >;
+
+    it.each(PERIODIC_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() => schema.parse(PERIODIC_PAYLOADS[action])).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({ action: "invalid_periodic_action", period: "daily" }),
+      ).toThrow();
+    });
+
+    // Numeric constraints on month (1-12) and day (1-31). Stryker mutates
+    // .min(1).max(12) → .min(1).min(12) (both bounds same direction) etc.
+    // Tests must exercise BOTH bounds (lower and upper) to kill the mutants.
+
+    it.each([0, -1, 13, 100])("rejects invalid month: %i", (month) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({
+          action: "get",
+          period: "daily",
+          year: 2026,
+          month,
+          day: 1,
+        }),
+      ).toThrow();
+    });
+
+    it.each([1, 6, 12])("accepts valid month: %i", (month) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({
+          action: "get",
+          period: "daily",
+          year: 2026,
+          month,
+          day: 1,
+        }),
+      ).not.toThrow();
+    });
+
+    it.each([0, -1, 32, 100])("rejects invalid day: %i", (day) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({
+          action: "get",
+          period: "daily",
+          year: 2026,
+          month: 1,
+          day,
+        }),
+      ).toThrow();
+    });
+
+    it.each([1, 15, 31])("accepts valid day: %i", (day) => {
+      const schema = getInputSchema("periodic_note");
+      expect(() =>
+        schema.parse({
+          action: "get",
+          period: "daily",
+          year: 2026,
+          month: 1,
+          day,
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe("batch_get — Zod schema validation (Stryker backfill)", () => {
+    it("rejects an empty paths array (min(1) constraint)", () => {
+      const schema = getInputSchema("batch_get");
+      expect(() => schema.parse({ paths: [] })).toThrow();
+    });
+
+    it("accepts a single-element paths array", () => {
+      const schema = getInputSchema("batch_get");
+      expect(() => schema.parse({ paths: ["a.md"] })).not.toThrow();
+    });
+
+    it("accepts a multi-element paths array", () => {
+      const schema = getInputSchema("batch_get");
+      expect(() =>
+        schema.parse({ paths: ["a.md", "b.md", "c.md"] }),
+      ).not.toThrow();
+    });
+  });
+
+  describe("recent — Zod schema validation (Stryker backfill)", () => {
+    const RECENT_PAYLOADS = {
+      changes: { type: "changes" },
+      periodic_notes: { type: "periodic_notes", period: "daily" },
+    } as const;
+    const RECENT_TYPES = Object.keys(RECENT_PAYLOADS) as ReadonlyArray<
+      keyof typeof RECENT_PAYLOADS
+    >;
+
+    it.each(RECENT_TYPES)("accepts type: %s", (type) => {
+      const schema = getInputSchema("recent");
+      expect(() => schema.parse(RECENT_PAYLOADS[type])).not.toThrow();
+    });
+
+    it("rejects a type outside the enum", () => {
+      const schema = getInputSchema("recent");
+      expect(() => schema.parse({ type: "fuzzy" })).toThrow();
+    });
+
+    it("limit defaults to 10 when omitted", () => {
+      const schema = getInputSchema("recent");
+      const parsed = schema.parse(RECENT_PAYLOADS["changes"]);
+      if (!isRecord(parsed)) throw new Error("expected object");
+      expect(parsed["limit"]).toBe(10);
+    });
+
+    it("rejects limit < 1 (min(1) constraint)", () => {
+      const schema = getInputSchema("recent");
+      expect(() => schema.parse({ type: "changes", limit: 0 })).toThrow();
+    });
+  });
+
+  describe("vault_analysis — Zod schema validation (Stryker backfill)", () => {
+    const VAULT_ANALYSIS_PAYLOADS = {
+      backlinks: { action: "backlinks", path: "note.md" },
+      connections: { action: "connections", path: "note.md" },
+      structure: { action: "structure" },
+      refresh: { action: "refresh" },
+    } as const;
+    const VAULT_ANALYSIS_ACTIONS = Object.keys(
+      VAULT_ANALYSIS_PAYLOADS,
+    ) as ReadonlyArray<keyof typeof VAULT_ANALYSIS_PAYLOADS>;
+
+    it.each(VAULT_ANALYSIS_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getInputSchema("vault_analysis");
+      expect(() => schema.parse(VAULT_ANALYSIS_PAYLOADS[action])).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getInputSchema("vault_analysis");
+      expect(() => schema.parse({ action: "invalid_analysis" })).toThrow();
+    });
+
+    it("limit defaults to 10 when omitted", () => {
+      const schema = getInputSchema("vault_analysis");
+      const parsed = schema.parse(VAULT_ANALYSIS_PAYLOADS["structure"]);
+      if (!isRecord(parsed)) throw new Error("expected object");
+      expect(parsed["limit"]).toBe(10);
+    });
+
+    it("rejects limit < 1 (min(1) constraint)", () => {
+      const schema = getInputSchema("vault_analysis");
+      expect(() => schema.parse({ action: "structure", limit: 0 })).toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // commands tool
   // -------------------------------------------------------------------------
   describe("commands — list", () => {

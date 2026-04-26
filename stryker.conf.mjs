@@ -62,7 +62,7 @@ export default {
   //                           unclear, possibly coverageAnalysis: perTest
   //                           not attributing module-load Map init to
   //                           test cases. Investigate in a follow-up.)
-  //   70.30 → break 80       (PR #N, chore/stryker-carveout-index, +3.92
+  //   70.30 → break 80       (PR #51, chore/stryker-carveout-index, +3.92
   //                           pp from removing src/index.ts from mutate
   //                           glob — entry-point wiring, justified above
   //                           in the per-file carve-outs comment.)

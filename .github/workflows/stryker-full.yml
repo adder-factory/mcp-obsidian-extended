@@ -44,8 +44,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        # No fetch-depth override — full sweep does not diff anything,
+        # so the default shallow clone is sufficient and faster.
 
       - uses: actions/setup-node@v4
         with:

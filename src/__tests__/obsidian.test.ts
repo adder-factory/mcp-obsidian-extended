@@ -2193,6 +2193,262 @@ describe("ObsidianClient — active file", () => {
     await client.deleteActiveFile();
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
+
+  // --- Stryker mutation backfill: request shape, status acceptance, retry logic ---
+
+  // Reset spies + debug flag between tests so log-text and call-count
+  // assertions don't accumulate state from earlier active-file tests.
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDebugEnabled(false);
+  });
+
+  it("getActiveFile sends GET to /active/ with Accept header for markdown", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "# active",
+    });
+
+    await client.getActiveFile("markdown");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("text/markdown");
+  });
+
+  it("getActiveFile sends Accept header for json format", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "x", path: "n.md", tags: [], stat: {} }),
+    });
+
+    await client.getActiveFile("json");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("application/vnd.olrapi.note+json");
+  });
+
+  it("putActiveFile sends PUT to /active/ with Content-Type: text/markdown", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.putActiveFile("body");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("PUT");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("putActiveFile accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.putActiveFile("body")).resolves.toBeUndefined();
+  });
+
+  it("appendActiveFile sends POST to /active/ with Content-Type: text/markdown", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.appendActiveFile("body");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("POST");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("appendActiveFile accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.appendActiveFile("body")).resolves.toBeUndefined();
+  });
+
+  it("patchActiveFile sends PATCH to /active/ and strips Create-Target-If-Missing", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.patchActiveFile("body", {
+      operation: "append",
+      targetType: "heading",
+      target: "H",
+    });
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    // Active file PATCH must never include Create-Target-If-Missing (REST API doesn't support it)
+    expect(headers["Create-Target-If-Missing"]).toBeUndefined();
+  });
+
+  it("patchActiveFile accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.patchActiveFile("body", {
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patchActiveFile invalidates cache on success", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+
+    await client.patchActiveFile("body", {
+      operation: "append",
+      targetType: "heading",
+      target: "H",
+    });
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchActiveFile retry uses '(active file)' as the debug-log label", async () => {
+    setDebugEnabled(true);
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchActiveFile("body", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const correctedLog = calls.find((c) =>
+      c.includes("PATCH heading auto-corrected"),
+    );
+    expect(correctedLog).toContain("(active file)");
+  });
+
+  it("patchActiveFile retry passes /active/ as the patch path (not a vault path)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchActiveFile("body", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    // Third call (retry PATCH) must hit /active/, not a /vault/* path
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/active/");
+  });
+
+  it("patchActiveFile does NOT retry when targetType is not 'heading'", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"heading not found"}',
+    });
+
+    await client
+      .patchActiveFile("body", {
+        operation: "append",
+        targetType: "block",
+        target: "block-id",
+      })
+      .catch(() => undefined);
+
+    // Only 1 call — no retry because targetType is "block"
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("patchActiveFile does NOT retry when 400 body is not a heading-not-found error", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      // 400 with a body that doesn't match the heading-not-found pattern
+      body: '{"message":"invalid frontmatter"}',
+    });
+
+    await client
+      .patchActiveFile("body", {
+        operation: "append",
+        targetType: "heading",
+        target: "Some Heading",
+      })
+      .catch(() => undefined);
+
+    // Only 1 call — no retry because the 400 body isn't a heading-not-found error
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("deleteActiveFile sends DELETE to /active/", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.deleteActiveFile();
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("DELETE");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
+  });
+
+  it("deleteActiveFile accepts 200 OK in addition to 204 and 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.deleteActiveFile()).resolves.toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -83,6 +83,17 @@ jobs:
           rm -f reports/stryker-incremental.json
           npx stryker run --incremental
 
+      # `actions/cache/save@v4` fails when a cache with the exact key
+      # already exists (cache keys are immutable on GHA — verified via
+      # web query during PR review). For our setup that failure is
+      # benign: the key is content-addressed (config + lockfile + src
+      # hashes), so an existing cache under the same key has the same
+      # content semantics anyway. The save warning is logged in the
+      # workflow output but does NOT fail the job — the existing cache
+      # remains correctly available for stryker-affected.yml restores.
+      # This commonly happens when stryker-full.yml runs twice without
+      # any src/conf/lockfile change (e.g., the nightly cron between
+      # two doc-only days, or `workflow_dispatch` shortly after a push).
       - name: Save Stryker incremental cache
         if: steps.detect.outputs.present == '1' && success() && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@v4

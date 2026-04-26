@@ -419,21 +419,34 @@ export function buildVaultStructure(
 /** Batch size for concurrent API calls in the cache-miss fallback path. */
 const RECENT_CHANGES_BATCH_SIZE = 20;
 
+/** Per-file mtime stat collected by {@link readBatchStats}. */
+interface RecentChangeStat {
+  readonly path: string;
+  readonly mtime: number;
+}
+
+/** Parameters for {@link recordBatchResult} (destructured per CLAUDE.md
+ *  "destructure function params when >2 params"). */
+interface RecordBatchResultParams {
+  readonly result: PromiseSettledResult<RecentChangeStat>;
+  readonly fp: string;
+  /** Output accumulator; mutated in place on fulfillment. */
+  readonly successes: RecentChangeStat[];
+}
+
 /**
  * Records one batch result into the success accumulator. Fulfilled results
  * land in `successes`; rejected ones are logged at warn level so a per-file
  * failure surfaces without aborting the whole call. Extracted from
  * {@link handleRecentChanges} to keep that function under Sonar's
  * cognitive-complexity ceiling (S3776).
- * @param result - One settled result from `Promise.allSettled`.
- * @param fp - Path string for log diagnostics on rejection.
- * @param successes - Output accumulator; mutated in place on fulfillment.
+ * @param params - Destructured params per CLAUDE.md style guide.
  */
-function recordBatchResult(
-  result: PromiseSettledResult<{ path: string; mtime: number }>,
-  fp: string,
-  successes: Array<{ path: string; mtime: number }>,
-): void {
+function recordBatchResult({
+  result,
+  fp,
+  successes,
+}: RecordBatchResultParams): void {
   if (result.status === "fulfilled") {
     successes.push(result.value);
     return;
@@ -457,9 +470,9 @@ function recordBatchResult(
 async function readBatchStats(
   client: ObsidianClient,
   batch: readonly string[],
-): Promise<Array<{ path: string; mtime: number }>> {
+): Promise<RecentChangeStat[]> {
   const results = await Promise.allSettled(
-    batch.map(async (fp) => {
+    batch.map(async (fp): Promise<RecentChangeStat> => {
       const result = await client.getFileContents(fp, "json");
       if (typeof result !== "string" && "stat" in result) {
         return { path: fp, mtime: result.stat.mtime };
@@ -467,9 +480,9 @@ async function readBatchStats(
       return { path: fp, mtime: 0 };
     }),
   );
-  const successes: Array<{ path: string; mtime: number }> = [];
+  const successes: RecentChangeStat[] = [];
   results.forEach((r, j) => {
-    recordBatchResult(r, batch[j] ?? "<unknown>", successes);
+    recordBatchResult({ result: r, fp: batch[j] ?? "<unknown>", successes });
   });
   return successes;
 }

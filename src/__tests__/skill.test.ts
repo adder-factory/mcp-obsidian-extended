@@ -190,4 +190,83 @@ describe("buildSkillContent", () => {
       "skill          \u2192 (no params, returns LLM usage guide)",
     );
   });
+
+  // --- Mutation-killing coverage (Stryker backfill, src/skill.ts) ---
+  //
+  // Two test groups below close the survived-mutant gap on src/skill.ts:
+  //
+  // 1. Exhaustive CONSOLIDATED_NAMES coverage \u2014 every (granular,
+  //    consolidated) pair in the resolver Map must render as the granular
+  //    form in granular mode and the consolidated form in consolidated
+  //    mode. Kills ArrayDeclaration mutants on each Map row plus the
+  //    StringLiteral mutants on the row's two strings.
+  //
+  // 2. Section-content snapshots \u2014 one snapshot per (mode, compact)
+  //    combination. Catches any string-literal mutation in section
+  //    builders that the targeted toContain() assertions above might
+  //    miss, and also exercises both branches of the buildSkillContent
+  //    conditionals (mode === "consolidated", compact).
+
+  describe("CONSOLIDATED_NAMES exhaustive coverage", () => {
+    // Pairs cover every CONSOLIDATED_NAMES entry that is actually
+    // rendered by at least one section builder. Two entries from the
+    // Map (`delete_file`, `list_files_in_vault`) are intentionally
+    // omitted — they are pre-emptive mappings that no current section
+    // builder calls via t(), so their mutations cannot be killed by
+    // output-based assertions. If a section starts using either tool
+    // name, add the corresponding pair here.
+    const PAIRS: ReadonlyArray<readonly [string, string]> = [
+      ["get_file_contents", "vault action: get"],
+      ["patch_content", "vault action: patch"],
+      ["put_content", "vault action: put"],
+      ["append_content", "vault action: append"],
+      ["search_replace", "vault action: search_replace"],
+      ["move_file", "vault action: move"],
+      ["batch_get_file_contents", "batch_get"],
+      ["simple_search", "search type: simple"],
+      ["dataview_search", "search type: dataview"],
+      ["complex_search", "search type: jsonlogic"],
+      ["get_vault_structure", "vault_analysis action: structure"],
+      ["get_backlinks", "vault_analysis action: backlinks"],
+      ["get_note_connections", "vault_analysis action: connections"],
+      ["refresh_cache", "vault_analysis action: refresh"],
+      ["get_server_status", "status"],
+      ["list_files_in_dir", "vault action: list_dir"],
+      ["list_commands", "commands action: list"],
+      ["execute_command", "commands action: execute"],
+      ["append_active_file", "active_file action: append"],
+      ["patch_active_file", "active_file action: patch"],
+    ];
+
+    it.each(PAIRS)(
+      "renders %s as granular form in granular mode and consolidated form in consolidated mode",
+      (granular, consolidated) => {
+        const granularContent = buildSkillContent("granular", false);
+        const consolidatedContent = buildSkillContent("consolidated", false);
+        expect(granularContent).toContain(granular);
+        expect(consolidatedContent).toContain(consolidated);
+      },
+    );
+  });
+
+  // Snapshots lock the entire rendered output. After an intentional
+  // content edit in skill.ts, run `npx vitest run -u src/__tests__/skill.test.ts`
+  // to regenerate the four snapshots, then re-review the diff.
+  describe("section-content snapshots", () => {
+    it("renders deterministic content in granular non-compact mode", () => {
+      expect(buildSkillContent("granular", false)).toMatchSnapshot();
+    });
+
+    it("renders deterministic content in granular compact mode", () => {
+      expect(buildSkillContent("granular", true)).toMatchSnapshot();
+    });
+
+    it("renders deterministic content in consolidated non-compact mode", () => {
+      expect(buildSkillContent("consolidated", false)).toMatchSnapshot();
+    });
+
+    it("renders deterministic content in consolidated compact mode", () => {
+      expect(buildSkillContent("consolidated", true)).toMatchSnapshot();
+    });
+  });
 });

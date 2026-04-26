@@ -435,15 +435,32 @@ describe("registerAllTools — consolidated mode", () => {
 });
 
 // ===========================================================================
-// Section 1.6: Stryker mutation backfill — tools.ts dispatcher
+// Section 1-Stryker-A: Stryker mutation backfill — tools.ts dispatcher
 // ===========================================================================
 //
-// The existing tests assert tool counts (.toBe(39), .toBe(11) etc.), which
-// catches any mutant that changes the array LENGTH (insertion/removal). They
-// do NOT catch StringLiteral mutants that swap a tool name to "" or another
-// string while preserving the count, nor do they assert the EXACT membership
-// of each preset, the exact protected-tool sets, or the precise buildFilter
-// branch behaviour. This section closes those gaps.
+// The existing tests in Section 1 assert tool counts (.toBe(39), .toBe(11)
+// etc.), which catches any mutant that changes the array LENGTH
+// (insertion/removal). They do NOT catch StringLiteral mutants that swap
+// a tool name to "" or another string while preserving the count, nor do
+// they assert the EXACT membership of each preset, the exact protected-tool
+// sets, or the precise buildFilter branch behaviour. This section closes
+// those gaps. (Numbered with a letter suffix rather than 1.x to avoid a
+// conflict with the existing "Section 1.5: tool metadata" block which
+// follows below — Greptile P2 on PR #66.)
+
+// Single typed bridge adapter — replaces scattered `server as never` casts
+// in the new tests below with one provably-safe boundary cast.
+// `makeMockServer` returns a server with only `registerTool`, which is the
+// only method registerAllTools calls on it (verified by reading both files);
+// the cast through `unknown` is therefore structurally sound. Pre-existing
+// `as never` usages elsewhere in the file are left as-is (out of scope for
+// PR #66, which is test-only) — CodeRabbit critical on PR #66.
+type RegisterAllToolsServer = Parameters<typeof registerAllTools>[0];
+function asRegisterServer(server: {
+  registerTool: ReturnType<typeof vi.fn>;
+}): RegisterAllToolsServer {
+  return server as unknown as RegisterAllToolsServer;
+}
 
 describe("tools.ts — exact preset membership (granular)", () => {
   // Asserts the EXACT set of registered tool names per preset. Kills the
@@ -457,7 +474,12 @@ describe("tools.ts — exact preset membership (granular)", () => {
     const { server, getRegistered } = makeMockServer();
     const client = makeMockClient();
     const cache = makeMockCache();
-    registerAllTools(server as never, client, cache, makeConfig(overrides));
+    registerAllTools(
+      asRegisterServer(server),
+      client,
+      cache,
+      makeConfig(overrides),
+    );
     return getRegistered();
   };
 
@@ -588,7 +610,7 @@ describe("tools.ts — exact preset membership (consolidated)", () => {
     const client = makeMockClient();
     const cache = makeMockCache();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       client,
       cache,
       makeConfig({ toolMode: "consolidated", ...overrides }),
@@ -615,7 +637,9 @@ describe("tools.ts — exact preset membership (consolidated)", () => {
   });
 
   it("consolidated read-only preset omits open_file (write-capable POST)", () => {
-    const registered = new Set(setupAndGetRegistered({ toolPreset: "read-only" }));
+    const registered = new Set(
+      setupAndGetRegistered({ toolPreset: "read-only" }),
+    );
     // open_file POSTs and may create files — must NOT be in read-only
     expect(registered.has("open_file")).toBe(false);
     // All other 10 tools remain
@@ -660,7 +684,7 @@ describe("tools.ts — protected sets", () => {
     (name) => {
       const { server, getRegistered } = makeMockServer();
       registerAllTools(
-        server as never,
+        asRegisterServer(server),
         makeMockClient(),
         makeMockCache(),
         makeConfig({ excludeTools: [name] }),
@@ -674,7 +698,7 @@ describe("tools.ts — protected sets", () => {
     (name) => {
       const { server, getRegistered } = makeMockServer();
       registerAllTools(
-        server as never,
+        asRegisterServer(server),
         makeMockClient(),
         makeMockCache(),
         makeConfig({ toolMode: "consolidated", excludeTools: [name] }),
@@ -693,7 +717,7 @@ describe("tools.ts — protected sets", () => {
     // them is a no-op (they're not in any consolidated preset).
     const { server, getRegistered } = makeMockServer();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       makeMockClient(),
       makeMockCache(),
       makeConfig({
@@ -717,7 +741,7 @@ describe("tools.ts — buildFilter branch coverage", () => {
   it("INCLUDE wins over EXCLUDE when both are set (EXCLUDE ignored)", () => {
     const { server, getRegistered } = makeMockServer();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       makeMockClient(),
       makeMockCache(),
       makeConfig({
@@ -736,7 +760,7 @@ describe("tools.ts — buildFilter branch coverage", () => {
     // out (presetSet.has check). Only protected tools survive.
     const { server, getRegistered } = makeMockServer();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       makeMockClient(),
       makeMockCache(),
       makeConfig({
@@ -756,7 +780,7 @@ describe("tools.ts — buildFilter branch coverage", () => {
   it("empty includeTools + empty excludeTools = preset as-is", () => {
     const { server, getRegistered } = makeMockServer();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       makeMockClient(),
       makeMockCache(),
       makeConfig({ includeTools: [], excludeTools: [] }),
@@ -767,7 +791,7 @@ describe("tools.ts — buildFilter branch coverage", () => {
   it("EXCLUDE alone removes only the listed tools (does not affect others)", () => {
     const { server, getRegistered } = makeMockServer();
     registerAllTools(
-      server as never,
+      asRegisterServer(server),
       makeMockClient(),
       makeMockCache(),
       makeConfig({ excludeTools: ["delete_file"] }),
@@ -786,7 +810,7 @@ describe("tools.ts — registerAllTools defensive guards", () => {
     const { server } = makeMockServer();
     expect(() =>
       registerAllTools(
-        server as never,
+        asRegisterServer(server),
         makeMockClient(),
         makeMockCache(),
         // Bypass the Config type guard; defensive check at runtime.
@@ -801,7 +825,7 @@ describe("tools.ts — registerAllTools defensive guards", () => {
     const { server } = makeMockServer();
     expect(() =>
       registerAllTools(
-        server as never,
+        asRegisterServer(server),
         makeMockClient(),
         makeMockCache(),
         makeConfig({ toolMode: "consolidated", toolPreset: "weird" as never }),
@@ -814,14 +838,14 @@ describe("tools.ts — registerAllTools defensive guards", () => {
   it("toolMode=granular dispatches to granular preset (different count from consolidated full)", () => {
     const { server: g } = makeMockServer();
     const granularCount = registerAllTools(
-      g as never,
+      asRegisterServer(g),
       makeMockClient(),
       makeMockCache(),
       makeConfig({ toolMode: "granular" }),
     );
     const { server: c } = makeMockServer();
     const consolidatedCount = registerAllTools(
-      c as never,
+      asRegisterServer(c),
       makeMockClient(),
       makeMockCache(),
       makeConfig({ toolMode: "consolidated" }),
@@ -2700,7 +2724,9 @@ describe("granular tools — registration and basic behavior", () => {
         setting: "debug",
       });
       expect(result.isError).toBe(true);
-      expect(getText(result)).toBe("[configure] Value is required for 'set' action");
+      expect(getText(result)).toBe(
+        "[configure] Value is required for 'set' action",
+      );
     });
 
     it("rejects unknown setting with exact error message including all known settings", async () => {

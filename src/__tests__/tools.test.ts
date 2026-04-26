@@ -2130,15 +2130,21 @@ describe("granular tools — registration and basic behavior", () => {
       "reset %s produces the default-restoring config update",
       async (setting, expected) => {
         const { getTool } = setup();
-        const result = await getTool("configure").handler({
-          action: "reset",
-          setting,
-        });
-        expect(result.isError).toBeFalsy();
-        expect(saveConfigToFile).toHaveBeenLastCalledWith(
-          expect.any(String),
-          expected,
-        );
+        try {
+          const result = await getTool("configure").handler({
+            action: "reset",
+            setting,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(saveConfigToFile).toHaveBeenLastCalledWith(
+            expect.any(String),
+            expected,
+          );
+        } finally {
+          // Reset module-level state for compactResponses; debug uses
+          // the mocked setDebugEnabled (no real side-effect).
+          if (setting === "compactResponses") setCompactResponses(false);
+        }
       },
     );
 
@@ -2207,20 +2213,28 @@ describe("granular tools — registration and basic behavior", () => {
       );
     });
 
-    it("does NOT call applyImmediateSetting (via setDebugEnabled) for restart-only settings", async () => {
-      const { getTool } = setup();
-      vi.mocked(setDebugEnabled).mockClear();
+    it.each([
+      "timeout",
+      "verifyWrites",
+      "maxResponseChars",
+      "toolMode",
+      "toolPreset",
+    ])(
+      "does NOT call applyImmediateSetting (via setDebugEnabled) for restart-only setting %s",
+      async (setting) => {
+        const { getTool } = setup();
+        vi.mocked(setDebugEnabled).mockClear();
 
-      await getTool("configure").handler({
-        action: "reset",
-        setting: "timeout",
-      });
+        await getTool("configure").handler({
+          action: "reset",
+          setting,
+        });
 
-      // Restart-only settings (timeout/verifyWrites/etc.) MUST NOT call
-      // setDebugEnabled — that's reserved for the debug/compactResponses
-      // immediate path.
-      expect(setDebugEnabled).not.toHaveBeenCalled();
-    });
+        // Restart-only settings MUST NOT call setDebugEnabled — that's
+        // reserved for the debug/compactResponses immediate path.
+        expect(setDebugEnabled).not.toHaveBeenCalled();
+      },
+    );
 
     it("DOES call setDebugEnabled when resetting debug (immediate effect)", async () => {
       const { getTool } = setup();

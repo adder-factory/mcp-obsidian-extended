@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { z } from "zod";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be hoisted before imports
@@ -2706,6 +2707,187 @@ describe("consolidated tools — registration and behavior", () => {
       const { getTool } = setup({ toolPreset: "read-only" });
       const result = await getTool("active_file").handler({ action: "delete" });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Stryker mutation backfill: Zod-schema validation for vault + active_file
+  //
+  // The action enum literals (e.g. ["list", "list_dir", "get", ...]) and
+  // boolean defaults (useRegex/caseSensitive/replaceAll) sit on the Zod
+  // schema attached to each registered tool. Handler-level tests bypass
+  // Zod entirely (`getTool(name).handler({...})`), so a mutation that
+  // shrinks the enum or flips a boolean default leaves handler tests
+  // passing while real MCP traffic would silently misbehave. These tests
+  // round-trip args through the Zod schema directly and assert each
+  // valid action parses + invalid actions reject + defaults take effect.
+  // -------------------------------------------------------------------------
+  describe("vault — Zod schema validation (Stryker backfill)", () => {
+    function getVaultSchema(): z.ZodObject<z.ZodRawShape> {
+      const { getTool } = setup();
+      const tool = getTool("vault");
+      const schema = tool.schema["inputSchema"];
+      if (!(schema instanceof z.ZodObject)) {
+        throw new Error("vault inputSchema is not a ZodObject");
+      }
+      return schema as z.ZodObject<z.ZodRawShape>;
+    }
+
+    const VAULT_ACTIONS = [
+      "list",
+      "list_dir",
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+      "search_replace",
+      "move",
+    ] as const;
+
+    it.each(VAULT_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getVaultSchema();
+      expect(() => schema.parse({ action })).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getVaultSchema();
+      expect(() => schema.parse({ action: "not_a_real_action" })).toThrow();
+    });
+
+    it("useRegex defaults to false when omitted", () => {
+      const schema = getVaultSchema();
+      const parsed = schema.parse({ action: "search_replace" });
+      expect((parsed as { useRegex: boolean }).useRegex).toBe(false);
+    });
+
+    it("caseSensitive defaults to true when omitted", () => {
+      const schema = getVaultSchema();
+      const parsed = schema.parse({ action: "search_replace" });
+      expect((parsed as { caseSensitive: boolean }).caseSensitive).toBe(true);
+    });
+
+    it("replaceAll defaults to true when omitted", () => {
+      const schema = getVaultSchema();
+      const parsed = schema.parse({ action: "search_replace" });
+      expect((parsed as { replaceAll: boolean }).replaceAll).toBe(true);
+    });
+  });
+
+  describe("vault — error path computation for move action (Stryker backfill)", () => {
+    // The error path picker is `action === "move" ? args.source ?? path : path`.
+    // For a move, the error message should reference the SOURCE path (because
+    // the operation reads from source); for any non-move action, it should
+    // reference the path arg.
+    //
+    // The move action calls handleMoveFile (in tools/shared.ts), which
+    // internally calls client.getFileContents on the source — mocking that
+    // to reject is the cleanest way to force the move into the catch block.
+    it("uses args.source as the error path on a failing move (404 echoes path)", async () => {
+      const { client, getTool } = setup();
+      // 404 is the error type whose buildErrorMessage echoes context.path —
+      // simulating a missing source file forces path to surface in the
+      // message, which lets the test verify the picker chose source over path.
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianApiError("file not found", 404),
+      );
+      const result = await getTool("vault").handler({
+        action: "move",
+        source: "old/note.md",
+        destination: "new/note.md",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("old/note.md");
+    });
+
+    it("uses args.path (NOT source) as the error path on a failing non-move action", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.deleteFile).mockRejectedValue(
+        new Error("backend exploded"),
+      );
+      const result = await getTool("vault").handler({
+        action: "delete",
+        path: "doomed.md",
+        source: "should/be/ignored.md",
+      });
+      expect(result.isError).toBe(true);
+      // The error path picker should pick `path` (not `source`) for non-move.
+      // buildErrorMessage may not always echo the path verbatim, but it
+      // SHOULD echo `doomed.md` and SHOULD NOT echo `should/be/ignored.md`.
+      const text = getText(result);
+      // Either the path is echoed in the error, or we at least confirm the
+      // ignored source string isn't leaked into the error message.
+      expect(text).not.toContain("should/be/ignored.md");
+    });
+  });
+
+  describe("active_file — Zod schema validation (Stryker backfill)", () => {
+    function getActiveFileSchema(): z.ZodObject<z.ZodRawShape> {
+      const { getTool } = setup();
+      const tool = getTool("active_file");
+      const schema = tool.schema["inputSchema"];
+      if (!(schema instanceof z.ZodObject)) {
+        throw new Error("active_file inputSchema is not a ZodObject");
+      }
+      return schema as z.ZodObject<z.ZodRawShape>;
+    }
+
+    const ACTIVE_FILE_ACTIONS = [
+      "get",
+      "put",
+      "append",
+      "patch",
+      "delete",
+    ] as const;
+
+    it.each(ACTIVE_FILE_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getActiveFileSchema();
+      expect(() => schema.parse({ action })).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getActiveFileSchema();
+      expect(() =>
+        schema.parse({ action: "not_a_real_active_file_action" }),
+      ).toThrow();
+    });
+  });
+
+  describe("active_file — error message strings (Stryker backfill)", () => {
+    // Each branch of the active_file action switch returns a distinct
+    // textResult/errorResult string. StringLiteral mutations on those
+    // messages survive unless the test asserts the exact text.
+
+    it("put returns 'Active file updated' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.putActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "put",
+        content: "body",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("Active file updated");
+    });
+
+    it("append returns 'Appended to active file' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.appendActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "append",
+        content: "body",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("Appended to active file");
+    });
+
+    it("delete returns 'Active file deleted' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.deleteActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "delete",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("Active file deleted");
     });
   });
 

@@ -148,7 +148,7 @@ consistently, log the run-times and revisit the prompt or the model choice.
 
 Stryker `thresholds.break` is set to **80** in `stryker.conf.mjs`. The
 pipeline (`npm run pre-pr`) blocks any push whose mutation score is
-below 80%. As of `chore/stryker-floor-80` the score is **64.66%**, so
+below 80%. As of the bootstrap PR (#49) the score is **64.66%**, so
 **every PR opened now will fail the Stryker gate** until the cumulative
 backfill series lifts the aggregate score over the floor.
 
@@ -172,6 +172,14 @@ automatically — no further admin-merges needed.
   PR types allowed to merge are (a) the floor-bootstrap PR itself, and
   (b) backfill PRs that add tests to kill surviving mutants. Both PR
   types require admin-merge until the aggregate score crosses 80.
+- **Temporary exception to the "Pull request workflow" merge rule.**
+  The standard rule below (Pull request workflow → step 6) requires
+  all CI checks green and `npm run pre-pr` passing before merge.
+  While the floor is unmet, bootstrap and backfill PRs are exempt
+  from that requirement **for the Stryker / Pipeline-gate failure
+  only** — every other gate must still be green, and every reviewer
+  thread must still be resolved. Once aggregate ≥ 80 the standard
+  rule resumes automatically for all PRs.
 - **One file (or one logical group) per backfill PR** — no mega-PRs.
   This makes each merge's contribution to the aggregate score easy to
   attribute and roll back if a regression surfaces.
@@ -189,7 +197,7 @@ automatically — no further admin-merges needed.
 ### After the floor is hit
 
 Once the aggregate score is ≥80, the ratchet policy resumes:
-`thresholds.break = (current_score − 1pp)`, with a hard floor that
+`thresholds.break = (current_score - 1pp)`, with a hard floor that
 never drops below 80. `low`/`high` re-separate from `break` at that
 point and the three-threshold band becomes meaningful again.
 
@@ -370,6 +378,13 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    - All CodeRabbit threads resolved
    - All CodeAnt threads resolved
    - `npm run pre-pr` passes locally on the branch head
+
+   **Exception while the Stryker mutation-testing floor is unmet:**
+   bootstrap and backfill PRs are exempt from the "all CI checks
+   green" and "`npm run pre-pr` passes" requirements **for the
+   Stryker / Pipeline-gate failure only**. See "Mutation Testing —
+   Hard 80% Floor (active)" above for the full carve-out rules. The
+   exception ends automatically when aggregate score crosses 80.
 
    **There is no human code review.** The pipeline spec is explicit: "No
    human code review — pipeline must be thorough enough that human only

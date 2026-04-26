@@ -27,7 +27,7 @@ export default {
   //                           gate now blocks until backfill PRs lift the
   //                           score to ≥80. This PR will fail its own gate;
   //                           that is the bootstrap moment. After the floor
-  //                           is hit, ratchet resumes at (score − 1pp) but
+  //                           is hit, ratchet resumes at (score - 1pp) but
   //                           never drops below 80.)
   // See ~/projects/code-review-pipeline/baseline-findings.md for the bake-in
   // run and build-log.md for the ratchet history (including this floor entry).

@@ -420,6 +420,61 @@ export function buildVaultStructure(
 const RECENT_CHANGES_BATCH_SIZE = 20;
 
 /**
+ * Records one batch result into the success accumulator. Fulfilled results
+ * land in `successes`; rejected ones are logged at warn level so a per-file
+ * failure surfaces without aborting the whole call. Extracted from
+ * {@link handleRecentChanges} to keep that function under Sonar's
+ * cognitive-complexity ceiling (S3776).
+ * @param result - One settled result from `Promise.allSettled`.
+ * @param fp - Path string for log diagnostics on rejection.
+ * @param successes - Output accumulator; mutated in place on fulfillment.
+ */
+function recordBatchResult(
+  result: PromiseSettledResult<{ path: string; mtime: number }>,
+  fp: string,
+  successes: Array<{ path: string; mtime: number }>,
+): void {
+  if (result.status === "fulfilled") {
+    successes.push(result.value);
+    return;
+  }
+  const reason =
+    result.reason instanceof Error
+      ? result.reason.message
+      : String(result.reason);
+  log("warn", `recent_changes: skipping ${fp} (read failed: ${reason})`);
+}
+
+/**
+ * Reads stats for one batch of vault paths via the Obsidian REST API,
+ * returning the successful entries. Failures are logged inside
+ * {@link recordBatchResult} (best-effort: partial data is OK, but every
+ * skip must be observable per CLAUDE.md "NEVER swallow errors silently").
+ * @param client - The Obsidian API client.
+ * @param batch - Vault paths to fetch stats for in parallel.
+ * @returns Successful entries only; failures are logged but not returned.
+ */
+async function readBatchStats(
+  client: ObsidianClient,
+  batch: readonly string[],
+): Promise<Array<{ path: string; mtime: number }>> {
+  const results = await Promise.allSettled(
+    batch.map(async (fp) => {
+      const result = await client.getFileContents(fp, "json");
+      if (typeof result !== "string" && "stat" in result) {
+        return { path: fp, mtime: result.stat.mtime };
+      }
+      return { path: fp, mtime: 0 };
+    }),
+  );
+  const successes: Array<{ path: string; mtime: number }> = [];
+  results.forEach((r, j) => {
+    recordBatchResult(r, batch[j] ?? "<unknown>", successes);
+  });
+  return successes;
+}
+
+/**
  * Fetches recent changes using cache if available, or batched API calls as fallback.
  * Batching is used to avoid unbounded concurrent calls on large vaults.
  * @param client - The Obsidian API client.
@@ -447,34 +502,7 @@ export async function handleRecentChanges(
   const withStats: Array<{ path: string; mtime: number }> = [];
   for (let i = 0; i < mdFiles.length; i += RECENT_CHANGES_BATCH_SIZE) {
     const batch = mdFiles.slice(i, i + RECENT_CHANGES_BATCH_SIZE);
-    const results = await Promise.allSettled(
-      batch.map(async (fp) => {
-        const result = await client.getFileContents(fp, "json");
-        if (typeof result !== "string" && "stat" in result) {
-          return { path: fp, mtime: result.stat.mtime };
-        }
-        return { path: fp, mtime: 0 };
-      }),
-    );
-    for (let j = 0; j < results.length; j++) {
-      const r = results[j];
-      if (r === undefined) continue;
-      if (r.status === "fulfilled") {
-        withStats.push(r.value);
-      } else {
-        // Surface partial-data-loss conditions (CLAUDE.md: "NEVER swallow
-        // errors silently — always log or rethrow"). The recent-changes
-        // result is a best-effort summary, so a per-file failure shouldn't
-        // abort the whole call — but it must be observable.
-        const failedPath = batch[j] ?? "<unknown>";
-        const reason =
-          r.reason instanceof Error ? r.reason.message : String(r.reason);
-        log(
-          "warn",
-          `recent_changes: skipping ${failedPath} (read failed: ${reason})`,
-        );
-      }
-    }
+    withStats.push(...(await readBatchStats(client, batch)));
   }
   withStats.sort((a, b) => b.mtime - a.mtime);
   return jsonResult(withStats.slice(0, limit));

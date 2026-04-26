@@ -529,42 +529,37 @@ describe("tools.ts — exact preset membership (granular)", () => {
     expect(registered).toEqual(expected);
   });
 
-  it("granular read-only preset omits all write/delete/execute tools", () => {
+  it("granular read-only preset registers exactly the 19 expected tool names", () => {
+    // Exact-membership assertion (Gemini medium @ #66 cycle 2): catches both
+    // accidental removal of a read tool AND accidental addition of a write
+    // tool, while the previous partial-assertion form caught only the
+    // latter.
     const registered = new Set(
       setupAndGetRegistered({ toolPreset: "read-only" }),
     );
-    // Each of these would be a hole in the read-only contract — assert each
-    // explicitly so a mutant adding any of them to read-only is killed.
-    const writeOps = [
-      "put_content",
-      "append_content",
-      "patch_content",
-      "delete_file",
-      "search_replace",
-      "move_file",
-      "put_active_file",
-      "append_active_file",
-      "patch_active_file",
-      "delete_active_file",
-      "execute_command",
-      "open_file",
-      "put_periodic_note",
-      "append_periodic_note",
-      "patch_periodic_note",
-      "delete_periodic_note",
-      "put_periodic_note_for_date",
-      "append_periodic_note_for_date",
-      "patch_periodic_note_for_date",
-      "delete_periodic_note_for_date",
-    ];
-    for (const op of writeOps) {
-      expect(registered.has(op)).toBe(false);
-    }
-    // Also assert the read-only set contains the read tools (not just the
-    // negative case) — kills mutants that empty the read-only preset.
-    expect(registered.has("list_files_in_vault")).toBe(true);
-    expect(registered.has("get_file_contents")).toBe(true);
-    expect(registered.has("simple_search")).toBe(true);
+    expect(registered).toEqual(
+      new Set([
+        "list_files_in_vault",
+        "list_files_in_dir",
+        "get_file_contents",
+        "get_active_file",
+        "list_commands",
+        "simple_search",
+        "complex_search",
+        "dataview_search",
+        "get_periodic_note",
+        "get_periodic_note_for_date",
+        "get_server_status",
+        "batch_get_file_contents",
+        "get_recent_changes",
+        "get_recent_periodic_notes",
+        "configure",
+        "get_backlinks",
+        "get_vault_structure",
+        "get_note_connections",
+        "refresh_cache",
+      ]),
+    );
   });
 
   it("granular minimal preset registers exactly 7 preset tools + protected refresh_cache", () => {
@@ -587,18 +582,51 @@ describe("tools.ts — exact preset membership (granular)", () => {
     );
   });
 
-  it("granular safe preset omits exactly the 4 delete tools", () => {
+  it("granular safe preset registers exactly 35 tools (full minus 4 deletes)", () => {
+    // Exact-membership assertion (Gemini medium @ #66 cycle 2): asserts
+    // the safe preset is structurally `full minus {4 delete tools}`. Catches
+    // mutants that drop a non-delete tool from safe OR add a delete tool to
+    // it, which the previous partial form could miss.
     const registered = new Set(setupAndGetRegistered({ toolPreset: "safe" }));
-    // Negative case: only the 4 delete operations are removed
-    expect(registered.has("delete_file")).toBe(false);
-    expect(registered.has("delete_active_file")).toBe(false);
-    expect(registered.has("delete_periodic_note")).toBe(false);
-    expect(registered.has("delete_periodic_note_for_date")).toBe(false);
-    // Positive case: all non-delete write tools remain
-    expect(registered.has("put_content")).toBe(true);
-    expect(registered.has("patch_content")).toBe(true);
-    expect(registered.has("search_replace")).toBe(true);
-    expect(registered.has("move_file")).toBe(true);
+    expect(registered).toEqual(
+      new Set([
+        "list_files_in_vault",
+        "list_files_in_dir",
+        "get_file_contents",
+        "put_content",
+        "append_content",
+        "patch_content",
+        "search_replace",
+        "move_file",
+        "get_active_file",
+        "put_active_file",
+        "append_active_file",
+        "patch_active_file",
+        "list_commands",
+        "execute_command",
+        "open_file",
+        "simple_search",
+        "complex_search",
+        "dataview_search",
+        "get_periodic_note",
+        "put_periodic_note",
+        "append_periodic_note",
+        "patch_periodic_note",
+        "get_periodic_note_for_date",
+        "put_periodic_note_for_date",
+        "append_periodic_note_for_date",
+        "patch_periodic_note_for_date",
+        "get_server_status",
+        "batch_get_file_contents",
+        "get_recent_changes",
+        "get_recent_periodic_notes",
+        "configure",
+        "get_backlinks",
+        "get_vault_structure",
+        "get_note_connections",
+        "refresh_cache",
+      ]),
+    );
   });
 });
 

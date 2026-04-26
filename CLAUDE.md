@@ -111,6 +111,39 @@ API reference: @docs/cc-reference.md
 - Fix ALL review feedback before requesting merge
 - Do NOT merge without user approval
 
+## Reviewer Subagent (pre-PR semantic review)
+
+Before pushing a branch and opening a PR, **invoke the `reviewer` subagent**
+on the diff (defined in `.claude/agents/reviewer.md`). The reviewer reads
+the change with fresh context and returns a JSON verdict:
+
+- `APPROVE` — proceed to push + PR open as normal.
+- `REQUEST_CHANGES` — address the listed findings, then re-run the reviewer.
+  Do not open the PR until verdict is `APPROVE` or you have a concrete
+  reason to override a finding (document the reason in the PR body).
+- `BLOCK` — do not push. Escalate to the human; the diff has a security,
+  scope, or correctness issue that needs out-of-band judgment.
+
+**Fail-closed rule.** If the reviewer times out, errors, or returns output
+that is not parseable as the documented JSON schema, treat it as `BLOCK`
+and escalate to the human. Do **not** default to proceeding — a silent
+reviewer failure must not become a silent push, otherwise the gate is
+defeated. Include diagnostic details (the timeout marker, error class,
+or a short excerpt of the unparseable output) in the escalation message,
+but **sanitize first**: redact API keys, tokens, paths under `.env`, and
+any line that looks secret-like before posting to PR artifacts or logs.
+If unsure whether output is safe to include, escalate with just the
+error class — the human can re-run locally.
+
+The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`
+(deterministic local gate, runs before push) and the PR-stage AI reviewers
+configured for this repo (run after the PR is open). The reviewer's job is
+the layer those miss: intent vs. implementation, missing edge cases, scope
+drift — surfaced before code goes public.
+
+Time budget: ~120 seconds. If the reviewer takes longer than that
+consistently, log the run-times and revisit the prompt or the model choice.
+
 ## Testing
 
 - **Framework:** Vitest — native ESM + TypeScript, no config issues

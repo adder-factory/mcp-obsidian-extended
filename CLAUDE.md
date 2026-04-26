@@ -128,8 +128,12 @@ the change with fresh context and returns a JSON verdict:
 that is not parseable as the documented JSON schema, treat it as `BLOCK`
 and escalate to the human. Do **not** default to proceeding — a silent
 reviewer failure must not become a silent push, otherwise the gate is
-defeated. The escalation message should include the raw reviewer output
-(or the timeout/error) so the human can diagnose.
+defeated. Include diagnostic details (the timeout marker, error class,
+or a short excerpt of the unparseable output) in the escalation message,
+but **sanitize first**: redact API keys, tokens, paths under `.env`, and
+any line that looks secret-like before posting to PR artifacts or logs.
+If unsure whether output is safe to include, escalate with just the
+error class — the human can re-run locally.
 
 The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`,
 CodeRabbit, and Greptile — those run after the PR is open. The reviewer's

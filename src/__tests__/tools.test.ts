@@ -34,7 +34,7 @@ vi.mock("../config.js", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 import type { Config } from "../config.js";
-import { saveConfigToFile, log } from "../config.js";
+import { saveConfigToFile, log, setDebugEnabled } from "../config.js";
 import { registerAllTools } from "../tools.js";
 import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
@@ -2112,6 +2112,127 @@ describe("granular tools — registration and basic behavior", () => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({ action: "reset" });
       expect(result.isError).toBe(true);
+    });
+
+    // --- Stryker mutation backfill: handleConfigureReset + buildConfigReset ---
+
+    // buildConfigReset enum coverage — kills the per-setting StringLiteral
+    // mutants on each `case` arm and the DEFAULTS-spread shape mutants.
+    it.each([
+      ["debug", { debug: false }],
+      ["compactResponses", { compactResponses: false }],
+      ["timeout", { reliability: { timeout: 30000 } }],
+      ["verifyWrites", { reliability: { verifyWrites: false } }],
+      ["maxResponseChars", { reliability: { maxResponseChars: 500000 } }],
+      ["toolMode", { tools: { mode: "granular" } }],
+      ["toolPreset", { tools: { preset: "full" } }],
+    ])(
+      "reset %s produces the default-restoring config update",
+      async (setting, expected) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "reset",
+          setting,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(
+          expect.any(String),
+          expected,
+        );
+      },
+    );
+
+    // Immediate-vs-restart message contract — kills the L354 conditional
+    // mutants and the L360/L364 message StringLiteral mutants.
+    it.each(["debug", "compactResponses"])(
+      "reset %s returns 'effective immediately' message",
+      async (setting) => {
+        const { getTool } = setup();
+        try {
+          const result = await getTool("configure").handler({
+            action: "reset",
+            setting,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(getText(result)).toBe(
+            `Setting "${setting}" reset to default (effective immediately)`,
+          );
+        } finally {
+          // Reset module-level state for compactResponses; debug uses
+          // the mocked setDebugEnabled (no real side-effect).
+          if (setting === "compactResponses") setCompactResponses(false);
+        }
+      },
+    );
+
+    it.each([
+      "timeout",
+      "verifyWrites",
+      "maxResponseChars",
+      "toolMode",
+      "toolPreset",
+    ])("reset %s returns 'Restart the server' message", async (setting) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toBe(
+        `Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`,
+      );
+    });
+
+    it("rejects empty setting with explicit message", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[configure] Setting name is required for 'reset' action",
+      );
+    });
+
+    it("rejects unknown setting with explicit message including setting name", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "reset",
+        setting: "nonexistent-setting",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[configure] Unknown setting: nonexistent-setting",
+      );
+    });
+
+    it("does NOT call applyImmediateSetting (via setDebugEnabled) for restart-only settings", async () => {
+      const { getTool } = setup();
+      vi.mocked(setDebugEnabled).mockClear();
+
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "timeout",
+      });
+
+      // Restart-only settings (timeout/verifyWrites/etc.) MUST NOT call
+      // setDebugEnabled — that's reserved for the debug/compactResponses
+      // immediate path.
+      expect(setDebugEnabled).not.toHaveBeenCalled();
+    });
+
+    it("DOES call setDebugEnabled when resetting debug (immediate effect)", async () => {
+      const { getTool } = setup();
+      vi.mocked(setDebugEnabled).mockClear();
+
+      await getTool("configure").handler({
+        action: "reset",
+        setting: "debug",
+      });
+
+      // Reset uses DEFAULTS.debug which is `false` → setDebugEnabled(false).
+      expect(setDebugEnabled).toHaveBeenCalledWith(false);
     });
   });
 

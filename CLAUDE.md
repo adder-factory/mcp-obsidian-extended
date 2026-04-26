@@ -171,7 +171,12 @@ policy is now in effect.
 - **Tests-only for kill-rate work.** Hard Rule 8 applies: PRs that
   exist primarily to raise the mutation score add tests, not
   production code, unless a minimal change is genuinely required to
-  make code testable (justify in PR body).
+  make code testable (justify in PR body). See **Reviewer Triage
+  Rules** below for codified dismissal patterns (the auto-dismiss
+  list is the operational enforcement of Hard Rule 8 during
+  reviewer cycles — e.g. empty-string-as-undefined suggestions on
+  mutation-kill tests are auto-dismiss because they would silently
+  drop the kill the test was designed to catch).
 - **Per-file carve-outs allowed but justified.** Some files truly
   cannot hit 80 (entry-point wiring, content-heavy modules whose
   mutants are static-initialized at module load and Vitest worker
@@ -339,6 +344,61 @@ mandates above are in force _during_ probation so the measurement
 reflects the policy actually being followed; if the decision on
 2026-05-03 is "cut," these mandates are removed alongside the MCP
 wiring.
+
+## Reviewer Triage Rules
+
+When reviewers contradict each other or suggest defensive changes that
+conflict with mutation-test intent, apply these rules. Each is grounded
+in a real example logged in
+`~/projects/code-review-pipeline/run-log.md`; the audit (2026-04-26
+Q3) lifted them from tribal knowledge into codified policy so triage
+doesn't have to be rediscovered every PR.
+
+### Auto-dismiss (post a rationale comment, then `resolveReviewThread`)
+
+1. **Empty-string-as-undefined on mutation-kill tests** — when a
+   reviewer suggests treating empty string the same as undefined
+   inside a test designed to kill a string-literal mutant. The
+   test's exact-match behavior IS the kill mechanism; the
+   "defensive" merge would silently drop the kill.
+2. **Transient-error retry suggestions in CI gate scripts** — when a
+   reviewer suggests adding `curl`/network retry logic to a gate
+   script. Fail-loud-then-rerun is the correct retry layer; gate
+   scripts should be deterministic single-shot. Wrapping in retry
+   masks the failure mode the gate is supposed to surface.
+3. **API-style preference vs. existing pattern consistency** — when
+   a reviewer suggests switching to a "more idiomatic" API (e.g.
+   Zod `.unwrap()` over the in-place pattern, or `.then()` over
+   `async/await` in code that already uses one) where a different
+   pattern is used consistently across the codebase. Consistency
+   wins; one-off "improvements" become inconsistency tax for every
+   future reader.
+4. **Documented decisions self-defense** — when a reviewer (e.g. a
+   tool that was demoted in `pipeline-state.md`) suggests reverting
+   its own demotion. Doc-aligned action wins; cite the
+   `pipeline-state.md` entry in the dismissal note.
+
+### Auto-apply (high confidence)
+
+5. **Convergent ≥ 2 reviewers** — when 2 or more reviewers
+   independently flag the same issue, treat it as auto-apply unless
+   it conflicts with the auto-dismiss rules above. Convergent
+   findings have empirically been correct in every Phase-4 PR
+   logged in `run-log.md`. Convergence = strong signal.
+
+### Always escalate
+
+6. **Hallucinated diff content** — when a reviewer claims a file is
+   missing or present in a way that contradicts the actual diff
+   (Phase-4 example: Gemini HIGH on PR #17 of this repo claimed a
+   workflow file was absent when it was present in the diff).
+   Escalate to the human; this indicates a reviewer FP-rate concern,
+   not a PR concern, and the human needs to know if the reviewer's
+   signal quality is degrading.
+
+For the substantive-disagreement case (two reviewers propose
+incompatible fixes, both defensible), stop and ask the human — do
+not oscillate between the two reviewers' preferred approaches.
 
 ## Spec Drift Prevention
 

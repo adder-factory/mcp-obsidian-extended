@@ -2800,10 +2800,14 @@ describe("consolidated tools — registration and behavior", () => {
       expect(getText(result)).toContain("old/note.md");
     });
 
-    it("uses args.path (NOT source) as the error path on a failing non-move action", async () => {
+    it("uses args.path (NOT source) as the error path on a failing non-move action (404 echoes path)", async () => {
       const { client, getTool } = setup();
+      // Same approach as the move test — 404 surfaces context.path in the
+      // error message, which lets the assertion confirm the picker chose
+      // `path` over `source` (instead of relying on a vacuous absence-check
+      // against a generic Error that doesn't echo the path at all).
       vi.mocked(client.deleteFile).mockRejectedValue(
-        new Error("backend exploded"),
+        new ObsidianApiError("file not found", 404),
       );
       const result = await getTool("vault").handler({
         action: "delete",
@@ -2811,12 +2815,8 @@ describe("consolidated tools — registration and behavior", () => {
         source: "should/be/ignored.md",
       });
       expect(result.isError).toBe(true);
-      // The error path picker should pick `path` (not `source`) for non-move.
-      // buildErrorMessage may not always echo the path verbatim, but it
-      // SHOULD echo `doomed.md` and SHOULD NOT echo `should/be/ignored.md`.
       const text = getText(result);
-      // Either the path is echoed in the error, or we at least confirm the
-      // ignored source string isn't leaked into the error message.
+      expect(text).toContain("doomed.md");
       expect(text).not.toContain("should/be/ignored.md");
     });
   });
@@ -2858,7 +2858,7 @@ describe("consolidated tools — registration and behavior", () => {
     // textResult/errorResult string. StringLiteral mutations on those
     // messages survive unless the test asserts the exact text.
 
-    it("put returns 'Active file updated' on success", async () => {
+    it("put returns exactly 'Active file updated' on success", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.putActiveFile).mockResolvedValue();
       const result = await getTool("active_file").handler({
@@ -2866,10 +2866,10 @@ describe("consolidated tools — registration and behavior", () => {
         content: "body",
       });
       expect(result.isError).toBeFalsy();
-      expect(getText(result)).toContain("Active file updated");
+      expect(getText(result)).toBe("Active file updated");
     });
 
-    it("append returns 'Appended to active file' on success", async () => {
+    it("append returns exactly 'Appended to active file' on success", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.appendActiveFile).mockResolvedValue();
       const result = await getTool("active_file").handler({
@@ -2877,17 +2877,17 @@ describe("consolidated tools — registration and behavior", () => {
         content: "body",
       });
       expect(result.isError).toBeFalsy();
-      expect(getText(result)).toContain("Appended to active file");
+      expect(getText(result)).toBe("Appended to active file");
     });
 
-    it("delete returns 'Active file deleted' on success", async () => {
+    it("delete returns exactly 'Active file deleted' on success", async () => {
       const { client, getTool } = setup();
       vi.mocked(client.deleteActiveFile).mockResolvedValue();
       const result = await getTool("active_file").handler({
         action: "delete",
       });
       expect(result.isError).toBeFalsy();
-      expect(getText(result)).toContain("Active file deleted");
+      expect(getText(result)).toBe("Active file deleted");
     });
   });
 

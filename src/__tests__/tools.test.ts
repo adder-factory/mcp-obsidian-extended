@@ -34,12 +34,12 @@ vi.mock("../config.js", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 import type { Config } from "../config.js";
-import { saveConfigToFile } from "../config.js";
+import { saveConfigToFile, log } from "../config.js";
 import { registerAllTools } from "../tools.js";
 import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
-import type { VaultCache } from "../cache.js";
+import type { VaultCache, CachedNote } from "../cache.js";
 import {
   ObsidianApiError,
   ObsidianConnectionError,
@@ -3707,6 +3707,277 @@ describe("consolidated tools — registration and behavior", () => {
       });
       expect(client.listFilesInVault).toHaveBeenCalled();
       expect(result.isError).toBeFalsy();
+    });
+
+    // --- Stryker mutation backfill: handleRecentChanges (33 survivors) ---
+    //
+    // The cache- and REST-path tests above prove the happy path; these add
+    // the precise assertions needed to kill the surviving mutants in the
+    // sort, filter, batching, and result-shape branches.
+
+    // --- Type guards (no `as` casts, per CLAUDE.md "prefer type narrowing") ---
+
+    function getRecentEntryPath(entry: unknown): string {
+      if (!isRecord(entry) || typeof entry["path"] !== "string") {
+        throw new Error("recent entry missing string `path`");
+      }
+      return entry["path"];
+    }
+
+    function getRecentEntryMtime(entry: unknown): number {
+      if (!isRecord(entry) || typeof entry["mtime"] !== "number") {
+        throw new Error("recent entry missing number `mtime`");
+      }
+      return entry["mtime"];
+    }
+
+    /**
+     * Builds a CachedNote for recent-changes cache-path tests. Returning
+     * the actual `CachedNote` type lets the caller declare `cachedNotes`
+     * as `readonly CachedNote[]` and pass it to `mockReturnValue` with no
+     * `as` cast.
+     */
+    function makeCachedNote(path: string, mtime: number): CachedNote {
+      return {
+        path,
+        content: "",
+        frontmatter: {},
+        tags: [],
+        stat: { ctime: 0, mtime, size: 0 },
+        links: [],
+        cachedAt: 0,
+      };
+    }
+
+    function makeMockNoteJson(path: string, mtime: number): NoteJson {
+      return {
+        content: "",
+        frontmatter: {},
+        path,
+        tags: [],
+        stat: { ctime: 0, mtime, size: 0 },
+      } satisfies NoteJson;
+    }
+
+    function makeCachedClient(
+      notes: ReadonlyArray<{ path: string; mtime: number }>,
+    ): {
+      server: { registerTool: ReturnType<typeof vi.fn> };
+      getTool: (name: string) => CapturedTool;
+      client: ObsidianClient;
+      cache: VaultCache;
+    } {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(true);
+      // The cache.getAllNotes mock is typed via the VaultCache interface;
+      // construct correctly-shaped CachedNote objects via the helper above
+      // and rely on its explicit return type so no `as` cast is needed.
+      const cachedNotes: readonly CachedNote[] = notes.map((n) =>
+        makeCachedNote(n.path, n.mtime),
+      );
+      vi.mocked(cache.getAllNotes).mockReturnValue(cachedNotes);
+      registerConsolidatedTools(
+        server as Parameters<typeof registerConsolidatedTools>[0],
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      return { server, getTool, client, cache };
+    }
+
+    function expectArray(value: unknown): unknown[] {
+      if (!Array.isArray(value)) throw new Error("expected array");
+      return value;
+    }
+
+    /**
+     * REST-path harness — same shape as makeCachedClient but with an
+     * uninitialized cache so handleRecentChanges falls through to the
+     * REST/listFilesInVault + getFileContents path. Tests configure the
+     * client mocks AFTER calling this; vi mocks retain their state across
+     * the synchronous register-then-handler sequence.
+     */
+    function makeRestClient(): {
+      server: { registerTool: ReturnType<typeof vi.fn> };
+      getTool: (name: string) => CapturedTool;
+      client: ObsidianClient;
+      cache: VaultCache;
+    } {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      registerConsolidatedTools(
+        server as Parameters<typeof registerConsolidatedTools>[0],
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      return { server, getTool, client, cache };
+    }
+
+    it("cache path sorts by mtime DESCENDING (newest first)", async () => {
+      const { getTool } = makeCachedClient([
+        { path: "a.md", mtime: 100 },
+        { path: "c.md", mtime: 999 },
+        { path: "b.md", mtime: 500 },
+      ]);
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 5,
+      });
+      const parsed = expectArray(JSON.parse(getText(result)));
+      // c (999) > b (500) > a (100)
+      expect(parsed.map(getRecentEntryPath)).toEqual(["c.md", "b.md", "a.md"]);
+    });
+
+    it("cache path returns exactly { path, mtime } per note (no extra fields)", async () => {
+      const { getTool } = makeCachedClient([{ path: "n.md", mtime: 42 }]);
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 1,
+      });
+      const parsed = expectArray(JSON.parse(getText(result)));
+      if (parsed.length !== 1) throw new Error("expected one-element array");
+      const first = parsed[0];
+      if (!isRecord(first)) throw new Error("expected object");
+      expect(first).toEqual({ path: "n.md", mtime: 42 });
+      expect(Object.keys(first).sort()).toEqual(["mtime", "path"]);
+    });
+
+    it("cache path respects the limit (returns at most `limit` items)", async () => {
+      const notes = Array.from({ length: 20 }, (_, i) => ({
+        path: `n${i}.md`,
+        mtime: i,
+      }));
+      const { getTool } = makeCachedClient(notes);
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 3,
+      });
+      const parsed = expectArray(JSON.parse(getText(result)));
+      expect(parsed).toHaveLength(3);
+      // Should be the 3 newest (mtime 19, 18, 17 — DESC)
+      expect(parsed.map(getRecentEntryMtime)).toEqual([19, 18, 17]);
+    });
+
+    it("REST path filters out non-.md files (case-insensitive)", async () => {
+      const { getTool, client } = makeRestClient();
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: [
+          "note.md",
+          "image.png",
+          "UPPER.MD", // uppercase extension — must still be included
+          "config.json",
+          "other.txt",
+        ],
+      });
+      vi.mocked(client.getFileContents).mockImplementation((path) =>
+        Promise.resolve(makeMockNoteJson(path, path === "note.md" ? 100 : 50)),
+      );
+      await getTool("recent").handler({ type: "changes", limit: 10 });
+
+      // Only the .md and .MD files should have been fetched. Filter the
+      // mock-call list with a typeof guard so the .map result is string[]
+      // without an `as string` assertion.
+      const fetchedPaths = vi
+        .mocked(client.getFileContents)
+        .mock.calls.map((c) => c[0])
+        .filter((p): p is string => typeof p === "string");
+      expect(fetchedPaths.sort()).toEqual(["UPPER.MD", "note.md"]);
+    });
+
+    it("REST path emits a warn log when getFileContents rejects (does NOT silently drop)", async () => {
+      // Per CLAUDE.md "NEVER swallow errors silently — always log or rethrow",
+      // a per-file read failure must surface via the `log("warn", ...)` call
+      // so operators see partial-data-loss conditions. The result still
+      // excludes the failed file (best-effort summary), but the failure is
+      // observable through the log.
+      vi.mocked(log).mockClear();
+
+      const { getTool, client } = makeRestClient();
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["good.md", "bad.md"],
+      });
+      vi.mocked(client.getFileContents).mockImplementation((path) =>
+        path === "bad.md"
+          ? Promise.reject(new Error("read failed"))
+          : Promise.resolve(makeMockNoteJson(path, 100)),
+      );
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 10,
+      });
+      expect(result.isError).toBeFalsy();
+
+      // Result excludes the failed file (best-effort).
+      const parsed = expectArray(JSON.parse(getText(result)));
+      expect(parsed.map(getRecentEntryPath)).toEqual(["good.md"]);
+
+      // Critically, the failure IS observable via a warn log. The file-level
+      // `vi.mock("../config.js", ...)` replaces `log` with `vi.fn()`, so we
+      // assert the mock's calls directly rather than spying on stderr.
+      const warnCalls = vi
+        .mocked(log)
+        .mock.calls.filter(
+          ([level, msg]) =>
+            level === "warn" &&
+            typeof msg === "string" &&
+            msg.includes("recent_changes: skipping bad.md"),
+        );
+      expect(warnCalls).toHaveLength(1);
+      const [, msg] = warnCalls[0] ?? [];
+      expect(msg).toContain("read failed");
+    });
+
+    it("REST path uses mtime=0 fallback when getFileContents returns a string (no stat)", async () => {
+      const { getTool, client } = makeRestClient();
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["a.md", "b.md"],
+      });
+      vi.mocked(client.getFileContents).mockImplementation((path) =>
+        path === "a.md"
+          ? Promise.resolve("# raw markdown") // string — no stat
+          : Promise.resolve(makeMockNoteJson(path, 999)),
+      );
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 10,
+      });
+      const parsed = expectArray(JSON.parse(getText(result)));
+      const aEntry = parsed.find((n) => getRecentEntryPath(n) === "a.md");
+      if (!isRecord(aEntry)) throw new Error("expected entry for a.md");
+      // String result → fallback mtime = 0
+      expect(aEntry["mtime"]).toBe(0);
+      // b.md keeps its real mtime
+      const bEntry = parsed.find((n) => getRecentEntryPath(n) === "b.md");
+      if (!isRecord(bEntry)) throw new Error("expected entry for b.md");
+      expect(bEntry["mtime"]).toBe(999);
+    });
+
+    it("REST path sorts by mtime DESCENDING and applies the limit after sort", async () => {
+      const { getTool, client } = makeRestClient();
+      vi.mocked(client.listFilesInVault).mockResolvedValue({
+        files: ["a.md", "b.md", "c.md"],
+      });
+      const mtimeByPath: Record<string, number> = {
+        "a.md": 100,
+        "b.md": 999,
+        "c.md": 500,
+      };
+      vi.mocked(client.getFileContents).mockImplementation((path) =>
+        Promise.resolve(makeMockNoteJson(path, mtimeByPath[path] ?? 0)),
+      );
+      const result = await getTool("recent").handler({
+        type: "changes",
+        limit: 2,
+      });
+      const parsed = expectArray(JSON.parse(getText(result)));
+      // Sort DESC by mtime → b (999), c (500), a (100). Limit 2 → b, c.
+      expect(parsed).toHaveLength(2);
+      expect(parsed.map(getRecentEntryPath)).toEqual(["b.md", "c.md"]);
     });
   });
 

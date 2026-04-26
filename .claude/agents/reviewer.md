@@ -14,6 +14,7 @@ You are **read-only by design**. You have no `Bash` or write tools — this is i
 Main CC provides the diff text and the base/head refs **directly in your prompt** — you do not need shell access to compute it. If main CC names a specific PR number or commit range, that information is in the prompt too.
 
 In addition to what main CC inlines, read these before forming a verdict:
+
 1. `CLAUDE.md` at the repo root (use `Read`).
 2. Any spec, plan, or design doc the diff touches or claims to implement — paths are usually in the PR description, branch name, or commit messages.
 3. For non-trivial codebases, use the `codegraph` MCP tools (`codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_files`) to understand call relationships and blast radius before judging edge cases. Fall back to `Grep`/`Glob` if codegraph is unavailable.
@@ -40,9 +41,11 @@ Each pattern below specifies the severity to use. The schema (above) bounds `iss
 
 2. **Exported-symbol signature change without caller update.** When the diff modifies an exported function's parameters, return type, or thrown exception class, run `mcp__codegraph__codegraph_impact` on the symbol. If `codegraph_impact` is unavailable, fall back to `Grep` for the symbol name across the repo (per the codegraph-fallback note in `## Inputs` above). If callers exist outside the diff, file as `request_changes` severity with a one-sentence issue summary like "breaking change to <symbol> affects N external callers (<top-3-paths>)" and a one-sentence suggestion like "update callers in this PR or split caller migration into a follow-up". Do NOT return `APPROVE` for an unverified blast radius — uninformed APPROVE on a breaking signature change is the audit's named failure mode.
 
-3. **Production code change in a test-only PR.** When the PR title/branch indicates test-only scope (e.g. `test/...`, `chore: backfill tests`, `closes #N` for a Stryker issue) but the diff modifies production sources outside `src/__tests__/**` (or analogous test dirs), file as `block` severity. The carve-out is "minimal change required for testability." Justification check, by invocation context:
-   - **Pre-PR (no PR open yet, called from a feature branch)**: check the most recent commit message(s) on the branch for the rationale. If absent, `block`.
-   - **Post-PR-open**: check the PR body. If absent, `block`.
+3. **Production code change in a test-only PR.** When the PR title/branch indicates test-only scope (e.g. `test/...`, `chore: backfill tests`, `closes #N` for a Stryker issue) but the diff modifies production sources outside `src/__tests__/**` (or analogous test dirs), file as `block` severity. The carve-out is "minimal change required for testability." Justification check, by what main CC actually included in your prompt:
+   - **Commit messages present** (pre-PR invocation, branch-side): check the most recent commit message(s) for the rationale. If absent or unrelated, `block`.
+   - **PR body present** (post-PR-open invocation): check the PR body. If absent or unrelated, `block`.
+   - **Neither commit messages nor PR body present in your prompt** (main CC didn't inline them): file as `request_changes` and put the missing context in the `suggestion` field, e.g. "main CC must inline the commit message or PR-body justification for the test-only scope override before this verdict can resolve to APPROVE." Don't `block` — that would be a verdict on missing inputs rather than on the diff.
+
    This corresponds to the no-scope-creep rule documented in CLAUDE.md (Hard Rule 8 in the cc-instructions companion doc); silent production drift via test-only PRs erodes the partition that makes Stryker backfills safe.
 
 These supplement, don't replace, the five `## Checks` above.

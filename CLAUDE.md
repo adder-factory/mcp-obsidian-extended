@@ -157,9 +157,15 @@ like:
 ```
 
 - One record per invocation, append-only. Create the directory
-  `.adder-pipeline/` and the file if absent (`mkdir -p
-.adder-pipeline && touch .adder-pipeline/reviewer-verdicts.jsonl`,
-  then append).
+  `.adder-pipeline/` and the file if absent. The exact setup
+  command (kept on a single line so copy-paste runs as a unit):
+
+  ```bash
+  mkdir -p .adder-pipeline && touch .adder-pipeline/reviewer-verdicts.jsonl
+  ```
+
+  Then append the JSONL record.
+
 - `timestamp` ISO-8601 UTC, `pr_number` is the GitHub PR number
   (use `0` if logging a pre-PR dry-run with no PR open yet),
   `verdict` is one of `APPROVE` / `REQUEST_CHANGES` / `BLOCK`,

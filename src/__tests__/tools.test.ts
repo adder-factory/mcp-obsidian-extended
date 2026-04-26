@@ -1979,6 +1979,103 @@ describe("granular tools — registration and basic behavior", () => {
         });
       },
     );
+
+    // --- Additional happy-path / negative coverage (CodeRabbit cycle-5 ask) ---
+
+    // parsePosIntValue boundary + larger integer (timeout, min=1)
+    it.each([
+      ["1", 1],
+      ["60000", 60000],
+      ["2147483647", 2147483647],
+    ])("accepts timeout=%s and saves as %i", async (value, expected) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { timeout: expected },
+      });
+    });
+
+    it("accepts maxResponseChars=10 (typical positive integer)", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "10",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 10 },
+      });
+    });
+
+    // Boolean false-path — kills a separate StringLiteral mutant on
+    // parseBoolValue("false") and the wrap-as-{ key: false } shape.
+    it("compactResponses=false produces { compactResponses: false }", async () => {
+      const { getTool } = setup();
+      try {
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "compactResponses",
+          value: "false",
+        });
+        expect(result.isError).toBeFalsy();
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          compactResponses: false,
+        });
+      } finally {
+        // configure handler ALSO calls setCompactResponses(false) for false;
+        // explicit reset for symmetry with the =true test above.
+        setCompactResponses(false);
+      }
+    });
+
+    it("verifyWrites=false produces { reliability: { verifyWrites: false } }", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "verifyWrites",
+        value: "false",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { verifyWrites: false },
+      });
+    });
+
+    // Invalid enum value rejection for toolPreset (existing test covers
+    // toolMode invalid; add the symmetric one for toolPreset).
+    it("rejects invalid toolPreset value", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "toolPreset",
+        value: "experimental", // not in enum
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("Invalid value");
+    });
+
+    // Empty/whitespace string → "Invalid value" error message contract for
+    // boolean settings (parseBoolValue returns undefined → handler returns
+    // errorResult with "Invalid value").
+    it.each(["", "   ", "\n", "\t"])(
+      "rejects empty/whitespace boolean value '%s' with 'Invalid value'",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "verifyWrites",
+          value,
+        });
+        expect(result.isError).toBe(true);
+        expect(getText(result)).toContain("Invalid value");
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

@@ -144,6 +144,35 @@ drift — surfaced before code goes public.
 Time budget: ~120 seconds. If the reviewer takes longer than that
 consistently, log the run-times and revisit the prompt or the model choice.
 
+## Mutation Testing — Hard 80% Floor (active)
+
+Stryker `thresholds.break` is set to **80** in `stryker.conf.mjs`. The
+pipeline (`npm run pre-pr`) blocks any push whose mutation score is
+below 80%. As of `chore/stryker-floor-80` the score is **64.66%**, so
+**every PR opened now will fail the Stryker gate** until the backfill
+work lifts the score over the floor.
+
+While the floor is unmet:
+
+- **No feature work.** Pipeline is frozen for new features. The only
+  PR types allowed to merge are (a) the floor-bootstrap PR itself
+  (admin-merged once, despite its own gate failure), and (b) backfill
+  PRs that add tests to kill surviving mutants.
+- **One file (or one logical group) per backfill PR** — no mega-PRs.
+  Each backfill PR must itself clear the 80% gate; aggregate score
+  ratchets up with each merge.
+- **Tests-only.** Hard Rule 8 still applies: backfill PRs add tests,
+  not production code, unless a minimal change is genuinely required
+  to make code testable (justify in PR body).
+- **Per-file carve-outs allowed but justified.** If a file truly can't
+  hit 80 (entry-point wiring like `index.ts`, content-heavy modules),
+  add a per-file Stryker threshold and explain why in the PR body.
+  More than 5 carve-outs ⇒ escalate for human policy review.
+
+Once the aggregate score is ≥80, the ratchet policy resumes:
+`thresholds.break = (current_score − 1pp)`, with a hard floor that
+never drops below 80.
+
 ## Testing
 
 - **Framework:** Vitest — native ESM + TypeScript, no config issues

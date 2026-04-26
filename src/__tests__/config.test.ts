@@ -718,10 +718,20 @@ describe("Stryker backfill — deepMerge via saveConfigToFile", () => {
   it("blocks __proto__ key (prototype pollution guard)", () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(JSON.stringify({}));
-    saveConfigToFile("/tmp/cfg.json", {
-      __proto__: { polluted: true },
-      host: "ok",
+    // The object-literal shorthand `{ __proto__: ... }` is special syntax
+    // that sets the prototype rather than creating an own enumerable
+    // property. Use Object.defineProperty so __proto__ is an own
+    // enumerable key Object.keys() will include — otherwise the
+    // `key === "__proto__"` guard in deepMerge is never reached and a
+    // mutant removing it would survive (Greptile P1 + Gemini medium @ #65).
+    const malicious: Record<string, unknown> = { host: "ok" };
+    Object.defineProperty(malicious, "__proto__", {
+      value: { polluted: true },
+      enumerable: true,
+      configurable: true,
+      writable: true,
     });
+    saveConfigToFile("/tmp/cfg.json", malicious);
     const written = getWrittenJson() as Record<string, unknown>;
     expect(written).toEqual({ host: "ok" });
     expect("polluted" in {}).toBe(false);
@@ -971,7 +981,7 @@ describe("Stryker backfill — loadConfig 3-tier precedence", () => {
     expect(cfg.host).toBe("from-file");
   });
 
-  it("certPath: env beats file value, file null is rewritten to undefined", () => {
+  it("certPath: file null is rewritten to undefined (falls back to DEFAULTS.certPath)", () => {
     mockedExistsSync.mockImplementation(
       (p: import("node:fs").PathLike) =>
         String(p) === resolve("./obsidian-mcp.config.json"),
@@ -982,6 +992,31 @@ describe("Stryker backfill — loadConfig 3-tier precedence", () => {
     const cfg = loadConfig();
     // tls.certPath === null → undefined → DEFAULTS.certPath (undefined)
     expect(cfg.certPath).toBeUndefined();
+  });
+
+  it("certPath: env var overrides file value", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tls: { certPath: "/from/file.crt" } }),
+    );
+    process.env["OBSIDIAN_CERT_PATH"] = "/from/env.crt";
+    const cfg = loadConfig();
+    expect(cfg.certPath).toBe("/from/env.crt");
+  });
+
+  it("certPath: file value used when env var is unset", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tls: { certPath: "/from/file.crt" } }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.certPath).toBe("/from/file.crt");
   });
 
   it("includeTools: env undefined → use file value", () => {

@@ -394,7 +394,10 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 1. Open PR against `main`
 2. **CodeRabbit Pro Plus** (required) auto-reviews. **Gemini**, **Greptile**,
    and **CodeQL** also post advisory findings. The live reviewer roster is
-   recorded in `~/projects/code-review-pipeline/pipeline-state.md`.
+   recorded in `~/projects/code-review-pipeline/pipeline-state.md` (internal
+   maintainer configuration — not accessible or editable by external
+   contributors; the required-vs-advisory split above is the effective
+   roster they should treat as authoritative).
 3. Dependabot runs on dep-related PRs
 4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
    advisory-reviewer threads with the same rigor — nitpicks count. When an
@@ -411,7 +414,7 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 5. If reviewers disagree substantively (e.g. CodeRabbit and Gemini propose
    incompatible fixes), stop and ask the human — do not oscillate between
    the two reviewers' preferred approaches.
-6. Ask the human to merge only when all of the following are true:
+6. Ask the human to merge only when all the following are true:
    - All CI checks green
    - All CodeRabbit threads resolved
    - All advisory-reviewer threads resolved or explicitly auto-dismissed in

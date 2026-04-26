@@ -39,7 +39,7 @@ import { registerAllTools } from "../tools.js";
 import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
-import type { VaultCache } from "../cache.js";
+import type { VaultCache, CachedNote } from "../cache.js";
 import {
   ObsidianApiError,
   ObsidianConnectionError,
@@ -3732,21 +3732,12 @@ describe("consolidated tools — registration and behavior", () => {
     }
 
     /**
-     * Builds a CachedNote-shaped object for recent-changes cache-path tests.
-     * Keeps test data strongly typed without unsafe broad casts.
+     * Builds a CachedNote for recent-changes cache-path tests. Returning
+     * the actual `CachedNote` type lets the caller declare `cachedNotes`
+     * as `readonly CachedNote[]` and pass it to `mockReturnValue` with no
+     * `as` cast.
      */
-    function makeCachedNote(
-      path: string,
-      mtime: number,
-    ): {
-      path: string;
-      content: string;
-      frontmatter: Record<string, unknown>;
-      tags: readonly string[];
-      stat: { ctime: number; mtime: number; size: number };
-      links: readonly unknown[];
-      cachedAt: number;
-    } {
+    function makeCachedNote(path: string, mtime: number): CachedNote {
       return {
         path,
         content: "",
@@ -3781,11 +3772,11 @@ describe("consolidated tools — registration and behavior", () => {
       const cache = makeMockCache(true);
       // The cache.getAllNotes mock is typed via the VaultCache interface;
       // construct correctly-shaped CachedNote objects via the helper above
-      // instead of casting the literal to `never`.
-      const cachedNotes = notes.map((n) => makeCachedNote(n.path, n.mtime));
-      vi.mocked(cache.getAllNotes).mockReturnValue(
-        cachedNotes as ReturnType<typeof cache.getAllNotes>,
+      // and rely on its explicit return type so no `as` cast is needed.
+      const cachedNotes: readonly CachedNote[] = notes.map((n) =>
+        makeCachedNote(n.path, n.mtime),
       );
+      vi.mocked(cache.getAllNotes).mockReturnValue(cachedNotes);
       registerConsolidatedTools(
         server as Parameters<typeof registerConsolidatedTools>[0],
         client,

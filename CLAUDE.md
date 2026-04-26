@@ -191,7 +191,17 @@ automatically — no further admin-merges needed.
   to make code testable (justify in PR body).
 - **Per-file carve-outs allowed but justified.** If a file truly can't
   hit 80 (entry-point wiring like `index.ts`, content-heavy modules),
-  add a per-file Stryker threshold and explain why in the PR body.
+  exclude it from the Stryker `mutate` glob and explain why in the PR
+  body. The file's mutants are removed from the aggregate calculation,
+  so the rest of the codebase isn't dragged down by an inherently
+  untestable file. Example carve-out in `stryker.conf.mjs`:
+
+  ```javascript
+  // Excluding entry-point wiring that can't be unit-tested without
+  // spinning up the full MCP transport. Justified in PR #N body.
+  mutate: ["src/**/*.ts", "!src/**/*.test.ts", "!src/index.ts"],
+  ```
+
   More than 5 carve-outs ⇒ escalate for human policy review.
 - **Re-baseline after each merge.** Update the score-history comment
   in `stryker.conf.mjs` (the in-repo authoritative record). The

@@ -2709,18 +2709,14 @@ describe("ObsidianClient — search", () => {
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.simpleSearch("test");
-    const opts = mockRequest.mock.calls[0]?.[2];
-    if (
-      opts === null ||
-      typeof opts !== "object" ||
-      !("headers" in opts) ||
-      !("body" in opts)
-    ) {
-      throw new Error("expected request opts with headers + body");
-    }
-    const o = opts as { headers: Record<string, string>; body: unknown };
-    expect(o.headers["Content-Type"]).toBe("text/plain");
-    expect(o.body).toBe("");
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      expect.stringContaining("/search/simple/"),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "Content-Type": "text/plain" }),
+        body: "",
+      }),
+    );
   });
 
   it("simpleSearch defaults contextLength to 100 when omitted", async () => {
@@ -2742,33 +2738,35 @@ describe("ObsidianClient — search", () => {
     expect(calledPath).toContain("query=hello+world+%26+foo");
   });
 
-  it("complexSearch sends Content-Type: vnd.olrapi.jsonlogic+json", async () => {
+  it("complexSearch sends Content-Type: application/vnd.olrapi.jsonlogic+json", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.complexSearch({ glob: ["*.md"] });
-    const opts = mockRequest.mock.calls[0]?.[2];
-    if (opts === null || typeof opts !== "object" || !("headers" in opts)) {
-      throw new Error("expected request opts with headers");
-    }
-    const headers = (opts as { headers: Record<string, string> }).headers;
-    expect(headers["Content-Type"]).toBe(
-      "application/vnd.olrapi.jsonlogic+json",
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      "/search/",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Content-Type": "application/vnd.olrapi.jsonlogic+json",
+        }),
+      }),
     );
   });
 
-  it("dataviewSearch sends Content-Type: vnd.olrapi.dataview.dql+txt", async () => {
+  it("dataviewSearch sends Content-Type: application/vnd.olrapi.dataview.dql+txt", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.dataviewSearch('LIST FROM ""');
-    const opts = mockRequest.mock.calls[0]?.[2];
-    if (opts === null || typeof opts !== "object" || !("headers" in opts)) {
-      throw new Error("expected request opts with headers");
-    }
-    const headers = (opts as { headers: Record<string, string> }).headers;
-    expect(headers["Content-Type"]).toBe(
-      "application/vnd.olrapi.dataview.dql+txt",
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      "/search/",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Content-Type": "application/vnd.olrapi.dataview.dql+txt",
+        }),
+      }),
     );
   });
 
@@ -2778,11 +2776,11 @@ describe("ObsidianClient — search", () => {
 
     const dql = 'TABLE status FROM "folder" WHERE status = "active"';
     await client.dataviewSearch(dql);
-    const opts = mockRequest.mock.calls[0]?.[2];
-    if (opts === null || typeof opts !== "object" || !("body" in opts)) {
-      throw new Error("expected request opts with body");
-    }
-    expect((opts as { body: unknown }).body).toBe(dql);
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      "/search/",
+      expect.objectContaining({ body: dql }),
+    );
   });
 });
 

@@ -1847,7 +1847,7 @@ describe("granular tools — registration and basic behavior", () => {
     });
 
     it.each(["TRUE", "True", "1", "0", "yes", "no", ""])(
-      "rejects non-boolean debug value '%s'",
+      "rejects non-boolean debug value '%s' and does not write config",
       async (value) => {
         const { getTool } = setup();
         const result = await getTool("configure").handler({
@@ -1857,6 +1857,7 @@ describe("granular tools — registration and basic behavior", () => {
         });
         expect(result.isError).toBe(true);
         expect(getText(result)).toContain("Invalid value");
+        expect(saveConfigToFile).not.toHaveBeenCalled();
       },
     );
 
@@ -1877,7 +1878,7 @@ describe("granular tools — registration and basic behavior", () => {
       ["Infinity", "literal Infinity"],
       ["0", "below min=1"],
       ["-5", "negative"],
-    ])("rejects timeout=%j (%s)", async (value) => {
+    ])("rejects timeout=%j (%s) and does not write config", async (value) => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({
         action: "set",
@@ -1885,6 +1886,7 @@ describe("granular tools — registration and basic behavior", () => {
         value,
       });
       expect(result.isError).toBe(true);
+      expect(saveConfigToFile).not.toHaveBeenCalled();
     });
 
     it("accepts maxResponseChars=0 (min=0 boundary)", async () => {
@@ -1900,7 +1902,7 @@ describe("granular tools — registration and basic behavior", () => {
       });
     });
 
-    it("rejects maxResponseChars=-1 (below min=0)", async () => {
+    it("rejects maxResponseChars=-1 (below min=0) and does not write config", async () => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({
         action: "set",
@@ -1908,6 +1910,7 @@ describe("granular tools — registration and basic behavior", () => {
         value: "-1",
       });
       expect(result.isError).toBe(true);
+      expect(saveConfigToFile).not.toHaveBeenCalled();
     });
 
     // CONFIG_UPDATE_PARSERS Map entries — each setting must route to its
@@ -2049,7 +2052,7 @@ describe("granular tools — registration and basic behavior", () => {
 
     // Invalid enum value rejection for toolPreset (existing test covers
     // toolMode invalid; add the symmetric one for toolPreset).
-    it("rejects invalid toolPreset value", async () => {
+    it("rejects invalid toolPreset value and does not write config", async () => {
       const { getTool } = setup();
       const result = await getTool("configure").handler({
         action: "set",
@@ -2058,13 +2061,14 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(result.isError).toBe(true);
       expect(getText(result)).toContain("Invalid value");
+      expect(saveConfigToFile).not.toHaveBeenCalled();
     });
 
     // Empty/whitespace string → "Invalid value" error message contract for
     // boolean settings (parseBoolValue returns undefined → handler returns
     // errorResult with "Invalid value").
     it.each(["", "   ", "\n", "\t"])(
-      "rejects empty/whitespace boolean value '%s' with 'Invalid value'",
+      "rejects empty/whitespace boolean value '%s' with 'Invalid value' and does not write config",
       async (value) => {
         const { getTool } = setup();
         const result = await getTool("configure").handler({
@@ -2074,6 +2078,7 @@ describe("granular tools — registration and basic behavior", () => {
         });
         expect(result.isError).toBe(true);
         expect(getText(result)).toContain("Invalid value");
+        expect(saveConfigToFile).not.toHaveBeenCalled();
       },
     );
   });

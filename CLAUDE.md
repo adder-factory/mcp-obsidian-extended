@@ -135,10 +135,11 @@ any line that looks secret-like before posting to PR artifacts or logs.
 If unsure whether output is safe to include, escalate with just the
 error class — the human can re-run locally.
 
-The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`,
-CodeRabbit, and Greptile — those run after the PR is open. The reviewer's
-job is the layer they miss: intent vs. implementation, missing edge cases,
-scope drift before code goes public.
+The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`
+(deterministic local gate, runs before push) and the PR-stage AI reviewers
+configured for this repo (run after the PR is open). The reviewer's job is
+the layer those miss: intent vs. implementation, missing edge cases, scope
+drift — surfaced before code goes public.
 
 Time budget: ~120 seconds. If the reviewer takes longer than that
 consistently, log the run-times and revisit the prompt or the model choice.

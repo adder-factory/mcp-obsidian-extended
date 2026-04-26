@@ -308,6 +308,29 @@ next. Format per stage:
 Do NOT batch verification at end of all stages. A failed early stage that
 propagates is harder to diagnose than one caught immediately.
 
+## Spec Drift Prevention
+
+Any addition or removal of a gate, reviewer, or pipeline step must be
+recorded in `~/projects/code-review-pipeline/pipeline-state.md`. Because
+`pipeline-state.md` lives in a separate filesystem location from this
+repo (it is vault-adjacent, not part of any repo's diff), the rule is:
+**update `pipeline-state.md` in its own location and commit that change
+alongside or immediately before the implementing PR in this repo**. "Alongside" means in the same working session;
+"immediately before" means no other implementing PR lands between the
+state-doc update and the change it documents. The state document must
+always reflect what `main` actually runs.
+
+Drift erodes trust. Every drift item caught in the 2026-04-26 audit (Q5
+in `~/projects/code-review-pipeline/build-log.md`) happened because this
+rule didn't exist. CodeAnt was dropped on 2026-04-23 and the docs took
+three days to catch up; CodeQL, the reviewer subagent, the
+JSDoc-coverage gate, and the Stryker hard-floor were all added without
+ever updating the spec. The cost was real: the audit had to reconstruct
+live state from PR history because no single document reflected reality.
+
+`pipeline-state.md` is the live-state document. `pipeline-spec.md` is
+now marked superseded and preserved for the design-intent record only.
+
 ## When to Use Subagents
 
 Subagents are not free — each burns its own context window, and
@@ -369,16 +392,31 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
 ### Pull request workflow
 
 1. Open PR against `main`
-2. CodeRabbit Pro Plus AND CodeAnt AI both auto-review — you will see comments
-   from both within minutes
+2. **CodeRabbit Pro Plus** (required) auto-reviews. **Gemini**, **Greptile**,
+   and **CodeQL** also post advisory findings. The live reviewer roster is
+   recorded in `~/projects/code-review-pipeline/pipeline-state.md` (internal
+   maintainer configuration — not accessible or editable by external
+   contributors; the required-vs-advisory split above is the effective
+   roster external contributors should treat as authoritative).
 3. Dependabot runs on dep-related PRs
-4. Iterate on every comment from BOTH reviewers. Nitpicks count. No "will fix later."
-5. If CodeRabbit and CodeAnt disagree on something, stop and ask the human — do
-   not oscillate between the two reviewers' preferred approaches
-6. Ask the human to merge only when all of the following are true:
+4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
+   advisory-reviewer threads with the same rigor — nitpicks count. When an
+   advisory reviewer disagrees with CodeRabbit or with this CLAUDE.md, the
+   triage rule is:
+   - **Convergent finding** (≥2 reviewers flag the same issue): auto-apply.
+   - **CodeRabbit vs. advisory disagreement**: prefer CodeRabbit (the
+     required reviewer); auto-dismiss the advisory finding with a one-line
+     reason in the PR body.
+   - **Advisory finding contradicts an explicit rule in this CLAUDE.md**:
+     auto-dismiss; cite the CLAUDE.md section in the dismissal note.
+   - **Substantive disagreement that doesn't fit the above** (e.g. two
+     incompatible fixes, both defensible): stop and ask the human — do not
+     oscillate between the two reviewers' preferred approaches.
+5. Ask the human to merge only when all the following are true:
    - All CI checks green
    - All CodeRabbit threads resolved
-   - All CodeAnt threads resolved
+   - All advisory-reviewer threads resolved or explicitly auto-dismissed in
+     the PR body
    - `npm run pre-pr` passes locally on the branch head
 
    **There is no human code review.** The pipeline spec is explicit: "No

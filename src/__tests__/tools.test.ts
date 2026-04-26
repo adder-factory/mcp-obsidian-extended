@@ -2318,8 +2318,12 @@ describe("granular tools — registration and basic behavior", () => {
       Object.defineProperty(cache, "linkCount", {
         get: vi.fn().mockReturnValue(linkCount),
       });
+      // Use Parameters<typeof registerGranularTools>[0] to derive the
+      // expected McpServer type from the function signature itself, so
+      // the cast is provably safe (same pattern applied to consolidated
+      // test helpers in PR #58).
       registerGranularTools(
-        server as never,
+        server as Parameters<typeof registerGranularTools>[0],
         client,
         cache,
         () => true,

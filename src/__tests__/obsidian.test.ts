@@ -3111,3 +3111,426 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ObsidianClient — periodic notes (by date) — Stryker backfill
+// (separate describe block so the afterEach hook here does not interfere
+// with the existing "(by date)" describe block above — Greptile P2 on PR #55)
+// ---------------------------------------------------------------------------
+describe("ObsidianClient — periodic notes (by date) — Stryker backfill", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDebugEnabled(false);
+  });
+
+  it("getPeriodicNoteForDate sends GET to /periodic/<period>/<y>/<m>/<d>/ with Accept: text/markdown for markdown format", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "body",
+    });
+
+    await client.getPeriodicNoteForDate("daily", 2026, 1, 1, "markdown");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/2026/01/01/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("text/markdown");
+  });
+
+  it("getPeriodicNoteForDate sends Accept: vnd.olrapi.note+json for json format", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "x", path: "n.md", tags: [], stat: {} }),
+    });
+
+    await client.getPeriodicNoteForDate("daily", 2026, 1, 1, "json");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("application/vnd.olrapi.note+json");
+  });
+
+  it("putPeriodicNoteForDate sends Content-Type: text/markdown", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.putPeriodicNoteForDate("daily", 2026, 1, 1, "body");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("putPeriodicNoteForDate accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.putPeriodicNoteForDate("daily", 2026, 1, 1, "body"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("appendPeriodicNoteForDate sends Content-Type: text/markdown", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.appendPeriodicNoteForDate("daily", 2026, 1, 1, "body");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("appendPeriodicNoteForDate accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.appendPeriodicNoteForDate("daily", 2026, 1, 1, "body"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patchPeriodicNoteForDate accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "body", {
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patchPeriodicNoteForDate invalidates all cache on success", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+
+    await client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "body", {
+      operation: "append",
+      targetType: "heading",
+      target: "H",
+    });
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchPeriodicNoteForDate retry rebuilds full request (PATCH + date path + corrected Target) and label '(periodic: daily date)' is rendered", async () => {
+    setDebugEnabled(true);
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "body", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    // Retry request shape — kills mutants on the retry path/method/Target args
+    // independently of the log assertion (per Gemini feedback on PR #55).
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/periodic/daily/2026/01/01/");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks");
+
+    // Label is rendered in the retryPatchWithMapLookup debug log (not the
+    // caller-side auto-corrected log which has the string hardcoded).
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const retryLog = calls.find((c) => c.includes("PATCH retry: heading"));
+    expect(retryLog).toContain("(periodic: daily date)");
+  });
+
+  it("patchPeriodicNoteForDate does NOT retry when targetType is not 'heading'", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"heading not found"}',
+    });
+
+    await expect(
+      client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "body", {
+        operation: "append",
+        targetType: "block",
+        target: "block-id",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("patchPeriodicNoteForDate does NOT retry when 400 body is not heading-not-found", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"invalid frontmatter"}',
+    });
+
+    await expect(
+      client.patchPeriodicNoteForDate("daily", 2026, 1, 1, "body", {
+        operation: "append",
+        targetType: "heading",
+        target: "Some Heading",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletePeriodicNoteForDate accepts 200 OK in addition to 204 and 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.deletePeriodicNoteForDate("daily", 2026, 1, 1),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ObsidianClient — periodic notes (current) — Stryker backfill
+// (separate describe block so the afterEach hook here does not interfere
+// with the existing "periodic notes (current)" describe at line ~2660)
+// ---------------------------------------------------------------------------
+describe("ObsidianClient — periodic notes (current) — Stryker backfill", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDebugEnabled(false);
+  });
+
+  it("getPeriodicNote sends Accept: text/markdown header for markdown format", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "body",
+    });
+
+    await client.getPeriodicNote("daily", "markdown");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("text/markdown");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/");
+  });
+
+  it("getPeriodicNote sends Accept: vnd.olrapi.note+json for json format", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content: "x", path: "n.md", tags: [], stat: {} }),
+    });
+
+    await client.getPeriodicNote("daily", "json");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Accept"]).toBe("application/vnd.olrapi.note+json");
+  });
+
+  it("putPeriodicNote sends Content-Type: text/markdown to /periodic/<period>/", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.putPeriodicNote("daily", "body");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("PUT");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("putPeriodicNote accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.putPeriodicNote("daily", "body"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("appendPeriodicNote sends Content-Type: text/markdown via POST", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.appendPeriodicNote("daily", "body");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("POST");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/");
+    const headers = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(headers["Content-Type"]).toBe("text/markdown");
+  });
+
+  it("appendPeriodicNote accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.appendPeriodicNote("daily", "body"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patchPeriodicNote accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.patchPeriodicNote("daily", "body", {
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("patchPeriodicNote invalidates all cache on success", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+
+    await client.patchPeriodicNote("daily", "body", {
+      operation: "append",
+      targetType: "heading",
+      target: "H",
+    });
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+  });
+
+  it("patchPeriodicNote retry rebuilds full request (PATCH + current-period path + corrected Target) and label '(periodic: daily)' is rendered", async () => {
+    setDebugEnabled(true);
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchPeriodicNote("daily", "body", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+    });
+
+    // Retry request shape (per Gemini feedback on PR #55) — kills mutants
+    // on the retry path/method/Target args independently of the log line.
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/periodic/daily/");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks");
+
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const retryLog = calls.find((c) => c.includes("PATCH retry: heading"));
+    expect(retryLog).toContain("(periodic: daily)");
+  });
+
+  it("patchPeriodicNote does NOT retry when targetType is not 'heading'", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"heading not found"}',
+    });
+
+    await expect(
+      client.patchPeriodicNote("daily", "body", {
+        operation: "append",
+        targetType: "block",
+        target: "block-id",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("patchPeriodicNote does NOT retry when 400 body is not heading-not-found", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValueOnce({
+      statusCode: 400,
+      headers: {},
+      body: '{"message":"invalid frontmatter"}',
+    });
+
+    await expect(
+      client.patchPeriodicNote("daily", "body", {
+        operation: "append",
+        targetType: "heading",
+        target: "Some Heading",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletePeriodicNote sends DELETE to /periodic/<period>/", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+
+    await client.deletePeriodicNote("daily");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("DELETE");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/");
+  });
+
+  it("deletePeriodicNote accepts 200 OK in addition to 204 and 404", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.deletePeriodicNote("daily")).resolves.toBeUndefined();
+  });
+});

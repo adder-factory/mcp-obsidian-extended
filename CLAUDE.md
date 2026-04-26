@@ -403,7 +403,7 @@ Note: bug investigations involving error messages, log strings, or
 literal text content are **substring** queries — use `Grep` for
 those. The mandate above is for relationship-tracing investigations
 (stack of callers, dependency chain), not for "find the string
-'connection refused' in any file."
+`connection refused` in any file."
 
 File reads (`Read`) are for when you need the actual source to edit;
 use CodeGraph for AST discovery and Grep for substring lookups.

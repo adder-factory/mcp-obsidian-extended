@@ -410,11 +410,9 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    - **Advisory finding contradicts an explicit rule in this CLAUDE.md**:
      auto-dismiss; cite the CLAUDE.md section in the dismissal note.
    - **Substantive disagreement that doesn't fit the above** (e.g. two
-     incompatible fixes, both defensible): stop and ask the human.
-5. If reviewers disagree substantively (e.g. CodeRabbit and Gemini propose
-   incompatible fixes), stop and ask the human — do not oscillate between
-   the two reviewers' preferred approaches.
-6. Ask the human to merge only when all the following are true:
+     incompatible fixes, both defensible): stop and ask the human — do not
+     oscillate between the two reviewers' preferred approaches.
+5. Ask the human to merge only when all the following are true:
    - All CI checks green
    - All CodeRabbit threads resolved
    - All advisory-reviewer threads resolved or explicitly auto-dismissed in

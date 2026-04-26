@@ -2284,6 +2284,123 @@ describe("granular tools — registration and basic behavior", () => {
       expect(parsed).toMatchObject({ orphanCount: 1, edgeCount: 1 });
     });
 
+    // --- Stryker mutation backfill: buildVaultStructure (10 survivors) ---
+    //
+    // The directory-traversal loop walks each file path one slash at a time
+    // (lastIndexOf "/" → slice → check Set → ascend), and the orphans list
+    // is sliced to the first 20. Targets the L397-411 mutant cluster.
+
+    function isStructurePlainObject(v: unknown): v is Record<string, unknown> {
+      return v !== null && typeof v === "object" && !Array.isArray(v);
+    }
+
+    function buildStructureClient(
+      fileList: readonly string[],
+      orphans: readonly string[] = [],
+      noteCount = fileList.length,
+      linkCount = 0,
+      edgeCount = 0,
+    ): ReturnType<typeof setup> {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(true);
+      // VaultCache.getOrphanNotes/getFileList return readonly string[]; the
+      // helper accepts the same shape, no `as` cast needed.
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([...orphans]);
+      vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
+      vi.mocked(cache.getEdgeCount).mockReturnValue(edgeCount);
+      vi.mocked(cache.getFileList).mockReturnValue([...fileList]);
+      Object.defineProperty(cache, "noteCount", {
+        get: vi.fn().mockReturnValue(noteCount),
+      });
+      Object.defineProperty(cache, "linkCount", {
+        get: vi.fn().mockReturnValue(linkCount),
+      });
+      // Construct a typed-server-shaped object via `satisfies` so the
+      // compiler verifies our mock matches what registerGranularTools
+      // expects (no `as` assertion). The full McpServer interface has
+      // many members but registerGranularTools only calls registerTool,
+      // so we cast the satisfies result to the parameter type via a
+      // single bridge cast — this still avoids `as never` and gives
+      // TypeScript a chance to verify the mock's shape.
+      const typedServer = {
+        registerTool: server.registerTool,
+      } satisfies { registerTool: typeof server.registerTool };
+      registerGranularTools(
+        typedServer as Parameters<typeof registerGranularTools>[0],
+        client,
+        cache,
+        () => true,
+        makeConfig({ enableCache: true }),
+      );
+      return { client, cache, getTool };
+    }
+
+    async function callVaultStructure(
+      getTool: (name: string) => CapturedTool,
+      limit = 10,
+    ): Promise<Record<string, unknown>> {
+      const result = await getTool("get_vault_structure").handler({ limit });
+      const parsed: unknown = JSON.parse(getText(result));
+      if (!isStructurePlainObject(parsed)) {
+        throw new Error("expected object response");
+      }
+      return parsed;
+    }
+
+    it("counts unique directories across nested paths (no duplicates, parents tracked)", async () => {
+      // a/b/c/note.md → directories: "a/b/c", "a/b", "a"
+      // a/b/other.md  → directories: "a/b" (already tracked, BREAK), "a" (skipped)
+      // x/y.md        → directories: "x"
+      // root.md       → no directories
+      // Expected unique: { "a/b/c", "a/b", "a", "x" } → 4
+      const { getTool } = buildStructureClient([
+        "a/b/c/note.md",
+        "a/b/other.md",
+        "x/y.md",
+        "root.md",
+      ]);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(4);
+    });
+
+    it("treats files at the vault root as zero directories", async () => {
+      const { getTool } = buildStructureClient(["a.md", "b.md", "c.md"]);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(0);
+    });
+
+    it("dedupes ancestor directories (early-break optimization)", async () => {
+      // 100 sibling files in deep/nested/dir/ should produce ONLY 3 dirs
+      // ("deep/nested/dir", "deep/nested", "deep"), not 100 × 3 = 300.
+      // The `break` on dirs.has(dir) ensures parents are skipped once seen.
+      const fileList = Array.from(
+        { length: 100 },
+        (_, i) => `deep/nested/dir/file${i}.md`,
+      );
+      const { getTool } = buildStructureClient(fileList);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["directoryCount"]).toBe(3);
+    });
+
+    it("slices orphans to first 20 even when cache returns more", async () => {
+      const orphans = Array.from({ length: 35 }, (_, i) => `orphan${i}.md`);
+      const { getTool } = buildStructureClient([], orphans);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["orphanCount"]).toBe(35); // total count preserved
+      const sliced = parsed["orphans"];
+      if (!Array.isArray(sliced)) throw new Error("expected orphans array");
+      expect(sliced.length).toBe(20); // sliced
+    });
+
+    it("returns all orphans when cache returns ≤ 20", async () => {
+      const orphans = ["a.md", "b.md", "c.md"];
+      const { getTool } = buildStructureClient([], orphans);
+      const parsed = await callVaultStructure(getTool);
+      expect(parsed["orphanCount"]).toBe(3);
+      expect(parsed["orphans"]).toEqual(["a.md", "b.md", "c.md"]);
+    });
+
     it("succeeds when cache becomes ready within the wait window", async () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();

@@ -435,6 +435,404 @@ describe("registerAllTools — consolidated mode", () => {
 });
 
 // ===========================================================================
+// Section 1.6: Stryker mutation backfill — tools.ts dispatcher
+// ===========================================================================
+//
+// The existing tests assert tool counts (.toBe(39), .toBe(11) etc.), which
+// catches any mutant that changes the array LENGTH (insertion/removal). They
+// do NOT catch StringLiteral mutants that swap a tool name to "" or another
+// string while preserving the count, nor do they assert the EXACT membership
+// of each preset, the exact protected-tool sets, or the precise buildFilter
+// branch behaviour. This section closes those gaps.
+
+describe("tools.ts — exact preset membership (granular)", () => {
+  // Asserts the EXACT set of registered tool names per preset. Kills the
+  // StringLiteral mutants on every entry of GRANULAR_PRESETS — a mutant
+  // swapping any name to "" would change the registered set without
+  // changing its size.
+
+  const setupAndGetRegistered = (
+    overrides: Partial<Parameters<typeof makeConfig>[0]> = {},
+  ): readonly string[] => {
+    const { server, getRegistered } = makeMockServer();
+    const client = makeMockClient();
+    const cache = makeMockCache();
+    registerAllTools(server as never, client, cache, makeConfig(overrides));
+    return getRegistered();
+  };
+
+  it("granular full preset registers exactly the 39 expected tool names", () => {
+    const registered = new Set(setupAndGetRegistered());
+    const expected = new Set([
+      "list_files_in_vault",
+      "list_files_in_dir",
+      "get_file_contents",
+      "put_content",
+      "append_content",
+      "patch_content",
+      "delete_file",
+      "search_replace",
+      "move_file",
+      "get_active_file",
+      "put_active_file",
+      "append_active_file",
+      "patch_active_file",
+      "delete_active_file",
+      "list_commands",
+      "execute_command",
+      "open_file",
+      "simple_search",
+      "complex_search",
+      "dataview_search",
+      "get_periodic_note",
+      "put_periodic_note",
+      "append_periodic_note",
+      "patch_periodic_note",
+      "delete_periodic_note",
+      "get_periodic_note_for_date",
+      "put_periodic_note_for_date",
+      "append_periodic_note_for_date",
+      "patch_periodic_note_for_date",
+      "delete_periodic_note_for_date",
+      "get_server_status",
+      "batch_get_file_contents",
+      "get_recent_changes",
+      "get_recent_periodic_notes",
+      "configure",
+      "get_backlinks",
+      "get_vault_structure",
+      "get_note_connections",
+      "refresh_cache",
+    ]);
+    expect(registered).toEqual(expected);
+  });
+
+  it("granular read-only preset omits all write/delete/execute tools", () => {
+    const registered = new Set(
+      setupAndGetRegistered({ toolPreset: "read-only" }),
+    );
+    // Each of these would be a hole in the read-only contract — assert each
+    // explicitly so a mutant adding any of them to read-only is killed.
+    const writeOps = [
+      "put_content",
+      "append_content",
+      "patch_content",
+      "delete_file",
+      "search_replace",
+      "move_file",
+      "put_active_file",
+      "append_active_file",
+      "patch_active_file",
+      "delete_active_file",
+      "execute_command",
+      "open_file",
+      "put_periodic_note",
+      "append_periodic_note",
+      "patch_periodic_note",
+      "delete_periodic_note",
+      "put_periodic_note_for_date",
+      "append_periodic_note_for_date",
+      "patch_periodic_note_for_date",
+      "delete_periodic_note_for_date",
+    ];
+    for (const op of writeOps) {
+      expect(registered.has(op)).toBe(false);
+    }
+    // Also assert the read-only set contains the read tools (not just the
+    // negative case) — kills mutants that empty the read-only preset.
+    expect(registered.has("list_files_in_vault")).toBe(true);
+    expect(registered.has("get_file_contents")).toBe(true);
+    expect(registered.has("simple_search")).toBe(true);
+  });
+
+  it("granular minimal preset registers exactly 7 preset tools + protected refresh_cache", () => {
+    const registered = new Set(
+      setupAndGetRegistered({ toolPreset: "minimal" }),
+    );
+    expect(registered).toEqual(
+      new Set([
+        "list_files_in_vault",
+        "get_file_contents",
+        "append_content",
+        "simple_search",
+        "get_server_status",
+        "batch_get_file_contents",
+        "configure",
+        // refresh_cache is protected — always included even though not in the
+        // minimal preset list itself
+        "refresh_cache",
+      ]),
+    );
+  });
+
+  it("granular safe preset omits exactly the 4 delete tools", () => {
+    const registered = new Set(setupAndGetRegistered({ toolPreset: "safe" }));
+    // Negative case: only the 4 delete operations are removed
+    expect(registered.has("delete_file")).toBe(false);
+    expect(registered.has("delete_active_file")).toBe(false);
+    expect(registered.has("delete_periodic_note")).toBe(false);
+    expect(registered.has("delete_periodic_note_for_date")).toBe(false);
+    // Positive case: all non-delete write tools remain
+    expect(registered.has("put_content")).toBe(true);
+    expect(registered.has("patch_content")).toBe(true);
+    expect(registered.has("search_replace")).toBe(true);
+    expect(registered.has("move_file")).toBe(true);
+  });
+});
+
+describe("tools.ts — exact preset membership (consolidated)", () => {
+  const setupAndGetRegistered = (
+    overrides: Partial<Parameters<typeof makeConfig>[0]> = {},
+  ): readonly string[] => {
+    const { server, getRegistered } = makeMockServer();
+    const client = makeMockClient();
+    const cache = makeMockCache();
+    registerAllTools(
+      server as never,
+      client,
+      cache,
+      makeConfig({ toolMode: "consolidated", ...overrides }),
+    );
+    return getRegistered();
+  };
+
+  it("consolidated full preset registers exactly 11 expected tool names", () => {
+    expect(new Set(setupAndGetRegistered())).toEqual(
+      new Set([
+        "vault",
+        "active_file",
+        "commands",
+        "open_file",
+        "search",
+        "periodic_note",
+        "status",
+        "batch_get",
+        "recent",
+        "configure",
+        "vault_analysis",
+      ]),
+    );
+  });
+
+  it("consolidated read-only preset omits open_file (write-capable POST)", () => {
+    const registered = new Set(setupAndGetRegistered({ toolPreset: "read-only" }));
+    // open_file POSTs and may create files — must NOT be in read-only
+    expect(registered.has("open_file")).toBe(false);
+    // All other 10 tools remain
+    expect(registered).toEqual(
+      new Set([
+        "vault",
+        "active_file",
+        "commands",
+        "search",
+        "periodic_note",
+        "status",
+        "batch_get",
+        "recent",
+        "configure",
+        "vault_analysis",
+      ]),
+    );
+  });
+
+  it("consolidated minimal preset is exactly [vault, search, status, configure] + protected vault_analysis", () => {
+    expect(new Set(setupAndGetRegistered({ toolPreset: "minimal" }))).toEqual(
+      new Set(["vault", "search", "status", "configure", "vault_analysis"]),
+    );
+  });
+
+  it("consolidated safe preset is identical to full (deletes are removed via action filtering at handler level, not preset)", () => {
+    // safe preset for consolidated includes all 11 tools — delete-action
+    // filtering happens inside each tool's handler, not at registration.
+    expect(new Set(setupAndGetRegistered({ toolPreset: "safe" }))).toEqual(
+      new Set(setupAndGetRegistered({ toolPreset: "full" })),
+    );
+  });
+});
+
+describe("tools.ts — protected sets", () => {
+  // Each protected name must survive an explicit excludeTools list
+  // containing it. Asserting per-name kills the StringLiteral mutants
+  // on PROTECTED_GRANULAR / PROTECTED_CONSOLIDATED.
+
+  it.each(["configure", "get_server_status", "refresh_cache"])(
+    "granular: %s is protected from excludeTools",
+    (name) => {
+      const { server, getRegistered } = makeMockServer();
+      registerAllTools(
+        server as never,
+        makeMockClient(),
+        makeMockCache(),
+        makeConfig({ excludeTools: [name] }),
+      );
+      expect(getRegistered()).toContain(name);
+    },
+  );
+
+  it.each(["configure", "status", "vault_analysis"])(
+    "consolidated: %s is protected from excludeTools",
+    (name) => {
+      const { server, getRegistered } = makeMockServer();
+      registerAllTools(
+        server as never,
+        makeMockClient(),
+        makeMockCache(),
+        makeConfig({ toolMode: "consolidated", excludeTools: [name] }),
+      );
+      expect(getRegistered()).toContain(name);
+    },
+  );
+
+  // The PROTECTED_GRANULAR and PROTECTED_CONSOLIDATED sets DIFFER —
+  // tools protected in one mode must NOT be protected in the other.
+  // Kills mutants that copy/swap members between the two sets.
+
+  it("granular's protected set is NOT inherited in consolidated mode", () => {
+    // get_server_status and refresh_cache are granular-only protected names;
+    // in consolidated mode they don't exist as tools at all, so excluding
+    // them is a no-op (they're not in any consolidated preset).
+    const { server, getRegistered } = makeMockServer();
+    registerAllTools(
+      server as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({
+        toolMode: "consolidated",
+        excludeTools: ["get_server_status", "refresh_cache"],
+      }),
+    );
+    const registered = getRegistered();
+    expect(registered).not.toContain("get_server_status");
+    expect(registered).not.toContain("refresh_cache");
+    // But the consolidated counterparts ARE present:
+    expect(registered).toContain("status");
+    expect(registered).toContain("vault_analysis");
+  });
+});
+
+describe("tools.ts — buildFilter branch coverage", () => {
+  // Exercises each branch in buildFilter: includeTools + excludeTools
+  // present, only-includeTools, only-excludeTools, neither.
+
+  it("INCLUDE wins over EXCLUDE when both are set (EXCLUDE ignored)", () => {
+    const { server, getRegistered } = makeMockServer();
+    registerAllTools(
+      server as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({
+        includeTools: ["list_files_in_vault", "simple_search"],
+        excludeTools: ["list_files_in_vault"], // would block but INCLUDE wins
+      }),
+    );
+    const registered = getRegistered();
+    // list_files_in_vault is in INCLUDE → registered despite being in EXCLUDE
+    expect(registered).toContain("list_files_in_vault");
+    expect(registered).toContain("simple_search");
+  });
+
+  it("INCLUDE with only protected name registers only protected (not the included name if not in preset)", () => {
+    // When INCLUDE contains a tool not in the preset, that tool is filtered
+    // out (presetSet.has check). Only protected tools survive.
+    const { server, getRegistered } = makeMockServer();
+    registerAllTools(
+      server as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({
+        toolPreset: "minimal",
+        includeTools: ["delete_file"], // not in minimal preset
+      }),
+    );
+    const registered = new Set(getRegistered());
+    // delete_file is NOT in minimal preset — INCLUDE can't add it
+    expect(registered.has("delete_file")).toBe(false);
+    // Protected tools always present even with INCLUDE filtering
+    expect(registered.has("configure")).toBe(true);
+    expect(registered.has("get_server_status")).toBe(true);
+    expect(registered.has("refresh_cache")).toBe(true);
+  });
+
+  it("empty includeTools + empty excludeTools = preset as-is", () => {
+    const { server, getRegistered } = makeMockServer();
+    registerAllTools(
+      server as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({ includeTools: [], excludeTools: [] }),
+    );
+    expect(getRegistered().length).toBe(39); // full preset count
+  });
+
+  it("EXCLUDE alone removes only the listed tools (does not affect others)", () => {
+    const { server, getRegistered } = makeMockServer();
+    registerAllTools(
+      server as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({ excludeTools: ["delete_file"] }),
+    );
+    const registered = new Set(getRegistered());
+    expect(registered.has("delete_file")).toBe(false);
+    // All non-excluded preset tools remain
+    expect(registered.has("put_content")).toBe(true);
+    expect(registered.has("delete_active_file")).toBe(true);
+    expect(registered.has("delete_periodic_note")).toBe(true);
+  });
+});
+
+describe("tools.ts — registerAllTools defensive guards", () => {
+  it("throws with exact message when toolPreset is unknown (granular)", () => {
+    const { server } = makeMockServer();
+    expect(() =>
+      registerAllTools(
+        server as never,
+        makeMockClient(),
+        makeMockCache(),
+        // Bypass the Config type guard; defensive check at runtime.
+        makeConfig({ toolPreset: "bogus" as never }),
+      ),
+    ).toThrow(
+      'Unknown tool preset: "bogus". Valid presets: full, read-only, minimal, safe',
+    );
+  });
+
+  it("throws with exact message when toolPreset is unknown (consolidated)", () => {
+    const { server } = makeMockServer();
+    expect(() =>
+      registerAllTools(
+        server as never,
+        makeMockClient(),
+        makeMockCache(),
+        makeConfig({ toolMode: "consolidated", toolPreset: "weird" as never }),
+      ),
+    ).toThrow(
+      'Unknown tool preset: "weird". Valid presets: full, read-only, minimal, safe',
+    );
+  });
+
+  it("toolMode=granular dispatches to granular preset (different count from consolidated full)", () => {
+    const { server: g } = makeMockServer();
+    const granularCount = registerAllTools(
+      g as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({ toolMode: "granular" }),
+    );
+    const { server: c } = makeMockServer();
+    const consolidatedCount = registerAllTools(
+      c as never,
+      makeMockClient(),
+      makeMockCache(),
+      makeConfig({ toolMode: "consolidated" }),
+    );
+    expect(granularCount).toBe(39);
+    expect(consolidatedCount).toBe(11);
+    expect(granularCount).not.toBe(consolidatedCount);
+  });
+});
+
+// ===========================================================================
 // Section 1.5: tool metadata (descriptions + Zod .describe() hints)
 // ===========================================================================
 //

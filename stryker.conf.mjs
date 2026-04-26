@@ -16,11 +16,11 @@ export default {
   // See pipeline-spec.md → Stryker section → "key glob patterns to
   // actual project file types".
   //
-  // Per-file carve-outs — see CLAUDE.md "Mutation Testing — Hard 80%
-  // Floor (active)" → "Per-file carve-outs allowed but justified".
-  // Budget: 5. Active count below; >5 ⇒ escalate for human policy review.
-  // Each line below is `// Carve-out N/5: <path>` so future authors can
-  // grep `Carve-out` to count what's already in flight.
+  // Per-file carve-outs — see CLAUDE.md "Mutation Testing — Ratchet
+  // Policy (active, post-floor)" → "Per-file carve-outs allowed but
+  // justified". Budget: 5. Active count below; >5 ⇒ escalate for human
+  // policy review. Each line below is `// Carve-out N/5: <path>` so
+  // future authors can grep `Carve-out` to count what's already in flight.
   //
   // Carve-out 1/5: src/index.ts — entry-point wiring. Boots the MCP
   //   server + StdioServerTransport, reads package.json for version,
@@ -66,6 +66,23 @@ export default {
   //                           pp from removing src/index.ts from mutate
   //                           glob — entry-point wiring, justified above
   //                           in the per-file carve-outs comment.)
+  //   ...                    (PRs #52-68, ~10pp from systematic backfills
+  //                           on obsidian.ts, consolidated.ts, shared.ts,
+  //                           tools.ts, config.ts. See git log for
+  //                           per-PR contributions.)
+  //   81.34 → break 80       (chore/stryker-resume-ratchet — fresh full
+  //                           Stryker run after PR #68 confirmed aggregate
+  //                           crossed 80. The incremental cache had been
+  //                           reporting stale numbers (79.59) because
+  //                           Stryker's --incremental invalidates only on
+  //                           source-file changes, not test-only changes;
+  //                           rebuilding the cache from scratch revealed
+  //                           the true 81.34. Floor met; ratchet policy
+  //                           resumes per CLAUDE.md "Mutation Testing —
+  //                           Ratchet Policy". Threshold remains at 80
+  //                           (the hard floor) for one more PR cycle to
+  //                           confirm cache stability before the first
+  //                           ratchet bump above the floor.)
   // See ~/projects/code-review-pipeline/baseline-findings.md for the bake-in
   // run and build-log.md for the ratchet history (including this floor entry).
   // `low` is collapsed to 80 alongside `break` and `high` — the 70-79 band

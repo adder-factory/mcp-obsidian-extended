@@ -144,57 +144,36 @@ drift — surfaced before code goes public.
 Time budget: ~120 seconds. If the reviewer takes longer than that
 consistently, log the run-times and revisit the prompt or the model choice.
 
-## Mutation Testing — Hard 80% Floor (active)
+## Mutation Testing — Ratchet Policy (active, post-floor)
 
-Stryker `thresholds.break` is set to **80** in `stryker.conf.mjs`. The
-pipeline (`npm run pre-pr`) blocks any push whose mutation score is
-below 80%. As of the bootstrap PR (#49) the score is **64.66%**, so
-**every PR opened now will fail the Stryker gate** until the cumulative
-backfill series lifts the aggregate score over the floor.
+Stryker `thresholds.break` is currently set to **80** in
+`stryker.conf.mjs` (the hard floor, held for one cycle before the
+first ratchet bump above the floor — see the score-history comment
+in `stryker.conf.mjs` for the rationale). The pipeline
+(`npm run pre-pr`) blocks any push whose mutation score drops below
+the current threshold. Aggregate score crossed 80 on 2026-04-26 with
+PR #68 merged; a fresh full Stryker run confirmed **81.34%**. The
+Stage 1/2 bootstrap+backfill series is complete and the ratchet
+policy is now in effect.
 
-### Why every backfill PR also needs admin-merge
+### Standing rules
 
-Stryker measures the whole `src/**/*.ts` surface, not just the file a
-PR touches. A single backfill PR that adds tests for one file might
-move the aggregate from 64.66 → 65.5 — still red against the 80 floor.
-**The Stryker gate therefore stays red across the entire backfill
-series**, not just the bootstrap PR. Every backfill PR in the series
-will need an admin-merge override, not just this one. That is the real
-cost of Option C: ~N admin-merges, where N is roughly the number of
-files needed to cross the aggregate floor. Plan accordingly.
-
-Once the aggregate crosses 80, normal gate enforcement resumes
-automatically — no further admin-merges needed.
-
-### Rules while the floor is unmet
-
-- **No feature work.** Pipeline is frozen for new features. The only
-  PR types allowed to merge are (a) the floor-bootstrap PR itself, and
-  (b) backfill PRs that add tests to kill surviving mutants. Both PR
-  types require admin-merge until the aggregate score crosses 80.
-- **Temporary exception to the standard pipeline gates.** Two
-  sections below — "Adder Code Review Pipeline → Before every push"
-  (`npm run pre-pr` must pass before push) and "Pull request workflow
-  → step 6" (all CI green + `npm run pre-pr` passing before merge) —
-  together would block any PR whose pre-pr fails on Stryker. While
-  the floor is unmet, bootstrap and backfill PRs are exempt from
-  both rules **for the Stryker / Pipeline-gate failure only**.
-  Every other pre-pr step (build, lint, audit, knip, madge, semgrep,
-  snyk, sonar) must still pass, every other CI check must still be
-  green, and every reviewer thread must still be resolved. Once
-  aggregate ≥ 80 the standard rules resume automatically for all PRs.
-- **One file (or one logical group) per backfill PR** — no mega-PRs.
-  This makes each merge's contribution to the aggregate score easy to
-  attribute and roll back if a regression surfaces.
-- **Tests-only.** Hard Rule 8 still applies: backfill PRs add tests,
-  not production code, unless a minimal change is genuinely required
-  to make code testable (justify in PR body).
-- **Per-file carve-outs allowed but justified.** If a file truly can't
-  hit 80 (entry-point wiring like `index.ts`, content-heavy modules),
-  exclude it from the Stryker `mutate` glob and explain why in the PR
-  body. The file's mutants are removed from the aggregate calculation,
-  so the rest of the codebase isn't dragged down by an inherently
-  untestable file. Example carve-out in `stryker.conf.mjs`:
+- **Ratchet on improvement.** When a PR raises the aggregate above
+  the current `thresholds.break + 1pp`, raise `thresholds.break` to
+  `(new_score − 1pp)` so it always sits ~1pp below the current kill
+  rate — tight enough to catch a regression, loose enough to tolerate
+  incremental-cache noise. Hard floor: never drop below 80.
+- **Tests-only for kill-rate work.** Hard Rule 8 applies: PRs that
+  exist primarily to raise the mutation score add tests, not
+  production code, unless a minimal change is genuinely required to
+  make code testable (justify in PR body).
+- **Per-file carve-outs allowed but justified.** Some files truly
+  cannot hit 80 (entry-point wiring, content-heavy modules whose
+  mutants are static-initialized at module load and Vitest worker
+  caching defeats Stryker's mutation injection). Exclude them from
+  the Stryker `mutate` glob and document the reason in the PR body.
+  The file's mutants are removed from the aggregate denominator.
+  Example carve-out in `stryker.conf.mjs`:
 
   ```javascript
   // Excluding entry-point wiring that can't be unit-tested without
@@ -202,21 +181,19 @@ automatically — no further admin-merges needed.
   mutate: ["src/**/*.ts", "!src/**/*.test.ts", "!src/index.ts"],
   ```
 
-  More than 5 carve-outs ⇒ escalate for human policy review.
-- **Re-baseline after each merge.** Update the score-history comment
-  in `stryker.conf.mjs` (the in-repo authoritative record). The
-  maintainer-local audit log at `~/projects/code-review-pipeline/build-log.md`
-  is updated by the same maintainer who runs the Adder pipeline locally;
-  contributors not running that pipeline can skip it — the in-repo
-  comment in `stryker.conf.mjs` is sufficient to know where the next
-  backfill PR starts from.
-
-### After the floor is hit
-
-Once the aggregate score is ≥80, the ratchet policy resumes:
-`thresholds.break = (current_score - 1pp)`, with a hard floor that
-never drops below 80. `low`/`high` re-separate from `break` at that
-point and the three-threshold band becomes meaningful again.
+  More than 5 carve-outs ⇒ escalate for human policy review. Current
+  count is tracked in `stryker.conf.mjs` via grep-able
+  `// Carve-out N/5: <path>` comments.
+- **Re-baseline after each merge that moves the score.** Update the
+  score-history comment in `stryker.conf.mjs` (the in-repo
+  authoritative record) and bump `thresholds.break` per the ratchet
+  formula above.
+- **Beware incremental-cache staleness.** Stryker's `--incremental`
+  cache invalidates on source-file changes but NOT on test-file
+  changes — meaning test-only PRs may report a stale aggregate that
+  doesn't reflect newly-added kills. Periodically run a fresh
+  (non-incremental) Stryker pass to confirm the true score, especially
+  before a ratchet bump or threshold adjustment.
 
 ## Testing
 
@@ -367,13 +344,6 @@ incorrectly failing, fix the gate's config rather than skipping it.
 `--skip-qwen` is allowed during fast iteration but the final run before
 opening a PR must include Qwen.
 
-**Exception while the Stryker mutation-testing floor is unmet:**
-bootstrap and backfill PRs may push despite a `npm run pre-pr` failure
-**caused only by the Stryker / Pipeline-gate red**. All other pre-pr
-steps must still pass. See "Mutation Testing — Hard 80% Floor (active)"
-above for the full carve-out rules. The exception ends automatically
-when aggregate score crosses 80.
-
 The gate invokes `npm test -- --coverage`. Your project's `test` script
 must be plain (e.g. `"test": "vitest run"`), without a hardcoded
 `--coverage` flag — otherwise the runner sees a duplicate flag and fails.
@@ -402,13 +372,6 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    - All CodeRabbit threads resolved
    - All CodeAnt threads resolved
    - `npm run pre-pr` passes locally on the branch head
-
-   **Exception while the Stryker mutation-testing floor is unmet:**
-   bootstrap and backfill PRs are exempt from the "all CI checks
-   green" and "`npm run pre-pr` passes" requirements **for the
-   Stryker / Pipeline-gate failure only**. See "Mutation Testing —
-   Hard 80% Floor (active)" above for the full carve-out rules. The
-   exception ends automatically when aggregate score crosses 80.
 
    **There is no human code review.** The pipeline spec is explicit: "No
    human code review — pipeline must be thorough enough that human only

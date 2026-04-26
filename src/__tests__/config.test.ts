@@ -625,3 +625,479 @@ describe("getDebugEnabled", () => {
     expect(redacted2["debug"]).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stryker mutation backfill — config.ts
+// ---------------------------------------------------------------------------
+
+describe("Stryker backfill — deepMerge via saveConfigToFile", () => {
+  // deepMerge is private; exercised through saveConfigToFile which reads
+  // the existing file, deep-merges updates, and writes the JSON result.
+  // Each test asserts the EXACT merged JSON that gets written so mutations
+  // affecting recursion, leaf-vs-object discrimination, prototype-pollution
+  // guards, or array handling are killed.
+
+  function getWrittenJson(): unknown {
+    const lastCall = mockedWriteFileSync.mock.lastCall;
+    if (!lastCall) throw new Error("writeFileSync was not called");
+    const content = lastCall[1];
+    if (typeof content !== "string")
+      throw new Error("writeFileSync content must be a string");
+    return JSON.parse(content);
+  }
+
+  it("creates fresh object when file does not exist (existsSync false)", () => {
+    mockedExistsSync.mockReturnValue(false);
+    saveConfigToFile("/tmp/cfg.json", { host: "newhost" });
+    expect(getWrittenJson()).toEqual({ host: "newhost" });
+  });
+
+  it("recursively merges nested objects (target object + source object → recursion)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { mode: "granular", preset: "full" } }),
+    );
+    saveConfigToFile("/tmp/cfg.json", { tools: { mode: "consolidated" } });
+    // Recursion preserves the untouched `preset` key under `tools`.
+    expect(getWrittenJson()).toEqual({
+      tools: { mode: "consolidated", preset: "full" },
+    });
+  });
+
+  it("source leaf overwrites target leaf (no merge for primitives)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ port: 27124 }));
+    saveConfigToFile("/tmp/cfg.json", { port: 9999 });
+    expect(getWrittenJson()).toEqual({ port: 9999 });
+  });
+
+  it("source object replaces target leaf (no recursion when target is non-object)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ tools: "wrong" }));
+    saveConfigToFile("/tmp/cfg.json", { tools: { mode: "consolidated" } });
+    expect(getWrittenJson()).toEqual({ tools: { mode: "consolidated" } });
+  });
+
+  it("source leaf replaces target object (no recursion when source is non-object)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { mode: "granular" } }),
+    );
+    saveConfigToFile("/tmp/cfg.json", { tools: null });
+    expect(getWrittenJson()).toEqual({ tools: null });
+  });
+
+  it("array source replaces array target (arrays are NOT recursed into)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { include: ["a", "b"] } }),
+    );
+    saveConfigToFile("/tmp/cfg.json", { tools: { include: ["c"] } });
+    // Array gets replaced wholesale, not concatenated/merged.
+    expect(getWrittenJson()).toEqual({ tools: { include: ["c"] } });
+  });
+
+  it("array source replaces object target (Array.isArray guard prevents recursion)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ data: { a: 1, b: 2 } }),
+    );
+    saveConfigToFile("/tmp/cfg.json", { data: [1, 2, 3] });
+    expect(getWrittenJson()).toEqual({ data: [1, 2, 3] });
+  });
+
+  it("preserves keys present in target but missing from source", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ host: "old", port: 27124, debug: true }),
+    );
+    saveConfigToFile("/tmp/cfg.json", { host: "new" });
+    expect(getWrittenJson()).toEqual({ host: "new", port: 27124, debug: true });
+  });
+
+  it("blocks __proto__ key (prototype pollution guard)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({}));
+    saveConfigToFile("/tmp/cfg.json", {
+      __proto__: { polluted: true },
+      host: "ok",
+    });
+    const written = getWrittenJson() as Record<string, unknown>;
+    expect(written).toEqual({ host: "ok" });
+    expect("polluted" in {}).toBe(false);
+  });
+
+  it("blocks constructor key (prototype pollution guard)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({}));
+    saveConfigToFile("/tmp/cfg.json", {
+      constructor: { polluted: true },
+      host: "ok",
+    });
+    expect(getWrittenJson()).toEqual({ host: "ok" });
+  });
+
+  it("blocks prototype key (prototype pollution guard)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({}));
+    saveConfigToFile("/tmp/cfg.json", {
+      prototype: { polluted: true },
+      host: "ok",
+    });
+    expect(getWrittenJson()).toEqual({ host: "ok" });
+  });
+
+  it("writes JSON with 2-space indent and trailing newline (exact format)", () => {
+    mockedExistsSync.mockReturnValue(false);
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    const lastCall = mockedWriteFileSync.mock.lastCall;
+    expect(lastCall?.[0]).toBe("/tmp/cfg.json");
+    expect(lastCall?.[1]).toBe('{\n  "host": "x"\n}\n');
+    expect(lastCall?.[2]).toBe("utf-8");
+  });
+
+  it("treats existing file content of [] (array) as fresh object", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("[]");
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    // Array is rejected at the !Array.isArray guard, falls back to {} merge.
+    expect(getWrittenJson()).toEqual({ host: "x" });
+  });
+
+  it("treats existing file content of null as fresh object", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("null");
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    expect(getWrittenJson()).toEqual({ host: "x" });
+  });
+});
+
+describe("Stryker backfill — exact warn message formats", () => {
+  it("parseBoolean logs exact warn for unrecognised value (via OBSIDIAN_DEBUG)", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_DEBUG"] = "maybe";
+    loadConfig();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Unrecognised boolean env value "maybe", using default false\n`,
+    );
+  });
+
+  it("parseNumber logs exact warn for invalid numeric value (via OBSIDIAN_PORT)", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_PORT"] = "abc";
+    loadConfig();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Invalid numeric value "abc", using default 27124\n`,
+    );
+  });
+
+  it("parseNumber logs exact warn for non-integer value (via OBSIDIAN_PORT)", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_PORT"] = "1.5";
+    loadConfig();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Non-integer value "1.5", using default 27124\n`,
+    );
+  });
+
+  it("parseNumber logs exact warn for value below minimum (via OBSIDIAN_PORT)", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_PORT"] = "0";
+    loadConfig();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Numeric value 0 below minimum 1, using default 27124\n`,
+    );
+  });
+
+  it("parseNumber logs exact warn for value above maximum (via OBSIDIAN_PORT)", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_PORT"] = "70000";
+    loadConfig();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Numeric value 70000 above maximum 65535, using default 27124\n`,
+    );
+  });
+
+  it("validateScheme logs exact warn for unrecognised scheme", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["OBSIDIAN_SCHEME"] = "ftp";
+    const cfg = loadConfig();
+    expect(cfg.scheme).toBe("https");
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Unrecognised scheme "ftp", using default "https"\n`,
+    );
+  });
+
+  it("validateToolMode logs exact warn for unrecognised mode", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["TOOL_MODE"] = "weird";
+    const cfg = loadConfig();
+    expect(cfg.toolMode).toBe("granular");
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Unrecognised tool mode "weird", using default "granular"\n`,
+    );
+  });
+
+  it("validateToolPreset logs exact warn for unrecognised preset", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    process.env["TOOL_PRESET"] = "weird";
+    const cfg = loadConfig();
+    expect(cfg.toolPreset).toBe("full");
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Unrecognised tool preset "weird", using default "full"\n`,
+    );
+  });
+
+  it("validateScheme/Mode/Preset are case-insensitive", () => {
+    process.env["OBSIDIAN_SCHEME"] = "HTTP";
+    process.env["TOOL_MODE"] = "Consolidated";
+    process.env["TOOL_PRESET"] = "READ-ONLY";
+    const cfg = loadConfig();
+    expect(cfg.scheme).toBe("http");
+    expect(cfg.toolMode).toBe("consolidated");
+    expect(cfg.toolPreset).toBe("read-only");
+  });
+
+  it("validateScheme/Mode/Preset do NOT log warn for undefined input", () => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    loadConfig(); // no env vars set
+    const calls = spy.mock.calls.map((c) => String(c[0])).join("");
+    expect(calls).not.toContain("Unrecognised scheme");
+    expect(calls).not.toContain("Unrecognised tool mode");
+    expect(calls).not.toContain("Unrecognised tool preset");
+  });
+});
+
+describe("Stryker backfill — recoverNestedKeys and recoverConfigFields", () => {
+  // These are private helpers exercised through loadConfig() with a config
+  // file that has invalid structure. The recovery path is triggered when
+  // the top-level Zod parse fails but per-section / per-nested-key parses
+  // can salvage valid data.
+
+  it("recovers valid nested keys when parent section has invalid sibling", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    // Top-level fails because tools.mode is wrong type; tools.preset is valid.
+    // Via recoverConfigFields → recoverNestedKeys, preset should be salvaged.
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        tools: { mode: 12345, preset: "minimal" },
+      }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.toolPreset).toBe("minimal");
+  });
+
+  it("ignores top-level keys not in schema", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    // unknownTopLevelKey is not in schemaShape → filtered out. host is valid.
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        host: "from-file",
+        unknownTopLevelKey: { foo: "bar" },
+      }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("from-file");
+  });
+
+  it("returns empty object when file root is an array (not an object)", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify(["not", "an", "object"]));
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("127.0.0.1"); // falls through to default
+  });
+
+  it("returns empty object when file root is null", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue("null");
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("127.0.0.1");
+  });
+});
+
+describe("Stryker backfill — loadConfig 3-tier precedence", () => {
+  // Defaults < config file < env vars. Test each tier explicitly per setting.
+
+  it("env var beats config file (host)", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ host: "from-file" }),
+    );
+    process.env["OBSIDIAN_HOST"] = "from-env";
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("from-env");
+  });
+
+  it("config file beats default (host)", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ host: "from-file" }));
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("from-file");
+  });
+
+  it("certPath: env beats file value, file null is rewritten to undefined", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tls: { certPath: null } }),
+    );
+    const cfg = loadConfig();
+    // tls.certPath === null → undefined → DEFAULTS.certPath (undefined)
+    expect(cfg.certPath).toBeUndefined();
+  });
+
+  it("includeTools: env undefined → use file value", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { include: ["a", "b"] } }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.includeTools).toEqual(["a", "b"]);
+  });
+
+  it("includeTools: env defined → parse env, ignore file", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { include: ["from-file"] } }),
+    );
+    process.env["INCLUDE_TOOLS"] = "x,y,z";
+    const cfg = loadConfig();
+    expect(cfg.includeTools).toEqual(["x", "y", "z"]);
+  });
+
+  it("excludeTools: empty env string → empty array (NOT file fallback)", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ tools: { exclude: ["from-file"] } }),
+    );
+    process.env["EXCLUDE_TOOLS"] = "";
+    const cfg = loadConfig();
+    // env is defined but empty → parseCommaSeparated returns []
+    expect(cfg.excludeTools).toEqual([]);
+  });
+});
+
+describe("Stryker backfill — getRedactedConfig overrides", () => {
+  it("debug override beats getDebugEnabled state", () => {
+    setDebugEnabled(false);
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg, { debug: true });
+    expect(redacted["debug"]).toBe(true);
+  });
+
+  it("compactResponses override beats config value", () => {
+    process.env["OBSIDIAN_COMPACT_RESPONSES"] = "false";
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg, { compactResponses: true });
+    expect(redacted["compactResponses"]).toBe(true);
+  });
+
+  it("debug falls back to getDebugEnabled when override is undefined", () => {
+    setDebugEnabled(true);
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg, { debug: undefined });
+    expect(redacted["debug"]).toBe(true);
+  });
+
+  it("compactResponses falls back to config value when override is undefined", () => {
+    process.env["OBSIDIAN_COMPACT_RESPONSES"] = "true";
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg, { compactResponses: undefined });
+    expect(redacted["compactResponses"]).toBe(true);
+  });
+
+  it("certPath null is preserved in redacted output (not 'undefined')", () => {
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg);
+    expect(redacted["certPath"]).toBeNull();
+  });
+
+  it("configFilePath null is preserved when not provided", () => {
+    const cfg = loadConfig();
+    const redacted = getRedactedConfig(cfg);
+    expect(redacted["configFilePath"]).toBeNull();
+  });
+});
+
+describe("Stryker backfill — log function exact behaviour", () => {
+  it("debug message is suppressed when debugEnabled=false", () => {
+    setDebugEnabled(false);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    log("debug", "secret");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("debug message appears with exact '[debug] ...\\n' format when enabled", () => {
+    setDebugEnabled(true);
+    try {
+      const spy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+      log("debug", "trace");
+      expect(spy).toHaveBeenCalledWith("[debug] trace\n");
+    } finally {
+      setDebugEnabled(false);
+    }
+  });
+
+  it.each([
+    ["info", "[info] hello\n"],
+    ["warn", "[warn] hello\n"],
+    ["error", "[error] hello\n"],
+  ] as const)("log(%s) writes exact prefix %j", (level, expected) => {
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    log(level, "hello");
+    expect(spy).toHaveBeenCalledWith(expected);
+  });
+});

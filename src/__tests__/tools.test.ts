@@ -1911,11 +1911,12 @@ describe("granular tools — registration and basic behavior", () => {
     it("compactResponses=true produces { compactResponses: true }", async () => {
       const { getTool } = setup();
       try {
-        await getTool("configure").handler({
+        const result = await getTool("configure").handler({
           action: "set",
           setting: "compactResponses",
           value: "true",
         });
+        expect(result.isError).toBeFalsy();
         expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
           compactResponses: true,
         });
@@ -1929,11 +1930,12 @@ describe("granular tools — registration and basic behavior", () => {
 
     it("verifyWrites=true produces { reliability: { verifyWrites: true } }", async () => {
       const { getTool } = setup();
-      await getTool("configure").handler({
+      const result = await getTool("configure").handler({
         action: "set",
         setting: "verifyWrites",
         value: "true",
       });
+      expect(result.isError).toBeFalsy();
       expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
         reliability: { verifyWrites: true },
       });
@@ -1943,11 +1945,12 @@ describe("granular tools — registration and basic behavior", () => {
       "toolMode='%s' produces { tools: { mode: '%s' } }",
       async (value) => {
         const { getTool } = setup();
-        await getTool("configure").handler({
+        const result = await getTool("configure").handler({
           action: "set",
           setting: "toolMode",
           value,
         });
+        expect(result.isError).toBeFalsy();
         expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
           tools: { mode: value },
         });
@@ -1958,11 +1961,12 @@ describe("granular tools — registration and basic behavior", () => {
       "toolPreset='%s' produces { tools: { preset: '%s' } }",
       async (value) => {
         const { getTool } = setup();
-        await getTool("configure").handler({
+        const result = await getTool("configure").handler({
           action: "set",
           setting: "toolPreset",
           value,
         });
+        expect(result.isError).toBeFalsy();
         expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
           tools: { preset: value },
         });

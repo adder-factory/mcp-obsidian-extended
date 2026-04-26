@@ -1100,13 +1100,14 @@ describe("granular tools — registration and basic behavior", () => {
       const { client, getTool } = setup();
       // First call returns a NoteJson object (typeof !== "string"),
       // which should trigger the L598 type-guard error path.
-      vi.mocked(client.getFileContents).mockResolvedValueOnce({
+      const noteJsonFixture = {
         content: "x",
         frontmatter: {},
         path: "old.md",
         tags: [],
         stat: { ctime: 0, mtime: 0, size: 0 },
-      } as NoteJson);
+      } satisfies NoteJson;
+      vi.mocked(client.getFileContents).mockResolvedValueOnce(noteJsonFixture);
       const result = await getTool("move_file").handler({
         source: "old.md",
         destination: "new.md",

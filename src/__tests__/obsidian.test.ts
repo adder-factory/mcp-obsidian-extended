@@ -2698,11 +2698,14 @@ describe("ObsidianClient — search", () => {
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.simpleSearch("test", 200);
-    const calledPath = mockRequest.mock.calls[0]?.[1] as string;
-    expect(calledPath).toContain("contextLength=200");
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      expect.stringContaining("contextLength=200"),
+      expect.anything(),
+    );
   });
 
-  // --- Stryker mutation backfill: search trio + getServerStatus ---
+  // --- Stryker mutation backfill: search trio (simple/complex/dataview) ---
 
   it("simpleSearch sends Content-Type: text/plain with empty body", async () => {
     const { client, mockRequest } = createMockedClient();
@@ -2724,8 +2727,11 @@ describe("ObsidianClient — search", () => {
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.simpleSearch("test");
-    const calledPath = mockRequest.mock.calls[0]?.[1] as string;
-    expect(calledPath).toContain("contextLength=100");
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      expect.stringContaining("contextLength=100"),
+      expect.anything(),
+    );
   });
 
   it("simpleSearch URL-encodes the query parameter", async () => {
@@ -2733,9 +2739,12 @@ describe("ObsidianClient — search", () => {
     mockRequest.mockResolvedValue(okJson([]));
 
     await client.simpleSearch("hello world & foo");
-    const calledPath = mockRequest.mock.calls[0]?.[1] as string;
     // URLSearchParams encodes space as "+" and "&" as "%26"
-    expect(calledPath).toContain("query=hello+world+%26+foo");
+    expect(mockRequest).toHaveBeenCalledWith(
+      "POST",
+      expect.stringContaining("query=hello+world+%26+foo"),
+      expect.anything(),
+    );
   });
 
   it("complexSearch sends Content-Type: application/vnd.olrapi.jsonlogic+json", async () => {

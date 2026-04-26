@@ -2290,9 +2290,15 @@ describe("granular tools — registration and basic behavior", () => {
     // (lastIndexOf "/" → slice → check Set → ascend), and the orphans list
     // is sliced to the first 20. Targets the L397-411 mutant cluster.
 
+    function isStructurePlainObject(
+      v: unknown,
+    ): v is Record<string, unknown> {
+      return v !== null && typeof v === "object";
+    }
+
     function buildStructureClient(
-      fileList: ReadonlyArray<string>,
-      orphans: ReadonlyArray<string> = [],
+      fileList: readonly string[],
+      orphans: readonly string[] = [],
       noteCount = fileList.length,
       linkCount = 0,
       edgeCount = 0,
@@ -2300,10 +2306,12 @@ describe("granular tools — registration and basic behavior", () => {
       const { server, getTool } = makeMockServer();
       const client = makeMockClient();
       const cache = makeMockCache(true);
-      vi.mocked(cache.getOrphanNotes).mockReturnValue(orphans as string[]);
+      // VaultCache.getOrphanNotes/getFileList return readonly string[]; the
+      // helper accepts the same shape, no `as` cast needed.
+      vi.mocked(cache.getOrphanNotes).mockReturnValue([...orphans]);
       vi.mocked(cache.getMostConnectedNotes).mockReturnValue([]);
       vi.mocked(cache.getEdgeCount).mockReturnValue(edgeCount);
-      vi.mocked(cache.getFileList).mockReturnValue(fileList as string[]);
+      vi.mocked(cache.getFileList).mockReturnValue([...fileList]);
       Object.defineProperty(cache, "noteCount", {
         get: vi.fn().mockReturnValue(noteCount),
       });
@@ -2326,10 +2334,10 @@ describe("granular tools — registration and basic behavior", () => {
     ): Promise<Record<string, unknown>> {
       const result = await getTool("get_vault_structure").handler({ limit });
       const parsed: unknown = JSON.parse(getText(result));
-      if (parsed === null || typeof parsed !== "object") {
+      if (!isStructurePlainObject(parsed)) {
         throw new Error("expected object response");
       }
-      return parsed as Record<string, unknown>;
+      return parsed;
     }
 
     it("counts unique directories across nested paths (no duplicates, parents tracked)", async () => {
@@ -2372,8 +2380,9 @@ describe("granular tools — registration and basic behavior", () => {
       const { getTool } = buildStructureClient([], orphans);
       const parsed = await callVaultStructure(getTool);
       expect(parsed["orphanCount"]).toBe(35); // total count preserved
-      expect(Array.isArray(parsed["orphans"])).toBe(true);
-      expect((parsed["orphans"] as unknown[]).length).toBe(20); // sliced
+      const sliced = parsed["orphans"];
+      if (!Array.isArray(sliced)) throw new Error("expected orphans array");
+      expect(sliced.length).toBe(20); // sliced
     });
 
     it("returns all orphans when cache returns ≤ 20", async () => {

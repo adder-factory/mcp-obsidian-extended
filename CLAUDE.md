@@ -172,14 +172,17 @@ automatically — no further admin-merges needed.
   PR types allowed to merge are (a) the floor-bootstrap PR itself, and
   (b) backfill PRs that add tests to kill surviving mutants. Both PR
   types require admin-merge until the aggregate score crosses 80.
-- **Temporary exception to the "Pull request workflow" merge rule.**
-  The standard rule below (Pull request workflow → step 6) requires
-  all CI checks green and `npm run pre-pr` passing before merge.
-  While the floor is unmet, bootstrap and backfill PRs are exempt
-  from that requirement **for the Stryker / Pipeline-gate failure
-  only** — every other gate must still be green, and every reviewer
-  thread must still be resolved. Once aggregate ≥ 80 the standard
-  rule resumes automatically for all PRs.
+- **Temporary exception to the standard pipeline gates.** Two
+  sections below — "Adder Code Review Pipeline → Before every push"
+  (`npm run pre-pr` must pass before push) and "Pull request workflow
+  → step 6" (all CI green + `npm run pre-pr` passing before merge) —
+  together would block any PR whose pre-pr fails on Stryker. While
+  the floor is unmet, bootstrap and backfill PRs are exempt from
+  both rules **for the Stryker / Pipeline-gate failure only**.
+  Every other pre-pr step (build, lint, audit, knip, madge, semgrep,
+  snyk, sonar) must still pass, every other CI check must still be
+  green, and every reviewer thread must still be resolved. Once
+  aggregate ≥ 80 the standard rules resume automatically for all PRs.
 - **One file (or one logical group) per backfill PR** — no mega-PRs.
   This makes each merge's contribution to the aggregate score easy to
   attribute and roll back if a regression surfaces.
@@ -191,8 +194,12 @@ automatically — no further admin-merges needed.
   add a per-file Stryker threshold and explain why in the PR body.
   More than 5 carve-outs ⇒ escalate for human policy review.
 - **Re-baseline after each merge.** Update the score-history comment
-  in `stryker.conf.mjs` and `~/projects/code-review-pipeline/build-log.md`
-  with the new aggregate so the next backfill PR knows where it starts.
+  in `stryker.conf.mjs` (the in-repo authoritative record). The
+  maintainer-local audit log at `~/projects/code-review-pipeline/build-log.md`
+  is updated by the same maintainer who runs the Adder pipeline locally;
+  contributors not running that pipeline can skip it — the in-repo
+  comment in `stryker.conf.mjs` is sufficient to know where the next
+  backfill PR starts from.
 
 ### After the floor is hit
 
@@ -349,6 +356,13 @@ All steps must pass (exit 0). Do **not** push until they do. If a gate is
 incorrectly failing, fix the gate's config rather than skipping it.
 `--skip-qwen` is allowed during fast iteration but the final run before
 opening a PR must include Qwen.
+
+**Exception while the Stryker mutation-testing floor is unmet:**
+bootstrap and backfill PRs may push despite a `npm run pre-pr` failure
+**caused only by the Stryker / Pipeline-gate red**. All other pre-pr
+steps must still pass. See "Mutation Testing — Hard 80% Floor (active)"
+above for the full carve-out rules. The exception ends automatically
+when aggregate score crosses 80.
 
 The gate invokes `npm test -- --coverage`. Your project's `test` script
 must be plain (e.g. `"test": "vitest run"`), without a hardcoded

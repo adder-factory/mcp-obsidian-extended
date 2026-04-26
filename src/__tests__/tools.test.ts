@@ -39,6 +39,7 @@ import { registerAllTools } from "../tools.js";
 import { registerGranularTools } from "../tools/granular.js";
 import { registerConsolidatedTools } from "../tools/consolidated.js";
 import type { ObsidianClient, NoteJson, ToolResult } from "../obsidian.js";
+import { setCompactResponses } from "../obsidian.js";
 import type { VaultCache, CachedNote } from "../cache.js";
 import {
   ObsidianApiError,
@@ -1814,6 +1815,159 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(getText(result)).toContain("Restart the server");
     });
+
+    // --- Stryker mutation backfill: parseBoolValue + parsePosIntValue + CONFIG_UPDATE_PARSERS ---
+
+    // parseBoolValue is private; exercise via the boolean settings (debug,
+    // compactResponses, verifyWrites). Each `true`/`false` string must parse
+    // and any other input must be rejected. Tests the L119/L120 string-equality
+    // mutants ("true" → "", "false" → "").
+
+    it.each([
+      ["true", true],
+      ["false", false],
+    ])("parses debug='%s' to boolean %s", async (input, expected) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: input,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        debug: expected,
+      });
+    });
+
+    it.each(["TRUE", "True", "1", "0", "yes", "no", ""])(
+      "rejects non-boolean debug value '%s'",
+      async (value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "debug",
+          value,
+        });
+        expect(result.isError).toBe(true);
+        expect(getText(result)).toContain("Invalid value");
+      },
+    );
+
+    // parsePosIntValue is private; exercise via timeout (min=1) and
+    // maxResponseChars (min=0). Tests:
+    //   - empty string rejected (L131 trim guard)
+    //   - non-numeric rejected (L132 Number cast)
+    //   - non-finite rejected (Infinity, NaN)
+    //   - non-integer rejected (decimals like 1.5)
+    //   - below-min rejected (timeout < 1, maxResponseChars < 0)
+
+    it.each([
+      ["", "empty string"],
+      [" ", "whitespace-only"],
+      ["abc", "non-numeric text"],
+      ["1.5", "decimal"],
+      ["NaN", "literal NaN"],
+      ["Infinity", "literal Infinity"],
+      ["0", "below min=1"],
+      ["-5", "negative"],
+    ])("rejects timeout=%j (%s)", async (value) => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value,
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("accepts maxResponseChars=0 (min=0 boundary)", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "0",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { maxResponseChars: 0 },
+      });
+    });
+
+    it("rejects maxResponseChars=-1 (below min=0)", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "maxResponseChars",
+        value: "-1",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    // CONFIG_UPDATE_PARSERS Map entries — each setting must route to its
+    // parser and produce the correct nested update shape. Kills the
+    // ArrayDeclaration mutants on each Map row (parser deletion would
+    // mean the setting is not recognized, returning "Unknown setting").
+
+    it("compactResponses=true produces { compactResponses: true }", async () => {
+      const { getTool } = setup();
+      try {
+        await getTool("configure").handler({
+          action: "set",
+          setting: "compactResponses",
+          value: "true",
+        });
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          compactResponses: true,
+        });
+      } finally {
+        // Reset module-level state — the configure handler calls
+        // setCompactResponses(true) as an immediate side-effect, which
+        // would otherwise leak into other tests using jsonResult().
+        setCompactResponses(false);
+      }
+    });
+
+    it("verifyWrites=true produces { reliability: { verifyWrites: true } }", async () => {
+      const { getTool } = setup();
+      await getTool("configure").handler({
+        action: "set",
+        setting: "verifyWrites",
+        value: "true",
+      });
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+        reliability: { verifyWrites: true },
+      });
+    });
+
+    it.each(["granular", "consolidated"])(
+      "toolMode='%s' produces { tools: { mode: '%s' } }",
+      async (value) => {
+        const { getTool } = setup();
+        await getTool("configure").handler({
+          action: "set",
+          setting: "toolMode",
+          value,
+        });
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          tools: { mode: value },
+        });
+      },
+    );
+
+    it.each(["full", "read-only", "minimal", "safe"])(
+      "toolPreset='%s' produces { tools: { preset: '%s' } }",
+      async (value) => {
+        const { getTool } = setup();
+        await getTool("configure").handler({
+          action: "set",
+          setting: "toolPreset",
+          value,
+        });
+        expect(saveConfigToFile).toHaveBeenLastCalledWith(expect.any(String), {
+          tools: { preset: value },
+        });
+      },
+    );
   });
 
   // -------------------------------------------------------------------------

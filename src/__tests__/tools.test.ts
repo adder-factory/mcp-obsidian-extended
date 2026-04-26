@@ -55,6 +55,13 @@ import { CACHE_INIT_TIMEOUT_MS } from "../tools/shared.js";
 
 beforeEach(() => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  // Clear stale call history on the file-scoped saveConfigToFile mock.
+  // vi.restoreAllMocks() in the afterEach below restores spies but does
+  // NOT clear call history on module mocks — without this, tests that
+  // assert via toHaveBeenLastCalledWith could be satisfied by a prior
+  // test's call. File-scoped so EVERY test (not just the configure-set
+  // describe block) starts with an empty history.
+  vi.mocked(saveConfigToFile).mockClear();
 });
 
 afterEach(() => {
@@ -1711,16 +1718,6 @@ describe("granular tools — registration and basic behavior", () => {
   // configure — set (immediate settings)
   // -------------------------------------------------------------------------
   describe("configure — set action (immediate settings)", () => {
-    // Clear stale saveConfigToFile call history between tests. The mock
-    // is installed at the file level via vi.mock("../config.js", ...) as
-    // a vi.fn(), and vi.restoreAllMocks() does NOT clear call history on
-    // module-level mocks — only restores spied implementations. Without
-    // this beforeEach, toHaveBeenLastCalledWith assertions could be
-    // satisfied by a prior test's call rather than the test's own.
-    beforeEach(() => {
-      vi.mocked(saveConfigToFile).mockClear();
-    });
-
     it("sets debug=true and calls saveConfigToFile", async () => {
       const { getTool } = setup({ configFilePath: "/tmp/test-config.json" });
       const result = await getTool("configure").handler({

@@ -3792,6 +3792,32 @@ describe("consolidated tools — registration and behavior", () => {
       return value;
     }
 
+    /**
+     * REST-path harness — same shape as makeCachedClient but with an
+     * uninitialized cache so handleRecentChanges falls through to the
+     * REST/listFilesInVault + getFileContents path. Tests configure the
+     * client mocks AFTER calling this; vi mocks retain their state across
+     * the synchronous register-then-handler sequence.
+     */
+    function makeRestClient(): {
+      server: { registerTool: ReturnType<typeof vi.fn> };
+      getTool: (name: string) => CapturedTool;
+      client: ObsidianClient;
+      cache: VaultCache;
+    } {
+      const { server, getTool } = makeMockServer();
+      const client = makeMockClient();
+      const cache = makeMockCache(false);
+      registerConsolidatedTools(
+        server as Parameters<typeof registerConsolidatedTools>[0],
+        client,
+        cache,
+        () => true,
+        makeConfig({ toolMode: "consolidated", enableCache: true }),
+      );
+      return { server, getTool, client, cache };
+    }
+
     it("cache path sorts by mtime DESCENDING (newest first)", async () => {
       const { getTool } = makeCachedClient([
         { path: "a.md", mtime: 100 },
@@ -3838,9 +3864,7 @@ describe("consolidated tools — registration and behavior", () => {
     });
 
     it("REST path filters out non-.md files (case-insensitive)", async () => {
-      const { server, getTool } = makeMockServer();
-      const client = makeMockClient();
-      const cache = makeMockCache(false);
+      const { getTool, client } = makeRestClient();
       vi.mocked(client.listFilesInVault).mockResolvedValue({
         files: [
           "note.md",
@@ -3852,13 +3876,6 @@ describe("consolidated tools — registration and behavior", () => {
       });
       vi.mocked(client.getFileContents).mockImplementation((path) =>
         Promise.resolve(makeMockNoteJson(path, path === "note.md" ? 100 : 50)),
-      );
-      registerConsolidatedTools(
-        server as Parameters<typeof registerConsolidatedTools>[0],
-        client,
-        cache,
-        () => true,
-        makeConfig({ toolMode: "consolidated", enableCache: true }),
       );
       await getTool("recent").handler({ type: "changes", limit: 10 });
 
@@ -3880,9 +3897,7 @@ describe("consolidated tools — registration and behavior", () => {
       // observable through the log.
       vi.mocked(log).mockClear();
 
-      const { server, getTool } = makeMockServer();
-      const client = makeMockClient();
-      const cache = makeMockCache(false);
+      const { getTool, client } = makeRestClient();
       vi.mocked(client.listFilesInVault).mockResolvedValue({
         files: ["good.md", "bad.md"],
       });
@@ -3890,13 +3905,6 @@ describe("consolidated tools — registration and behavior", () => {
         path === "bad.md"
           ? Promise.reject(new Error("read failed"))
           : Promise.resolve(makeMockNoteJson(path, 100)),
-      );
-      registerConsolidatedTools(
-        server as Parameters<typeof registerConsolidatedTools>[0],
-        client,
-        cache,
-        () => true,
-        makeConfig({ toolMode: "consolidated", enableCache: true }),
       );
       const result = await getTool("recent").handler({
         type: "changes",
@@ -3925,9 +3933,7 @@ describe("consolidated tools — registration and behavior", () => {
     });
 
     it("REST path uses mtime=0 fallback when getFileContents returns a string (no stat)", async () => {
-      const { server, getTool } = makeMockServer();
-      const client = makeMockClient();
-      const cache = makeMockCache(false);
+      const { getTool, client } = makeRestClient();
       vi.mocked(client.listFilesInVault).mockResolvedValue({
         files: ["a.md", "b.md"],
       });
@@ -3935,13 +3941,6 @@ describe("consolidated tools — registration and behavior", () => {
         path === "a.md"
           ? Promise.resolve("# raw markdown") // string — no stat
           : Promise.resolve(makeMockNoteJson(path, 999)),
-      );
-      registerConsolidatedTools(
-        server as Parameters<typeof registerConsolidatedTools>[0],
-        client,
-        cache,
-        () => true,
-        makeConfig({ toolMode: "consolidated", enableCache: true }),
       );
       const result = await getTool("recent").handler({
         type: "changes",
@@ -3959,9 +3958,7 @@ describe("consolidated tools — registration and behavior", () => {
     });
 
     it("REST path sorts by mtime DESCENDING and applies the limit after sort", async () => {
-      const { server, getTool } = makeMockServer();
-      const client = makeMockClient();
-      const cache = makeMockCache(false);
+      const { getTool, client } = makeRestClient();
       vi.mocked(client.listFilesInVault).mockResolvedValue({
         files: ["a.md", "b.md", "c.md"],
       });
@@ -3972,13 +3969,6 @@ describe("consolidated tools — registration and behavior", () => {
       };
       vi.mocked(client.getFileContents).mockImplementation((path) =>
         Promise.resolve(makeMockNoteJson(path, mtimeByPath[path] ?? 0)),
-      );
-      registerConsolidatedTools(
-        server as Parameters<typeof registerConsolidatedTools>[0],
-        client,
-        cache,
-        () => true,
-        makeConfig({ toolMode: "consolidated", enableCache: true }),
       );
       const result = await getTool("recent").handler({
         type: "changes",

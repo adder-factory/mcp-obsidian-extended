@@ -963,9 +963,7 @@ describe("Stryker backfill — loadConfig 3-tier precedence", () => {
       (p: import("node:fs").PathLike) =>
         String(p) === resolve("./obsidian-mcp.config.json"),
     );
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ host: "from-file" }),
-    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ host: "from-file" }));
     process.env["OBSIDIAN_HOST"] = "from-env";
     const cfg = loadConfig();
     expect(cfg.host).toBe("from-env");
@@ -1134,5 +1132,256 @@ describe("Stryker backfill — log function exact behaviour", () => {
       .mockImplementation(() => true);
     log(level, "hello");
     expect(spy).toHaveBeenCalledWith(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stryker mutation backfill — config.ts residual (PR #19)
+// ---------------------------------------------------------------------------
+//
+// Targets surviving mutants in: findConfigFile, loadConfigFile warn-message
+// format, recoverConfigFields edge cases, parseNumber options-undefined
+// branches, validate* HTTPS path, and saveConfigToFile corrupted-file warn.
+
+describe("Stryker backfill — findConfigFile env path resolution", () => {
+  // The file-level beforeEach calls mockedExistsSync.mockReturnValue(false)
+  // but does NOT clear .mock.calls (existing tests don't care about call
+  // counts). These tests assert exact call counts on the search-path loop,
+  // so clear the call history at the start of each test.
+  beforeEach(() => {
+    mockedExistsSync.mockClear();
+  });
+
+  it("OBSIDIAN_CONFIG path that EXISTS is returned (resolves through resolve())", () => {
+    process.env["OBSIDIAN_CONFIG"] = "/custom/cfg.json";
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("/custom/cfg.json"),
+    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ host: "from-custom" }));
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("from-custom");
+    expect(cfg.configFilePath).toBe(resolve("/custom/cfg.json"));
+  });
+
+  it("OBSIDIAN_CONFIG path that does NOT exist logs exact warn and returns undefined", () => {
+    process.env["OBSIDIAN_CONFIG"] = "/missing/cfg.json";
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    mockedExistsSync.mockReturnValue(false);
+    const cfg = loadConfig();
+    expect(cfg.configFilePath).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] OBSIDIAN_CONFIG path does not exist: ${resolve("/missing/cfg.json")}\n`,
+    );
+  });
+
+  it("OBSIDIAN_CONFIG set short-circuits the search-path loop (only one existsSync call)", () => {
+    process.env["OBSIDIAN_CONFIG"] = "/exists/cfg.json";
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("{}");
+    loadConfig();
+    // existsSync called only ONCE (for OBSIDIAN_CONFIG resolved path),
+    // NOT 3 times (the standard search paths).
+    expect(mockedExistsSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("standard search returns first hit (cwd) and does not check later paths", () => {
+    const cwdPath = resolve("./obsidian-mcp.config.json");
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) => String(p) === cwdPath,
+    );
+    mockedReadFileSync.mockReturnValue("{}");
+    const cfg = loadConfig();
+    expect(cfg.configFilePath).toBe(cwdPath);
+    // Only the first path was checked because it returned true.
+    expect(mockedExistsSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("standard search continues to second path if first does not exist", () => {
+    const homePath = join(homedir(), ".obsidian-mcp.config.json");
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) => String(p) === homePath,
+    );
+    mockedReadFileSync.mockReturnValue("{}");
+    const cfg = loadConfig();
+    expect(cfg.configFilePath).toBe(homePath);
+    // Two checks: cwd (false), home (true).
+    expect(mockedExistsSync).toHaveBeenCalledTimes(2);
+  });
+
+  it("standard search continues to third path if first two do not exist", () => {
+    const xdgPath = join(homedir(), ".config", "obsidian-mcp", "config.json");
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) => String(p) === xdgPath,
+    );
+    mockedReadFileSync.mockReturnValue("{}");
+    const cfg = loadConfig();
+    expect(cfg.configFilePath).toBe(xdgPath);
+    expect(mockedExistsSync).toHaveBeenCalledTimes(3);
+  });
+
+  it("standard search returns undefined when no path exists", () => {
+    mockedExistsSync.mockReturnValue(false);
+    const cfg = loadConfig();
+    expect(cfg.configFilePath).toBeUndefined();
+    expect(mockedExistsSync).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("Stryker backfill — loadConfigFile warn message format", () => {
+  it("logs exact warn with comma-joined Zod issues for invalid file", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    // Two invalid fields: port (string instead of number), debug (string
+    // instead of boolean). Issues format: "<path>: <message>" joined by ", ".
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({ port: "not-a-number", debug: "not-a-bool" }),
+    );
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    loadConfig();
+    const calls = spy.mock.calls.map((c) => String(c[0])).join("");
+    expect(calls).toContain(
+      `Config file ${resolve("./obsidian-mcp.config.json")} has invalid fields: `,
+    );
+    expect(calls).toContain(". Invalid fields ignored.");
+    expect(calls).toContain("port:");
+    expect(calls).toContain("debug:");
+  });
+});
+
+describe("Stryker backfill — recoverConfigFields multi-key partial recovery", () => {
+  // recoverConfigFields walks Object.keys; for each key it first tries
+  // safeParse (whole-section) then falls back to per-nested-key. This
+  // test exercises both branches in one pass (host: whole-section pass,
+  // tools: nested recovery, port: dropped entirely as non-recoverable).
+  it("recovers a mix of whole-section, nested-key, and dropped fields", () => {
+    mockedExistsSync.mockImplementation(
+      (p: import("node:fs").PathLike) =>
+        String(p) === resolve("./obsidian-mcp.config.json"),
+    );
+    mockedReadFileSync.mockReturnValue(
+      JSON.stringify({
+        host: "valid-string",
+        port: { not: "a number" }, // dropped — neither whole-section nor nested
+        tools: {
+          mode: 12345, // bad type
+          preset: "minimal", // good — recovered via nested
+          include: ["a", "b"], // good
+        },
+        unknownKey: { foo: "bar" }, // not in schema → continue
+      }),
+    );
+    const cfg = loadConfig();
+    expect(cfg.host).toBe("valid-string");
+    expect(cfg.toolPreset).toBe("minimal");
+    expect(cfg.includeTools).toEqual(["a", "b"]);
+    // port dropped → falls back to default
+    expect(cfg.port).toBe(27124);
+  });
+});
+
+describe("Stryker backfill — parseNumber options-absent branches", () => {
+  // parseNumber takes optional options; when options is omitted entirely
+  // the integer/min/max checks are SKIPPED. None of the existing tests
+  // exercise the no-options path. Use OBSIDIAN_API_KEY-style test where
+  // there's no caller without options today, so we test via cacheTtl
+  // (which has min:10000) and OBSIDIAN_TIMEOUT (min:1).
+  it("parseNumber accepts large values when only min is set (no max constraint)", () => {
+    process.env["OBSIDIAN_TIMEOUT"] = "9999999999"; // huge
+    const cfg = loadConfig();
+    expect(cfg.timeout).toBe(9999999999);
+  });
+
+  it("parseNumber accepts integer values when integer:true (port=27124)", () => {
+    process.env["OBSIDIAN_PORT"] = "27124";
+    const cfg = loadConfig();
+    expect(cfg.port).toBe(27124);
+  });
+
+  it("parseNumber accepts the boundary minimum (cacheTtl = 10000)", () => {
+    process.env["OBSIDIAN_CACHE_TTL"] = "10000";
+    const cfg = loadConfig();
+    expect(cfg.cacheTtl).toBe(10000);
+  });
+
+  it("parseNumber rejects below-min for cacheTtl (9999) and falls back to default", () => {
+    process.env["OBSIDIAN_CACHE_TTL"] = "9999";
+    const cfg = loadConfig();
+    expect(cfg.cacheTtl).toBe(600000);
+  });
+});
+
+describe("Stryker backfill — validate* HTTPS path + case insensitivity", () => {
+  it("validateScheme returns 'https' for input 'HTTPS' (case-insensitive)", () => {
+    process.env["OBSIDIAN_SCHEME"] = "HTTPS";
+    const cfg = loadConfig();
+    expect(cfg.scheme).toBe("https");
+  });
+
+  it("validateScheme returns 'https' for input 'https' (lowercase)", () => {
+    process.env["OBSIDIAN_SCHEME"] = "https";
+    const cfg = loadConfig();
+    expect(cfg.scheme).toBe("https");
+  });
+
+  it("validateToolMode returns 'granular' for mixed-case 'GraNular'", () => {
+    process.env["TOOL_MODE"] = "GraNular";
+    const cfg = loadConfig();
+    expect(cfg.toolMode).toBe("granular");
+  });
+
+  it.each(["full", "FULL", "Full", "minimal", "MINIMAL", "safe", "Safe"])(
+    "validateToolPreset accepts case-variant '%s'",
+    (input) => {
+      process.env["TOOL_PRESET"] = input;
+      const cfg = loadConfig();
+      expect(cfg.toolPreset).toBe(input.toLowerCase());
+    },
+  );
+});
+
+describe("Stryker backfill — saveConfigToFile corrupted file branches", () => {
+  it("logs exact warn when existing file is not a JSON object (string)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue('"just a string"');
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Config file /tmp/cfg.json is not a JSON object, starting fresh\n`,
+    );
+  });
+
+  it("logs exact warn when existing file is invalid JSON", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("not json {{{");
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    const calls = spy.mock.calls.map((c) => String(c[0])).join("");
+    expect(calls).toContain(
+      "Failed to read existing config file at /tmp/cfg.json (",
+    );
+    expect(calls).toContain("), starting fresh");
+  });
+
+  it("logs exact warn when existing file is an array (not an object)", () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("[1,2,3]");
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    saveConfigToFile("/tmp/cfg.json", { host: "x" });
+    expect(spy).toHaveBeenCalledWith(
+      `[warn] Config file /tmp/cfg.json is not a JSON object, starting fresh\n`,
+    );
   });
 });

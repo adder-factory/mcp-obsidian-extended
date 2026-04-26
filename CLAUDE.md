@@ -149,18 +149,32 @@ consistently, log the run-times and revisit the prompt or the model choice.
 Stryker `thresholds.break` is set to **80** in `stryker.conf.mjs`. The
 pipeline (`npm run pre-pr`) blocks any push whose mutation score is
 below 80%. As of `chore/stryker-floor-80` the score is **64.66%**, so
-**every PR opened now will fail the Stryker gate** until the backfill
-work lifts the score over the floor.
+**every PR opened now will fail the Stryker gate** until the cumulative
+backfill series lifts the aggregate score over the floor.
 
-While the floor is unmet:
+### Why every backfill PR also needs admin-merge
+
+Stryker measures the whole `src/**/*.ts` surface, not just the file a
+PR touches. A single backfill PR that adds tests for one file might
+move the aggregate from 64.66 → 65.5 — still red against the 80 floor.
+**The Stryker gate therefore stays red across the entire backfill
+series**, not just the bootstrap PR. Every backfill PR in the series
+will need an admin-merge override, not just this one. That is the real
+cost of Option C: ~N admin-merges, where N is roughly the number of
+files needed to cross the aggregate floor. Plan accordingly.
+
+Once the aggregate crosses 80, normal gate enforcement resumes
+automatically — no further admin-merges needed.
+
+### Rules while the floor is unmet
 
 - **No feature work.** Pipeline is frozen for new features. The only
-  PR types allowed to merge are (a) the floor-bootstrap PR itself
-  (admin-merged once, despite its own gate failure), and (b) backfill
-  PRs that add tests to kill surviving mutants.
+  PR types allowed to merge are (a) the floor-bootstrap PR itself, and
+  (b) backfill PRs that add tests to kill surviving mutants. Both PR
+  types require admin-merge until the aggregate score crosses 80.
 - **One file (or one logical group) per backfill PR** — no mega-PRs.
-  Each backfill PR must itself clear the 80% gate; aggregate score
-  ratchets up with each merge.
+  This makes each merge's contribution to the aggregate score easy to
+  attribute and roll back if a regression surfaces.
 - **Tests-only.** Hard Rule 8 still applies: backfill PRs add tests,
   not production code, unless a minimal change is genuinely required
   to make code testable (justify in PR body).
@@ -168,10 +182,16 @@ While the floor is unmet:
   hit 80 (entry-point wiring like `index.ts`, content-heavy modules),
   add a per-file Stryker threshold and explain why in the PR body.
   More than 5 carve-outs ⇒ escalate for human policy review.
+- **Re-baseline after each merge.** Update the score-history comment
+  in `stryker.conf.mjs` and `~/projects/code-review-pipeline/build-log.md`
+  with the new aggregate so the next backfill PR knows where it starts.
+
+### After the floor is hit
 
 Once the aggregate score is ≥80, the ratchet policy resumes:
 `thresholds.break = (current_score − 1pp)`, with a hard floor that
-never drops below 80.
+never drops below 80. `low`/`high` re-separate from `break` at that
+point and the three-threshold band becomes meaningful again.
 
 ## Testing
 

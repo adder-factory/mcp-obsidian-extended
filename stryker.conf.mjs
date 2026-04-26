@@ -29,7 +29,13 @@ export default {
   //                           that is the bootstrap moment. After the floor
   //                           is hit, ratchet resumes at (score − 1pp) but
   //                           never drops below 80.)
-  thresholds: { high: 80, low: 70, break: 80 },
+  // See ~/projects/code-review-pipeline/baseline-findings.md for the bake-in
+  // run and build-log.md for the ratchet history (including this floor entry).
+  // `low` is collapsed to 80 alongside `break` and `high` — the 70-79 band
+  // would never be reported because `break` fires first. Three thresholds
+  // are kept (rather than a single value) for forward-compatibility with
+  // the post-floor ratchet, where `break` will sit below `high`/`low` again.
+  thresholds: { high: 80, low: 80, break: 80 },
   // ignoreStatic must stay `false` — static mutants catch wrong defaults
   // / bad constants / bad regex literals, which is exactly what type checks
   // and linters miss. Explicit value (not relying on Stryker's current

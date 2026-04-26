@@ -3110,18 +3110,20 @@ describe("ObsidianClient — periodic notes (by date)", () => {
       client.deletePeriodicNoteForDate("daily", 2026, 1, 1),
     ).resolves.toBeUndefined();
   });
+});
 
-  // --- Stryker mutation backfill: request shape, status acceptance, retry logic ---
-
-  // Mirrors the active-file describe block: reset spies + debug between tests
-  // because the patch retry tests below enable debug logging to assert on the
-  // (periodic: <type> [date]) label rendered by retryPatchWithMapLookup.
+// ---------------------------------------------------------------------------
+// ObsidianClient — periodic notes (by date) — Stryker backfill
+// (separate describe block so the afterEach hook here does not interfere
+// with the existing "(by date)" describe block above — Greptile P2 on PR #55)
+// ---------------------------------------------------------------------------
+describe("ObsidianClient — periodic notes (by date) — Stryker backfill", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     setDebugEnabled(false);
   });
 
-  it("getPeriodicNoteForDate sends Accept: text/markdown header for markdown format", async () => {
+  it("getPeriodicNoteForDate sends GET to /periodic/<period>/<y>/<m>/<d>/ with Accept: text/markdown for markdown format", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue({
       statusCode: 200,
@@ -3130,6 +3132,8 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     });
 
     await client.getPeriodicNoteForDate("daily", 2026, 1, 1, "markdown");
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/periodic/daily/2026/01/01/");
     const headers = getCallHeaders(mockRequest.mock.calls[0]);
     expect(headers["Accept"]).toBe("text/markdown");
   });
@@ -3222,7 +3226,7 @@ describe("ObsidianClient — periodic notes (by date)", () => {
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
-  it("patchPeriodicNoteForDate retry passes '(periodic: daily date)' as the label arg (visible in retry debug log)", async () => {
+  it("patchPeriodicNoteForDate retry rebuilds full request (PATCH + date path + corrected Target) and label '(periodic: daily date)' is rendered", async () => {
     setDebugEnabled(true);
     const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient();
@@ -3250,6 +3254,16 @@ describe("ObsidianClient — periodic notes (by date)", () => {
       target: "tasks",
     });
 
+    // Retry request shape — kills mutants on the retry path/method/Target args
+    // independently of the log assertion (per Gemini feedback on PR #55).
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/periodic/daily/2026/01/01/");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks");
+
+    // Label is rendered in the retryPatchWithMapLookup debug log (not the
+    // caller-side auto-corrected log which has the string hardcoded).
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
     const retryLog = calls.find((c) => c.includes("PATCH retry: heading"));
     expect(retryLog).toContain("(periodic: daily date)");
@@ -3423,7 +3437,7 @@ describe("ObsidianClient — periodic notes (current) — Stryker backfill", () 
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
-  it("patchPeriodicNote retry passes '(periodic: daily)' as the label arg (visible in retry debug log)", async () => {
+  it("patchPeriodicNote retry rebuilds full request (PATCH + current-period path + corrected Target) and label '(periodic: daily)' is rendered", async () => {
     setDebugEnabled(true);
     const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient();
@@ -3450,6 +3464,14 @@ describe("ObsidianClient — periodic notes (current) — Stryker backfill", () 
       targetType: "heading",
       target: "tasks",
     });
+
+    // Retry request shape (per Gemini feedback on PR #55) — kills mutants
+    // on the retry path/method/Target args independently of the log line.
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(mockRequest.mock.calls[2]?.[0]).toBe("PATCH");
+    expect(mockRequest.mock.calls[2]?.[1]).toBe("/periodic/daily/");
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks");
 
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
     const retryLog = calls.find((c) => c.includes("PATCH retry: heading"));

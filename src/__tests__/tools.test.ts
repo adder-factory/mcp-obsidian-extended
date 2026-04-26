@@ -1047,8 +1047,8 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(result.isError).toBe(true);
       // Exact message text — kills the L583 StringLiteral mutant.
-      expect(getText(result)).toContain(
-        "[move_file] Only .md files can be moved.",
+      expect(getText(result)).toBe(
+        "[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.",
       );
     });
 
@@ -1060,7 +1060,7 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(result.isError).toBe(true);
       // Exact message text — kills the L587 StringLiteral mutant.
-      expect(getText(result)).toContain(
+      expect(getText(result)).toBe(
         "[move_file] Destination must be a .md file.",
       );
     });
@@ -1113,7 +1113,7 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(result.isError).toBe(true);
       // Exact message text — kills the L600 StringLiteral mutant.
-      expect(getText(result)).toContain(
+      expect(getText(result)).toBe(
         "[move_file] Expected markdown content from source file",
       );
     });

@@ -71,9 +71,17 @@ jobs:
       # it. Cache key matches stryker-affected.yml so restores hit cleanly.
       - name: Stryker (full sweep)
         if: steps.detect.outputs.present == '1'
+        # `rm -f` first so the run starts from a clean slate (the whole
+        # point of stryker-full.yml — fresh score, no cache reuse). Pass
+        # `--incremental` so Stryker still WRITES the new cache file at
+        # the end. Without --incremental the run does a fresh sweep but
+        # produces no incremental.json, the actions/cache/save step
+        # below saves a non-existent path, and every stryker-affected.yml
+        # run on PRs is then a cold sweep — silently defeating the <2 min
+        # steady-state target. Greptile P2 caught this on initial review.
         run: |
           rm -f reports/stryker-incremental.json
-          npx stryker run
+          npx stryker run --incremental
 
       - name: Save Stryker incremental cache
         if: steps.detect.outputs.present == '1' && success() && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')

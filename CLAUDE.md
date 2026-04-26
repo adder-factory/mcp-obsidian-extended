@@ -176,7 +176,9 @@ policy is now in effect.
   list is the operational enforcement of Hard Rule 8 during
   reviewer cycles — e.g. empty-string-as-undefined suggestions on
   mutation-kill tests are auto-dismiss because they would silently
-  drop the kill the test was designed to catch).
+  drop the kill that the test was designed to catch). See
+  [Reviewer Triage Rules](#reviewer-triage-rules) below for the
+  full codified list.
 - **Per-file carve-outs allowed but justified.** Some files truly
   cannot hit 80 (entry-point wiring, content-heavy modules whose
   mutants are static-initialized at module load and Vitest worker
@@ -382,9 +384,12 @@ doesn't have to be rediscovered every PR.
 
 5. **Convergent ≥ 2 reviewers** — when 2 or more reviewers
    independently flag the same issue, treat it as auto-apply unless
-   it conflicts with the auto-dismiss rules above. Convergent
-   findings have empirically been correct in every Phase-4 PR
-   logged in `run-log.md`. Convergence = strong signal.
+   either (a) it conflicts with an auto-dismiss rule above, or (b)
+   the suggested change would violate an explicit rule defined
+   elsewhere in this CLAUDE.md (e.g. TypeScript Rules, Code Style,
+   security non-negotiables). Convergent findings have empirically
+   been correct in every Phase-4 PR logged in `run-log.md`, but
+   reviewer agreement does not override project standards.
 
 ### Always escalate
 

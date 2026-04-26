@@ -99,13 +99,25 @@ jobs:
           # concurrent main commits. AMRC = Added / Modified / Renamed /
           # Copied (copied files often arrive with content modifications
           # and should be mutated alongside ordinary modifications).
-          # No `|| true` on git diff — a real error (bad SHA, missing
-          # merge-base) must fail the gate, not silently skip Stryker.
-          CHANGED=$(git diff --name-only --diff-filter=AMRC "$BASE_SHA...$HEAD_SHA" -- 'src/**/*.ts' \
-            | grep -vE '\.test\.ts$|\.spec\.ts$' || true)
+          #
+          # We split git-diff and grep into two separate command
+          # substitutions on purpose. If we piped them as
+          # `git diff ... | grep ... || true`, then under `pipefail`:
+          # a real `git diff` failure (bad SHA, missing merge-base)
+          # combined with grep's no-match exit (also non-zero) would
+          # leave the pipeline exit non-zero, which `|| true` then
+          # swallows — silently treating "git diff broke" as "no
+          # qualifying files" and skipping Stryker. CodeRabbit caught
+          # this on a second pass after the first attempt at this
+          # block — keeping the structure split prevents the silent-
+          # pass class of failure regardless of how subsequent edits
+          # rearrange the body.
+          DIFF_OUTPUT=$(git diff --name-only --diff-filter=AMRC "$BASE_SHA...$HEAD_SHA" -- 'src/**/*.ts')
           # `grep` exits 1 when no lines match — that is the legitimate
           # "no qualifying files" path, so `|| true` here is correct
-          # (different from suppressing a `git fetch`/`git diff` failure).
+          # (and only here). `git diff` already executed successfully
+          # above; no failure can hide behind this `|| true`.
+          CHANGED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -vE '\.test\.ts$|\.spec\.ts$' || true)
           if [ -z "$CHANGED" ]; then
             echo "empty=1" >> "$GITHUB_OUTPUT"
             echo "::notice::No qualifying src/**/*.ts changes — Stryker affected step skipped. Aggregate validation deferred to nightly stryker-full.yml."

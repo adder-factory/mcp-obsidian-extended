@@ -1818,7 +1818,11 @@ describe("ObsidianClient — patchContent", () => {
         statusCode: 200,
         headers: { "content-type": "application/json" },
         // headings is a string, not an array
-        body: JSON.stringify({ headings: "oops", blocks: [], frontmatterFields: [] }),
+        body: JSON.stringify({
+          headings: "oops",
+          blocks: [],
+          frontmatterFields: [],
+        }),
       });
 
     await expect(
@@ -2275,9 +2279,30 @@ describe("ObsidianClient — active file", () => {
     await expect(client.appendActiveFile("body")).resolves.toBeUndefined();
   });
 
-  it("patchActiveFile sends PATCH to /active/ and strips Create-Target-If-Missing", async () => {
+  it("patchActiveFile sends PATCH to /active/ and strips Create-Target-If-Missing even when buildPatchHeaders would set it", async () => {
     const { client, mockRequest } = createMockedClient();
     mockRequest.mockResolvedValue(ok204());
+
+    // Seed the header by patching buildPatchHeaders to include it. Without this
+    // seeding, the strip mutant survives because nothing produces the header in
+    // the first place (the active-file public API has Omit<PatchOptions, "createIfMissing">).
+    const originalBuild = (
+      client as unknown as Record<
+        string,
+        (options: unknown) => Record<string, string>
+      >
+    )["buildPatchHeaders"]?.bind(client);
+    if (!originalBuild) throw new Error("buildPatchHeaders not found");
+    (
+      client as unknown as Record<
+        string,
+        (options: unknown) => Record<string, string>
+      >
+    )["buildPatchHeaders"] = (options: unknown) => {
+      const h = originalBuild(options);
+      h["Create-Target-If-Missing"] = "true";
+      return h;
+    };
 
     await client.patchActiveFile("body", {
       operation: "append",
@@ -2287,7 +2312,8 @@ describe("ObsidianClient — active file", () => {
     expect(mockRequest.mock.calls[0]?.[0]).toBe("PATCH");
     expect(mockRequest.mock.calls[0]?.[1]).toBe("/active/");
     const headers = getCallHeaders(mockRequest.mock.calls[0]);
-    // Active file PATCH must never include Create-Target-If-Missing (REST API doesn't support it)
+    // Active file PATCH must never include Create-Target-If-Missing (REST API doesn't support it).
+    // Seeded above, then patchActiveFile's `delete headers[...]` should remove it.
     expect(headers["Create-Target-If-Missing"]).toBeUndefined();
   });
 
@@ -2322,7 +2348,7 @@ describe("ObsidianClient — active file", () => {
     expect(mockCache.invalidateAll).toHaveBeenCalled();
   });
 
-  it("patchActiveFile retry uses '(active file)' as the debug-log label", async () => {
+  it("patchActiveFile retry passes '(active file)' as the label arg to retryPatchWithMapLookup (visible in retry debug log)", async () => {
     setDebugEnabled(true);
     const stderrSpy = spyOnStderr();
     const { client, mockRequest } = createMockedClient();
@@ -2350,11 +2376,13 @@ describe("ObsidianClient — active file", () => {
       target: "tasks",
     });
 
+    // The label arg is rendered by retryPatchWithMapLookup's debug log
+    // (`PATCH retry: heading "..." → "..." in ${label}`), not the
+    // caller-side auto-corrected log (which has "(active file)" hardcoded).
+    // Asserting on the retry log proves the label parameter is actually plumbed.
     const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
-    const correctedLog = calls.find((c) =>
-      c.includes("PATCH heading auto-corrected"),
-    );
-    expect(correctedLog).toContain("(active file)");
+    const retryLog = calls.find((c) => c.includes("PATCH retry: heading"));
+    expect(retryLog).toContain("(active file)");
   });
 
   it("patchActiveFile retry passes /active/ as the patch path (not a vault path)", async () => {
@@ -2397,13 +2425,13 @@ describe("ObsidianClient — active file", () => {
       body: '{"message":"heading not found"}',
     });
 
-    await client
-      .patchActiveFile("body", {
+    await expect(
+      client.patchActiveFile("body", {
         operation: "append",
         targetType: "block",
         target: "block-id",
-      })
-      .catch(() => undefined);
+      }),
+    ).rejects.toThrow(ObsidianApiError);
 
     // Only 1 call — no retry because targetType is "block"
     expect(mockRequest).toHaveBeenCalledTimes(1);
@@ -2418,13 +2446,13 @@ describe("ObsidianClient — active file", () => {
       body: '{"message":"invalid frontmatter"}',
     });
 
-    await client
-      .patchActiveFile("body", {
+    await expect(
+      client.patchActiveFile("body", {
         operation: "append",
         targetType: "heading",
         target: "Some Heading",
-      })
-      .catch(() => undefined);
+      }),
+    ).rejects.toThrow(ObsidianApiError);
 
     // Only 1 call — no retry because the 400 body isn't a heading-not-found error
     expect(mockRequest).toHaveBeenCalledTimes(1);

@@ -3787,7 +3787,7 @@ describe("consolidated tools — registration and behavior", () => {
         cachedNotes as ReturnType<typeof cache.getAllNotes>,
       );
       registerConsolidatedTools(
-        server as ConstructorParameters<typeof registerConsolidatedTools>[0],
+        server as Parameters<typeof registerConsolidatedTools>[0],
         client,
         cache,
         () => true,
@@ -3863,7 +3863,7 @@ describe("consolidated tools — registration and behavior", () => {
         Promise.resolve(makeMockNoteJson(path, path === "note.md" ? 100 : 50)),
       );
       registerConsolidatedTools(
-        server as ConstructorParameters<typeof registerConsolidatedTools>[0],
+        server as Parameters<typeof registerConsolidatedTools>[0],
         client,
         cache,
         () => true,
@@ -3901,7 +3901,7 @@ describe("consolidated tools — registration and behavior", () => {
           : Promise.resolve(makeMockNoteJson(path, 100)),
       );
       registerConsolidatedTools(
-        server as ConstructorParameters<typeof registerConsolidatedTools>[0],
+        server as Parameters<typeof registerConsolidatedTools>[0],
         client,
         cache,
         () => true,
@@ -3946,7 +3946,7 @@ describe("consolidated tools — registration and behavior", () => {
           : Promise.resolve(makeMockNoteJson(path, 999)),
       );
       registerConsolidatedTools(
-        server as ConstructorParameters<typeof registerConsolidatedTools>[0],
+        server as Parameters<typeof registerConsolidatedTools>[0],
         client,
         cache,
         () => true,
@@ -3983,7 +3983,7 @@ describe("consolidated tools — registration and behavior", () => {
         Promise.resolve(makeMockNoteJson(path, mtimeByPath[path] ?? 0)),
       );
       registerConsolidatedTools(
-        server as ConstructorParameters<typeof registerConsolidatedTools>[0],
+        server as Parameters<typeof registerConsolidatedTools>[0],
         client,
         cache,
         () => true,

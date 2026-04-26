@@ -2710,6 +2710,232 @@ describe("consolidated tools — registration and behavior", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Stryker mutation backfill: Zod-schema validation for vault + active_file
+  //
+  // The action enum literals (e.g. ["list", "list_dir", "get", ...]) and
+  // boolean defaults (useRegex/caseSensitive/replaceAll) sit on the Zod
+  // schema attached to each registered tool. Handler-level tests bypass
+  // Zod entirely (`getTool(name).handler({...})`), so a mutation that
+  // shrinks the enum or flips a boolean default leaves handler tests
+  // passing while real MCP traffic would silently misbehave. These tests
+  // round-trip args through the Zod schema directly and assert each
+  // valid action parses + invalid actions reject + defaults take effect.
+  // -------------------------------------------------------------------------
+  // Type guard for any object with a `.parse(unknown) => unknown` method.
+  // Avoids depending on z.ZodObject specifically — a future refinement
+  // (`.refine()`, `.transform()`, `.brand()`) would still satisfy this
+  // contract because Zod's wrappers preserve `.parse`. This also avoids
+  // the `as` type assertion that CLAUDE.md prohibits.
+  interface ParseableSchema {
+    parse: (value: unknown) => unknown;
+  }
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object";
+  }
+  function isParseable(value: unknown): value is ParseableSchema {
+    return (
+      isRecord(value) &&
+      "parse" in value &&
+      typeof value["parse"] === "function"
+    );
+  }
+  function getInputSchema(toolName: string): ParseableSchema {
+    const { getTool } = setup();
+    const tool = getTool(toolName);
+    const schema = tool.schema["inputSchema"];
+    if (!isParseable(schema)) {
+      throw new Error(`${toolName} inputSchema is not parseable`);
+    }
+    return schema; // narrowed by isParseable type guard
+  }
+
+  describe("vault — Zod schema validation (Stryker backfill)", () => {
+    // Per-action minimal valid payloads. All non-action fields are
+    // currently `.optional()` in the source schema, so `{action}` alone
+    // parses today — but if Zod gains conditional required fields per
+    // action (via `.refine` etc.), passing the realistic minimum keeps
+    // these tests focused on the enum/default mutants they target.
+    const VAULT_PAYLOADS = {
+      list: { action: "list" },
+      list_dir: { action: "list_dir", path: "dir" },
+      get: { action: "get", path: "note.md" },
+      put: { action: "put", path: "note.md", content: "body" },
+      append: { action: "append", path: "note.md", content: "body" },
+      patch: {
+        action: "patch",
+        path: "note.md",
+        content: "body",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+      delete: { action: "delete", path: "note.md" },
+      search_replace: {
+        action: "search_replace",
+        path: "note.md",
+        search: "x",
+        replace: "y",
+      },
+      move: { action: "move", source: "a.md", destination: "b.md" },
+    } as const;
+    const VAULT_ACTIONS = Object.keys(VAULT_PAYLOADS) as ReadonlyArray<
+      keyof typeof VAULT_PAYLOADS
+    >;
+
+    it.each(VAULT_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getInputSchema("vault");
+      expect(() => schema.parse(VAULT_PAYLOADS[action])).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getInputSchema("vault");
+      expect(() => schema.parse({ action: "not_a_real_action" })).toThrow();
+    });
+
+    // Helper that returns the parsed-defaults as a Record<string, unknown>
+    // narrowed via the isRecord type guard — avoids `as` casts entirely.
+    function parseSearchReplaceDefaults(): Record<string, unknown> {
+      const schema = getInputSchema("vault");
+      const parsed = schema.parse(VAULT_PAYLOADS["search_replace"]);
+      if (!isRecord(parsed)) {
+        throw new Error("vault schema parse did not return an object");
+      }
+      return parsed;
+    }
+
+    it("useRegex defaults to false when omitted", () => {
+      const parsed = parseSearchReplaceDefaults();
+      expect(parsed["useRegex"]).toBe(false);
+    });
+
+    it("caseSensitive defaults to true when omitted", () => {
+      const parsed = parseSearchReplaceDefaults();
+      expect(parsed["caseSensitive"]).toBe(true);
+    });
+
+    it("replaceAll defaults to true when omitted", () => {
+      const parsed = parseSearchReplaceDefaults();
+      expect(parsed["replaceAll"]).toBe(true);
+    });
+  });
+
+  describe("vault — error path computation for move action (Stryker backfill)", () => {
+    // The error path picker is `action === "move" ? args.source ?? path : path`.
+    // For a move, the error message should reference the SOURCE path (because
+    // the operation reads from source); for any non-move action, it should
+    // reference the path arg.
+    //
+    // The move action calls handleMoveFile (in tools/shared.ts), which
+    // internally calls client.getFileContents on the source — mocking that
+    // to reject is the cleanest way to force the move into the catch block.
+    it("uses args.source as the error path on a failing move (404 echoes path)", async () => {
+      const { client, getTool } = setup();
+      // 404 is the error type whose buildErrorMessage echoes context.path —
+      // simulating a missing source file forces path to surface in the
+      // message, which lets the test verify the picker chose source over path.
+      vi.mocked(client.getFileContents).mockRejectedValue(
+        new ObsidianApiError("file not found", 404),
+      );
+      const result = await getTool("vault").handler({
+        action: "move",
+        source: "old/note.md",
+        destination: "new/note.md",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("old/note.md");
+    });
+
+    it("uses args.path (NOT source) as the error path on a failing non-move action (404 echoes path)", async () => {
+      const { client, getTool } = setup();
+      // Same approach as the move test — 404 surfaces context.path in the
+      // error message, which lets the assertion confirm the picker chose
+      // `path` over `source` (instead of relying on a vacuous absence-check
+      // against a generic Error that doesn't echo the path at all).
+      vi.mocked(client.deleteFile).mockRejectedValue(
+        new ObsidianApiError("file not found", 404),
+      );
+      const result = await getTool("vault").handler({
+        action: "delete",
+        path: "doomed.md",
+        source: "should/be/ignored.md",
+      });
+      expect(result.isError).toBe(true);
+      const text = getText(result);
+      expect(text).toContain("doomed.md");
+      expect(text).not.toContain("should/be/ignored.md");
+    });
+  });
+
+  describe("active_file — Zod schema validation (Stryker backfill)", () => {
+    const ACTIVE_FILE_PAYLOADS = {
+      get: { action: "get" },
+      put: { action: "put", content: "body" },
+      append: { action: "append", content: "body" },
+      patch: {
+        action: "patch",
+        content: "body",
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      },
+      delete: { action: "delete" },
+    } as const;
+    const ACTIVE_FILE_ACTIONS = Object.keys(
+      ACTIVE_FILE_PAYLOADS,
+    ) as ReadonlyArray<keyof typeof ACTIVE_FILE_PAYLOADS>;
+
+    it.each(ACTIVE_FILE_ACTIONS)("accepts action: %s", (action) => {
+      const schema = getInputSchema("active_file");
+      expect(() => schema.parse(ACTIVE_FILE_PAYLOADS[action])).not.toThrow();
+    });
+
+    it("rejects an action outside the enum", () => {
+      const schema = getInputSchema("active_file");
+      expect(() =>
+        schema.parse({ action: "not_a_real_active_file_action" }),
+      ).toThrow();
+    });
+  });
+
+  describe("active_file — error message strings (Stryker backfill)", () => {
+    // Each branch of the active_file action switch returns a distinct
+    // textResult/errorResult string. StringLiteral mutations on those
+    // messages survive unless the test asserts the exact text.
+
+    it("put returns exactly 'Active file updated' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.putActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "put",
+        content: "body",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toBe("Active file updated");
+    });
+
+    it("append returns exactly 'Appended to active file' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.appendActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "append",
+        content: "body",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toBe("Appended to active file");
+    });
+
+    it("delete returns exactly 'Active file deleted' on success", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.deleteActiveFile).mockResolvedValue();
+      const result = await getTool("active_file").handler({
+        action: "delete",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toBe("Active file deleted");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // commands tool
   // -------------------------------------------------------------------------
   describe("commands — list", () => {

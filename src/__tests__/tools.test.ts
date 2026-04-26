@@ -783,7 +783,7 @@ describe("tools.ts — buildFilter branch coverage", () => {
     expect(registered).toContain("simple_search");
   });
 
-  it("INCLUDE with only protected name registers only protected (not the included name if not in preset)", () => {
+  it("INCLUDE with an out-of-preset name registers only protected tools", () => {
     // When INCLUDE contains a tool not in the preset, that tool is filtered
     // out (presetSet.has check). Only protected tools survive.
     const { server, getRegistered } = makeMockServer();

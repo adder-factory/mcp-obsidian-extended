@@ -357,19 +357,56 @@ the wiring being in place — the tools were treated as optional. This
 section makes specific uses **mandatory** and creates a measurement
 window to decide whether to keep or remove the wiring.
 
+### What CodeGraph is and is not
+
+CodeGraph indexes the **abstract syntax tree** of source files —
+symbols (functions, classes, methods, types), imports, and call
+relationships. It is **not** a full-text index. It is the right
+tool for **structural** questions and the wrong tool for **substring**
+questions:
+
+| Question shape                                       | Right tool                                       |
+| ---------------------------------------------------- | ------------------------------------------------ |
+| Where is symbol X defined?                           | `mcp__codegraph__codegraph_search`               |
+| Who calls X? What does X call?                       | `mcp__codegraph__codegraph_callers` / `_callees` |
+| What does changing X impact?                         | `mcp__codegraph__codegraph_impact`               |
+| What's the high-level structure of `src/`?           | `mcp__codegraph__codegraph_files`                |
+| Trace call relationships across files                | `mcp__codegraph__codegraph_explore`              |
+| Is this literal string in any file?                  | `Grep`                                           |
+| Find this error message / regex / TODO comment       | `Grep`                                           |
+| Find this word in markdown / json / yaml             | `Grep`                                           |
+| Substring search where I don't know if it's a symbol | `Grep`                                           |
+
+The dividing line: CodeGraph knows the AST; Grep knows file bytes.
+Pick the tool that matches the question shape, not the one you're
+more fluent with — the audit's 0-invocation finding was a
+muscle-memory problem, not a tool-quality problem.
+
+### Mandatory uses (must call CodeGraph, not Grep)
+
 - **Before refactoring any exported symbol** (e.g., function, class,
   type, interface, enum, exported const), call
   `mcp__codegraph__codegraph_impact` with the symbol name to surface
   affected callers. Do NOT skip this for "small-looking" changes —
   exported-symbol blast radius is the exact failure mode CodeGraph
   exists to prevent.
-- **When investigating bugs across multiple files**, use
-  `mcp__codegraph__codegraph_explore` instead of `Grep + Read`. One
-  graph query replaces 20+ file reads.
+- **When tracing call / caller relationships across files** (e.g.,
+  "what does this function depend on?", "who else uses this
+  method?"), use `mcp__codegraph__codegraph_explore` or
+  `_callers` / `_callees`. One graph query replaces 20+ file reads.
 - **When self-reviewing a PR with source changes**, run
   `mcp__codegraph__codegraph_impact` on each modified exported
   symbol. Document the result in the PR body so reviewers see the
   blast radius CC checked.
+
+Note: bug investigations involving error messages, log strings, or
+literal text content are **substring** queries — use `Grep` for
+those. The mandate above is for relationship-tracing investigations
+(stack of callers, dependency chain), not for "find the string
+'connection refused' in any file."
+
+File reads (`Read`) are for when you need the actual source to edit;
+use CodeGraph for AST discovery and Grep for substring lookups.
 
 Usage is measured weekly by
 `adder-pipeline-tools/scripts/codegraph-usage-counter.sh`. See

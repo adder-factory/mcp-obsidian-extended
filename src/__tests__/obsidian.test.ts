@@ -12,7 +12,7 @@ import {
 } from "../obsidian.js";
 import type { ToolResult } from "../obsidian.js";
 import { ObsidianApiError, ObsidianAuthError } from "../errors.js";
-import type { Config } from "../config.js";
+import { type Config, setDebugEnabled } from "../config.js";
 
 // Suppress stderr output
 beforeEach(() => {
@@ -1598,6 +1598,302 @@ describe("ObsidianClient — patchContent", () => {
     });
 
     expect(mockCache.invalidate).toHaveBeenCalledWith("note.md");
+  });
+
+  // --- Stryker mutation backfill: status acceptance, log shapes, retry guards ---
+
+  // Restore vi.spyOn-installed mocks between tests so log-text assertions
+  // don't accumulate writes from other patchContent tests above. Also reset
+  // debug-logging state — some tests below enable debug logs to assert on
+  // the auto-correct trace; the flag is module-level and would otherwise leak.
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setDebugEnabled(false);
+  });
+
+  it("accepts 200 OK in addition to 204 No Content on first PATCH", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.patchContent("note.md", "x", {
+        operation: "append",
+        targetType: "heading",
+        target: "H",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("retry accepts 200 OK in addition to 204 No Content on retry PATCH", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce({ statusCode: 200, headers: {}, body: "" });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "tasks",
+      }),
+    ).resolves.toBeUndefined();
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("retry strips Create-Target-If-Missing header before re-PATCH", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks",
+      createIfMissing: true,
+    });
+
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Create-Target-If-Missing"]).toBeUndefined();
+    // Original PATCH did include the header
+    const originalHeaders = getCallHeaders(mockRequest.mock.calls[0]);
+    expect(originalHeaders["Create-Target-If-Missing"]).toBe("true");
+  });
+
+  it("auto-correct success log includes both old and new heading values", async () => {
+    setDebugEnabled(true);
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient({ debug: true });
+    const docMap = {
+      headings: ["Tasks List"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "tasks list",
+    });
+
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const correctedLog = calls.find((c) =>
+      c.includes("PATCH heading auto-corrected"),
+    );
+    expect(correctedLog).toContain("tasks list");
+    expect(correctedLog).toContain("Tasks List");
+    expect(correctedLog).toContain("note.md");
+  });
+
+  it("retry-failed warn log includes the failing status code", async () => {
+    const stderrSpy = spyOnStderr();
+    const { client, mockRequest } = createMockedClient();
+    const docMap = { headings: ["Tasks"], blocks: [], frontmatterFields: [] };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 503,
+        headers: {},
+        body: "service unavailable",
+      });
+
+    await client
+      .patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "tasks",
+      })
+      .catch(() => undefined);
+
+    const calls = stderrSpy.mock.calls.map((c) => String(c[0]));
+    const retryFailed = calls.find((c) => c.includes("PATCH retry failed"));
+    expect(retryFailed).toContain("note.md");
+    expect(retryFailed).toContain("503");
+  });
+
+  it("retry returns false when getFileContents returns a markdown string (not a map)", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "text/markdown" },
+        body: "# Some markdown content",
+      });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "anything",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    // Only 2 calls: original PATCH + GET for map (which returned a string, so no retry)
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("retry returns false when map result has no 'headings' key", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        // valid object but missing "headings" key
+        body: JSON.stringify({ blocks: [], frontmatterFields: [] }),
+      });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "anything",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("retry returns false when 'headings' is present but not an Array", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        // headings is a string, not an array
+        body: JSON.stringify({ headings: "oops", blocks: [], frontmatterFields: [] }),
+      });
+
+    await expect(
+      client.patchContent("note.md", "text", {
+        operation: "append",
+        targetType: "heading",
+        target: "anything",
+      }),
+    ).rejects.toThrow(ObsidianApiError);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("trims whitespace on options.target before findClosestHeading", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Tasks"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "  tasks  ", // surrounding whitespace must be trimmed for the lookup
+    });
+
+    // Retry succeeded (3 calls), proving trim() worked — without trim,
+    // findClosestHeading would not match "Tasks" and the retry would fail.
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Tasks");
+  });
+
+  it("uses '::' as default targetDelimiter when caller omits it", async () => {
+    const { client, mockRequest } = createMockedClient();
+    const docMap = {
+      headings: ["Parent::Child"],
+      blocks: [],
+      frontmatterFields: [],
+    };
+    mockRequest
+      .mockResolvedValueOnce({
+        statusCode: 400,
+        headers: {},
+        body: '{"message":"heading not found"}',
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(docMap),
+      })
+      .mockResolvedValueOnce(ok204());
+
+    await client.patchContent("note.md", "text", {
+      operation: "append",
+      targetType: "heading",
+      target: "parent::child", // case-mismatch lookup uses default "::" delimiter
+      // targetDelimiter intentionally omitted — must default to "::"
+    });
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    const retryHeaders = getCallHeaders(mockRequest.mock.calls[2]);
+    expect(retryHeaders["Target"]).toBe("Parent::Child");
   });
 });
 

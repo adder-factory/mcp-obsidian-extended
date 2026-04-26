@@ -2116,6 +2116,18 @@ describe("granular tools — registration and basic behavior", () => {
 
     // --- Stryker mutation backfill: handleConfigureReset + buildConfigReset ---
 
+    // Single source of truth for the restart-only reset settings (settings
+    // whose reset writes to config but does NOT trigger an immediate
+    // side-effect via applyImmediateSetting). Used by the "Restart the
+    // server" message tests and the "does NOT call setDebugEnabled" tests.
+    const RESTART_ONLY_RESET_SETTINGS = [
+      "timeout",
+      "verifyWrites",
+      "maxResponseChars",
+      "toolMode",
+      "toolPreset",
+    ] as const;
+
     // buildConfigReset enum coverage — kills the per-setting StringLiteral
     // mutants on each `case` arm and the DEFAULTS-spread shape mutants.
     it.each([
@@ -2171,23 +2183,20 @@ describe("granular tools — registration and basic behavior", () => {
       },
     );
 
-    it.each([
-      "timeout",
-      "verifyWrites",
-      "maxResponseChars",
-      "toolMode",
-      "toolPreset",
-    ])("reset %s returns 'Restart the server' message", async (setting) => {
-      const { getTool } = setup();
-      const result = await getTool("configure").handler({
-        action: "reset",
-        setting,
-      });
-      expect(result.isError).toBeFalsy();
-      expect(getText(result)).toBe(
-        `Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`,
-      );
-    });
+    it.each(RESTART_ONLY_RESET_SETTINGS)(
+      "reset %s returns 'Restart the server' message",
+      async (setting) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "reset",
+          setting,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(getText(result)).toBe(
+          `Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`,
+        );
+      },
+    );
 
     it("rejects empty setting with explicit message", async () => {
       const { getTool } = setup();
@@ -2213,13 +2222,7 @@ describe("granular tools — registration and basic behavior", () => {
       );
     });
 
-    it.each([
-      "timeout",
-      "verifyWrites",
-      "maxResponseChars",
-      "toolMode",
-      "toolPreset",
-    ])(
+    it.each(RESTART_ONLY_RESET_SETTINGS)(
       "does NOT call applyImmediateSetting (via setDebugEnabled) for restart-only setting %s",
       async (setting) => {
         const { getTool } = setup();
@@ -2236,7 +2239,7 @@ describe("granular tools — registration and basic behavior", () => {
       },
     );
 
-    it("DOES call setDebugEnabled when resetting debug (immediate effect)", async () => {
+    it("DOES call setDebugEnabled exactly once when resetting debug (immediate effect)", async () => {
       const { getTool } = setup();
       vi.mocked(setDebugEnabled).mockClear();
 
@@ -2246,7 +2249,10 @@ describe("granular tools — registration and basic behavior", () => {
       });
 
       // Reset uses DEFAULTS.debug which is `false` → setDebugEnabled(false).
-      expect(setDebugEnabled).toHaveBeenCalledWith(false);
+      // Assert exact call count + last-call args to catch extra/misordered
+      // invocations a looser .toHaveBeenCalledWith would miss.
+      expect(setDebugEnabled).toHaveBeenCalledTimes(1);
+      expect(setDebugEnabled).toHaveBeenLastCalledWith(false);
     });
   });
 

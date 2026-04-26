@@ -2081,6 +2081,292 @@ describe("granular tools — registration and basic behavior", () => {
         expect(saveConfigToFile).not.toHaveBeenCalled();
       },
     );
+
+    // --- Stryker mutation backfill: applyImmediateSetting + handleConfigureSet ---
+
+    // applyImmediateSetting routing — assert the side-effect functions
+    // (setDebugEnabled / setCompactResponses) are called with the EXACT
+    // boolean parsed from the value, that the log() message is the exact
+    // expected string, and that the wrong side-effect is NOT triggered.
+    // Kills L267/L271 strict-equality routing mutants and L268/L272
+    // boolean-parse mutants.
+
+    it.each([
+      ["true", true],
+      ["false", false],
+    ])(
+      "set debug=%s calls setDebugEnabled(%s) exactly once and does NOT call setCompactResponses",
+      async (value, expected) => {
+        const { getTool } = setup();
+        vi.mocked(setDebugEnabled).mockClear();
+        const sc = vi.spyOn(
+          await import("../obsidian.js"),
+          "setCompactResponses",
+        );
+        try {
+          const result = await getTool("configure").handler({
+            action: "set",
+            setting: "debug",
+            value,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(setDebugEnabled).toHaveBeenCalledTimes(1);
+          expect(setDebugEnabled).toHaveBeenLastCalledWith(expected);
+          expect(sc).not.toHaveBeenCalled();
+        } finally {
+          sc.mockRestore();
+        }
+      },
+    );
+
+    it.each([
+      ["true", true],
+      ["false", false],
+    ])(
+      "set compactResponses=%s calls setCompactResponses(%s) exactly once and does NOT call setDebugEnabled",
+      async (value, expected) => {
+        const { getTool } = setup();
+        vi.mocked(setDebugEnabled).mockClear();
+        const sc = vi.spyOn(
+          await import("../obsidian.js"),
+          "setCompactResponses",
+        );
+        try {
+          const result = await getTool("configure").handler({
+            action: "set",
+            setting: "compactResponses",
+            value,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(sc).toHaveBeenCalledTimes(1);
+          expect(sc).toHaveBeenLastCalledWith(expected);
+          expect(setDebugEnabled).not.toHaveBeenCalled();
+        } finally {
+          sc.mockRestore();
+          // Reset module-level state — set(true) leaks otherwise.
+          setCompactResponses(false);
+        }
+      },
+    );
+
+    // applyImmediateSetting log message contracts — kills the L269/L275
+    // ternary mutants ("enabled" ↔ "disabled") and the StringLiteral
+    // mutants on the log message templates.
+
+    it.each([
+      ["debug", "true", "Debug logging enabled"],
+      ["debug", "false", "Debug logging disabled"],
+      ["compactResponses", "true", "Compact responses enabled"],
+      ["compactResponses", "false", "Compact responses disabled"],
+    ])(
+      "set %s=%s logs exact info message %j",
+      async (setting, value, expectedMessage) => {
+        const { getTool } = setup();
+        vi.mocked(log).mockClear();
+        try {
+          await getTool("configure").handler({
+            action: "set",
+            setting,
+            value,
+          });
+          expect(log).toHaveBeenCalledWith("info", expectedMessage);
+        } finally {
+          if (setting === "compactResponses") setCompactResponses(false);
+        }
+      },
+    );
+
+    // applyImmediateSetting NOT invoked for restart-only settings — kills
+    // the L321 `immediateSettings.has(setting)` mutants that would route a
+    // restart-only setting through the immediate side-effect path.
+
+    it.each([
+      "timeout",
+      "verifyWrites",
+      "maxResponseChars",
+      "toolMode",
+      "toolPreset",
+    ])(
+      "set %s does NOT call setDebugEnabled or setCompactResponses",
+      async (setting) => {
+        const validValues: Record<string, string> = {
+          timeout: "60000",
+          verifyWrites: "true",
+          maxResponseChars: "1000",
+          toolMode: "consolidated",
+          toolPreset: "minimal",
+        };
+        const { getTool } = setup();
+        vi.mocked(setDebugEnabled).mockClear();
+        const sc = vi.spyOn(
+          await import("../obsidian.js"),
+          "setCompactResponses",
+        );
+        try {
+          const value = validValues[setting];
+          if (value === undefined)
+            throw new Error(`missing test value for ${setting}`);
+          const result = await getTool("configure").handler({
+            action: "set",
+            setting,
+            value,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(setDebugEnabled).not.toHaveBeenCalled();
+          expect(sc).not.toHaveBeenCalled();
+        } finally {
+          sc.mockRestore();
+        }
+      },
+    );
+
+    // handleConfigureSet success-message exact format — existing tests
+    // use .toContain(); these assert .toBe() to kill the StringLiteral
+    // mutants on the L324 immediate template and L327-328 restart template.
+
+    it.each([
+      ["debug", "true"],
+      ["debug", "false"],
+    ])(
+      "set %s=%s returns exact 'effective immediately' message",
+      async (setting, value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting,
+          value,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(getText(result)).toBe(
+          `Setting "${setting}" updated to "${value}" (effective immediately)`,
+        );
+      },
+    );
+
+    it("set compactResponses=true returns exact 'effective immediately' message", async () => {
+      const { getTool } = setup();
+      try {
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting: "compactResponses",
+          value: "true",
+        });
+        expect(result.isError).toBeFalsy();
+        expect(getText(result)).toBe(
+          `Setting "compactResponses" updated to "true" (effective immediately)`,
+        );
+      } finally {
+        setCompactResponses(false);
+      }
+    });
+
+    it.each([
+      ["timeout", "60000"],
+      ["verifyWrites", "true"],
+      ["maxResponseChars", "1000"],
+      ["toolMode", "consolidated"],
+      ["toolPreset", "minimal"],
+    ])(
+      "set %s=%s returns exact 'Restart the server' message",
+      async (setting, value) => {
+        const { getTool } = setup();
+        const result = await getTool("configure").handler({
+          action: "set",
+          setting,
+          value,
+        });
+        expect(result.isError).toBeFalsy();
+        expect(getText(result)).toBe(
+          `Setting "${setting}" saved to config file. Restart the server for this change to take effect.`,
+        );
+      },
+    );
+
+    // handleConfigureSet error-message exact format — kills the L294/L297
+    // StringLiteral mutants on the missing-setting / missing-value error
+    // messages, and the L309 "Available:" formatted error message.
+
+    it("rejects missing setting with exact error message", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({ action: "set" });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        "[configure] Setting name is required for 'set' action",
+      );
+    });
+
+    it("rejects missing value with exact error message", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe("[configure] Value is required for 'set' action");
+    });
+
+    it("rejects unknown setting with exact error message including all known settings", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "bogus",
+        value: "x",
+      });
+      expect(result.isError).toBe(true);
+      // Exact format: "[configure] Unknown setting: <name>. Available: <CSV>"
+      // Order is immediate first (debug, compactResponses), then restart
+      // (timeout, verifyWrites, maxResponseChars, toolMode, toolPreset).
+      expect(getText(result)).toBe(
+        "[configure] Unknown setting: bogus. Available: debug, compactResponses, timeout, verifyWrites, maxResponseChars, toolMode, toolPreset",
+      );
+    });
+
+    it("rejects invalid value with exact error message including setting and value", async () => {
+      const { getTool } = setup();
+      const result = await getTool("configure").handler({
+        action: "set",
+        setting: "debug",
+        value: "maybe",
+      });
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toBe(
+        '[configure] Invalid value "maybe" for setting "debug"',
+      );
+    });
+
+    // configFilePath ?? resolve(...) fallback — exact path assertion.
+    // When no configFilePath is provided, the handler must fall back to
+    // resolve("obsidian-mcp.config.json"), which equals process.cwd() +
+    // "/obsidian-mcp.config.json". Kills the L312-313 nullish-coalescing
+    // mutant that would replace `??` with `||` (silently accepting empty
+    // string) or remove the fallback entirely.
+
+    it("set timeout falls back to resolve('obsidian-mcp.config.json') when configFilePath is undefined", async () => {
+      const { getTool } = setup({ configFilePath: undefined });
+      await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value: "60000",
+      });
+      const { resolve } = await import("node:path");
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(
+        resolve("obsidian-mcp.config.json"),
+        { reliability: { timeout: 60000 } },
+      );
+    });
+
+    it("set timeout uses configFilePath verbatim when provided", async () => {
+      const { getTool } = setup({ configFilePath: "/custom/path/cfg.json" });
+      await getTool("configure").handler({
+        action: "set",
+        setting: "timeout",
+        value: "60000",
+      });
+      expect(saveConfigToFile).toHaveBeenLastCalledWith(
+        "/custom/path/cfg.json",
+        { reliability: { timeout: 60000 } },
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

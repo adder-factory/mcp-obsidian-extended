@@ -419,6 +419,74 @@ export function buildVaultStructure(
 /** Batch size for concurrent API calls in the cache-miss fallback path. */
 const RECENT_CHANGES_BATCH_SIZE = 20;
 
+/** Per-file mtime stat collected by {@link readBatchStats}. */
+interface RecentChangeStat {
+  readonly path: string;
+  readonly mtime: number;
+}
+
+/** Parameters for {@link recordBatchResult} (destructured per CLAUDE.md
+ *  "destructure function params when >2 params"). */
+interface RecordBatchResultParams {
+  readonly result: PromiseSettledResult<RecentChangeStat>;
+  readonly fp: string;
+  /** Output accumulator; mutated in place on fulfillment. */
+  readonly successes: RecentChangeStat[];
+}
+
+/**
+ * Records one batch result into the success accumulator. Fulfilled results
+ * land in `successes`; rejected ones are logged at warn level so a per-file
+ * failure surfaces without aborting the whole call. Extracted from
+ * {@link handleRecentChanges} to keep that function under Sonar's
+ * cognitive-complexity ceiling (S3776).
+ * @param params - Destructured params per CLAUDE.md style guide.
+ */
+function recordBatchResult({
+  result,
+  fp,
+  successes,
+}: RecordBatchResultParams): void {
+  if (result.status === "fulfilled") {
+    successes.push(result.value);
+    return;
+  }
+  const reason =
+    result.reason instanceof Error
+      ? result.reason.message
+      : String(result.reason);
+  log("warn", `recent_changes: skipping ${fp} (read failed: ${reason})`);
+}
+
+/**
+ * Reads stats for one batch of vault paths via the Obsidian REST API,
+ * returning the successful entries. Failures are logged inside
+ * {@link recordBatchResult} (best-effort: partial data is OK, but every
+ * skip must be observable per CLAUDE.md "NEVER swallow errors silently").
+ * @param client - The Obsidian API client.
+ * @param batch - Vault paths to fetch stats for in parallel.
+ * @returns Successful entries only; failures are logged but not returned.
+ */
+async function readBatchStats(
+  client: ObsidianClient,
+  batch: readonly string[],
+): Promise<RecentChangeStat[]> {
+  const results = await Promise.allSettled(
+    batch.map(async (fp): Promise<RecentChangeStat> => {
+      const result = await client.getFileContents(fp, "json");
+      if (typeof result !== "string" && "stat" in result) {
+        return { path: fp, mtime: result.stat.mtime };
+      }
+      return { path: fp, mtime: 0 };
+    }),
+  );
+  const successes: RecentChangeStat[] = [];
+  results.forEach((r, j) => {
+    recordBatchResult({ result: r, fp: batch[j] ?? "<unknown>", successes });
+  });
+  return successes;
+}
+
 /**
  * Fetches recent changes using cache if available, or batched API calls as fallback.
  * Batching is used to avoid unbounded concurrent calls on large vaults.
@@ -447,34 +515,7 @@ export async function handleRecentChanges(
   const withStats: Array<{ path: string; mtime: number }> = [];
   for (let i = 0; i < mdFiles.length; i += RECENT_CHANGES_BATCH_SIZE) {
     const batch = mdFiles.slice(i, i + RECENT_CHANGES_BATCH_SIZE);
-    const results = await Promise.allSettled(
-      batch.map(async (fp) => {
-        const result = await client.getFileContents(fp, "json");
-        if (typeof result !== "string" && "stat" in result) {
-          return { path: fp, mtime: result.stat.mtime };
-        }
-        return { path: fp, mtime: 0 };
-      }),
-    );
-    for (let j = 0; j < results.length; j++) {
-      const r = results[j];
-      if (r === undefined) continue;
-      if (r.status === "fulfilled") {
-        withStats.push(r.value);
-      } else {
-        // Surface partial-data-loss conditions (CLAUDE.md: "NEVER swallow
-        // errors silently — always log or rethrow"). The recent-changes
-        // result is a best-effort summary, so a per-file failure shouldn't
-        // abort the whole call — but it must be observable.
-        const failedPath = batch[j] ?? "<unknown>";
-        const reason =
-          r.reason instanceof Error ? r.reason.message : String(r.reason);
-        log(
-          "warn",
-          `recent_changes: skipping ${failedPath} (read failed: ${reason})`,
-        );
-      }
-    }
+    withStats.push(...(await readBatchStats(client, batch)));
   }
   withStats.sort((a, b) => b.mtime - a.mtime);
   return jsonResult(withStats.slice(0, limit));

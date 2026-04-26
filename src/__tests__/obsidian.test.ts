@@ -2524,6 +2524,42 @@ describe("ObsidianClient — commands", () => {
       ObsidianApiError,
     );
   });
+
+  // --- Stryker mutation backfill: commands ---
+
+  it("listCommands sends GET to /commands/", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson({ commands: [] }));
+
+    await client.listCommands();
+    expect(mockRequest.mock.calls[0]?.[0]).toBe("GET");
+    expect(mockRequest.mock.calls[0]?.[1]).toBe("/commands/");
+  });
+
+  it("executeCommand accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(
+      client.executeCommand("editor:toggle-bold"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("executeCommand invalidates the cache after success", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(ok204());
+    const mockCache = { invalidate: vi.fn(), invalidateAll: vi.fn() };
+    client.setCache(mockCache);
+
+    await client.executeCommand("editor:toggle-bold");
+    // Commands may modify any vault file → invalidateAll, not invalidate(path).
+    expect(mockCache.invalidateAll).toHaveBeenCalled();
+    expect(mockCache.invalidate).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2558,6 +2594,19 @@ describe("ObsidianClient — openFile", () => {
     });
 
     await expect(client.openFile("note.md")).rejects.toThrow(ObsidianApiError);
+  });
+
+  // --- Stryker mutation backfill: openFile ---
+
+  it("openFile accepts 200 OK in addition to 204", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: "",
+    });
+
+    await expect(client.openFile("note.md")).resolves.toBeUndefined();
   });
 });
 
@@ -2651,6 +2700,89 @@ describe("ObsidianClient — search", () => {
     await client.simpleSearch("test", 200);
     const calledPath = mockRequest.mock.calls[0]?.[1] as string;
     expect(calledPath).toContain("contextLength=200");
+  });
+
+  // --- Stryker mutation backfill: search trio + getServerStatus ---
+
+  it("simpleSearch sends Content-Type: text/plain with empty body", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    await client.simpleSearch("test");
+    const opts = mockRequest.mock.calls[0]?.[2];
+    if (
+      opts === null ||
+      typeof opts !== "object" ||
+      !("headers" in opts) ||
+      !("body" in opts)
+    ) {
+      throw new Error("expected request opts with headers + body");
+    }
+    const o = opts as { headers: Record<string, string>; body: unknown };
+    expect(o.headers["Content-Type"]).toBe("text/plain");
+    expect(o.body).toBe("");
+  });
+
+  it("simpleSearch defaults contextLength to 100 when omitted", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    await client.simpleSearch("test");
+    const calledPath = mockRequest.mock.calls[0]?.[1] as string;
+    expect(calledPath).toContain("contextLength=100");
+  });
+
+  it("simpleSearch URL-encodes the query parameter", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    await client.simpleSearch("hello world & foo");
+    const calledPath = mockRequest.mock.calls[0]?.[1] as string;
+    // URLSearchParams encodes space as "+" and "&" as "%26"
+    expect(calledPath).toContain("query=hello+world+%26+foo");
+  });
+
+  it("complexSearch sends Content-Type: vnd.olrapi.jsonlogic+json", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    await client.complexSearch({ glob: ["*.md"] });
+    const opts = mockRequest.mock.calls[0]?.[2];
+    if (opts === null || typeof opts !== "object" || !("headers" in opts)) {
+      throw new Error("expected request opts with headers");
+    }
+    const headers = (opts as { headers: Record<string, string> }).headers;
+    expect(headers["Content-Type"]).toBe(
+      "application/vnd.olrapi.jsonlogic+json",
+    );
+  });
+
+  it("dataviewSearch sends Content-Type: vnd.olrapi.dataview.dql+txt", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    await client.dataviewSearch('LIST FROM ""');
+    const opts = mockRequest.mock.calls[0]?.[2];
+    if (opts === null || typeof opts !== "object" || !("headers" in opts)) {
+      throw new Error("expected request opts with headers");
+    }
+    const headers = (opts as { headers: Record<string, string> }).headers;
+    expect(headers["Content-Type"]).toBe(
+      "application/vnd.olrapi.dataview.dql+txt",
+    );
+  });
+
+  it("dataviewSearch passes the DQL string verbatim as the body", async () => {
+    const { client, mockRequest } = createMockedClient();
+    mockRequest.mockResolvedValue(okJson([]));
+
+    const dql = 'TABLE status FROM "folder" WHERE status = "active"';
+    await client.dataviewSearch(dql);
+    const opts = mockRequest.mock.calls[0]?.[2];
+    if (opts === null || typeof opts !== "object" || !("body" in opts)) {
+      throw new Error("expected request opts with body");
+    }
+    expect((opts as { body: unknown }).body).toBe(dql);
   });
 });
 

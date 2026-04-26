@@ -1030,6 +1030,131 @@ describe("granular tools — registration and basic behavior", () => {
       });
       expect(result.isError).toBe(true);
     });
+
+    // --- Stryker mutation backfill: handleMoveFile (22 mutants) ---
+    //
+    // The existing 4 tests above cover the happy path + same-path no-op +
+    // conflict + missing-source error. These add the precise assertions
+    // needed to kill the surviving mutants in the .md filter, the
+    // markdown-content type guard, the conflict-check error filter, and
+    // the delete-file error path.
+
+    it("rejects non-.md source path with explicit message", async () => {
+      const { getTool } = setup();
+      const result = await getTool("move_file").handler({
+        source: "image.png",
+        destination: "renamed.png",
+      });
+      expect(result.isError).toBe(true);
+      // Exact message text — kills the L583 StringLiteral mutant.
+      expect(getText(result)).toBe(
+        "[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.",
+      );
+    });
+
+    it("rejects non-.md destination path with explicit message", async () => {
+      const { getTool } = setup();
+      const result = await getTool("move_file").handler({
+        source: "doc.md",
+        destination: "doc.txt",
+      });
+      expect(result.isError).toBe(true);
+      // Exact message text — kills the L587 StringLiteral mutant.
+      expect(getText(result)).toBe(
+        "[move_file] Destination must be a .md file.",
+      );
+    });
+
+    it("treats .md case-insensitively (.MD source accepted)", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content")
+        .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
+      const result = await getTool("move_file").handler({
+        source: "OLD.MD", // uppercase ext — must still pass the .md filter
+        destination: "new.md",
+      });
+      expect(result.isError).toBeFalsy();
+      expect(getText(result)).toContain("Moved");
+    });
+
+    it("calls getFileContents with format='markdown' and rawBypass=true (kills L595/596 args)", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content")
+        .mockRejectedValueOnce(new ObsidianApiError("Not found", 404));
+      await getTool("move_file").handler({
+        source: "old.md",
+        destination: "new.md",
+      });
+      // First call to getFileContents is the source-read.
+      const firstCall = vi.mocked(client.getFileContents).mock.calls[0];
+      expect(firstCall?.[0]).toBe("old.md");
+      // L595 StringLiteral on "markdown"
+      expect(firstCall?.[1]).toBe("markdown");
+      // L596 BooleanLiteral on true (rawBypass for move-file source read).
+      expect(firstCall?.[2]).toBe(true);
+    });
+
+    it("rejects when source returns NoteJson instead of markdown string", async () => {
+      const { client, getTool } = setup();
+      // First call returns a NoteJson object (typeof !== "string"),
+      // which should trigger the L598 type-guard error path.
+      const noteJsonFixture = {
+        content: "x",
+        frontmatter: {},
+        path: "old.md",
+        tags: [],
+        stat: { ctime: 0, mtime: 0, size: 0 },
+      } satisfies NoteJson;
+      vi.mocked(client.getFileContents).mockResolvedValueOnce(noteJsonFixture);
+      const result = await getTool("move_file").handler({
+        source: "old.md",
+        destination: "new.md",
+      });
+      expect(result.isError).toBe(true);
+      // Exact message text — kills the L600 StringLiteral mutant.
+      expect(getText(result)).toBe(
+        "[move_file] Expected markdown content from source file",
+      );
+    });
+
+    it("rethrows non-404 errors from the destination conflict-check (does NOT swallow)", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content") // source read succeeds
+        .mockRejectedValueOnce(new ObsidianApiError("Server error", 500)); // dest check throws non-404
+      const result = await getTool("move_file").handler({
+        source: "old.md",
+        destination: "new.md",
+      });
+      expect(result.isError).toBe(true);
+      // The 500 must propagate (not be swallowed as if-it-were-a-404 not-found).
+      // Confirms the L609 LogicalOperator + ConditionalExpression mutants are killed.
+      expect(client.putContent).not.toHaveBeenCalled();
+      expect(client.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it("returns explicit error when deleteFile fails after putContent succeeded", async () => {
+      const { client, getTool } = setup();
+      vi.mocked(client.getFileContents)
+        .mockResolvedValueOnce("# Content") // source read
+        .mockRejectedValueOnce(new ObsidianApiError("Not found", 404)); // dest doesn't exist
+      vi.mocked(client.putContent).mockResolvedValueOnce(undefined);
+      vi.mocked(client.deleteFile).mockRejectedValueOnce(
+        new Error("delete failed"),
+      );
+      const result = await getTool("move_file").handler({
+        source: "old.md",
+        destination: "new.md",
+      });
+      // putContent succeeded, deleteFile failed → result is an error
+      // describing the partial-failure (destination created, source not deleted).
+      expect(result.isError).toBe(true);
+      expect(getText(result)).toContain("delete failed");
+      expect(client.putContent).toHaveBeenCalledWith("new.md", "# Content");
+      expect(client.deleteFile).toHaveBeenCalledWith("old.md");
+    });
   });
 
   // -------------------------------------------------------------------------

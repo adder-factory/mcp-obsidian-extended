@@ -314,8 +314,8 @@ Any addition or removal of a gate, reviewer, or pipeline step must be
 recorded in `~/projects/code-review-pipeline/pipeline-state.md`. Because
 `pipeline-state.md` lives in a separate filesystem location from this
 repo (it is vault-adjacent, not part of any repo's diff), the rule is:
-**commit the `pipeline-state.md` update alongside or immediately before
-the implementing PR**. "Alongside" means in the same working session;
+**update `pipeline-state.md` in its own location and commit that change
+alongside or immediately before the implementing PR in this repo**. "Alongside" means in the same working session;
 "immediately before" means no other implementing PR lands between the
 state-doc update and the change it documents. The state document must
 always reflect what `main` actually runs.
@@ -397,7 +397,7 @@ Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
    recorded in `~/projects/code-review-pipeline/pipeline-state.md` (internal
    maintainer configuration — not accessible or editable by external
    contributors; the required-vs-advisory split above is the effective
-   roster they should treat as authoritative).
+   roster external contributors should treat as authoritative).
 3. Dependabot runs on dep-related PRs
 4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
    advisory-reviewer threads with the same rigor — nitpicks count. When an

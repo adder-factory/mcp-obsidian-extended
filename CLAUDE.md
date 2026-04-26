@@ -317,14 +317,15 @@ the wiring being in place — the tools were treated as optional. This
 section makes specific uses **mandatory** and creates a measurement
 window to decide whether to keep or remove the wiring.
 
-- **Before refactoring any exported symbol** (function, class, type,
-  interface), call `mcp__codegraph__codegraph_impact` with the symbol
-  name to surface affected callers. Do NOT skip this for
-  "small-looking" changes — exported-symbol blast radius is the exact
-  failure mode CodeGraph exists to prevent.
-- **When investigating bugs across multiple files**, prefer
-  `mcp__codegraph__codegraph_explore` over `Grep + Read`. One graph
-  query replaces 20+ file reads.
+- **Before refactoring any exported symbol** (e.g., function, class,
+  type, interface, enum, exported const), call
+  `mcp__codegraph__codegraph_impact` with the symbol name to surface
+  affected callers. Do NOT skip this for "small-looking" changes —
+  exported-symbol blast radius is the exact failure mode CodeGraph
+  exists to prevent.
+- **When investigating bugs across multiple files**, use
+  `mcp__codegraph__codegraph_explore` instead of `Grep + Read`. One
+  graph query replaces 20+ file reads.
 - **When self-reviewing a PR with src changes**, run
   `mcp__codegraph__codegraph_impact` on each modified exported
   symbol. Document the result in the PR body so reviewers see the
@@ -333,7 +334,11 @@ window to decide whether to keep or remove the wiring.
 Usage is measured weekly by
 `adder-pipeline-tools/scripts/codegraph-usage-counter.sh`. See
 `~/projects/code-review-pipeline/pipeline-state.md` for the keep/cut
-decision criteria — the wiring is on probation until 2026-05-03.
+decision criteria — the wiring is on probation until 2026-05-03. The
+mandates above are in force *during* probation so the measurement
+reflects the policy actually being followed; if the decision on
+2026-05-03 is "cut," these mandates are removed alongside the MCP
+wiring.
 
 ## Spec Drift Prevention
 

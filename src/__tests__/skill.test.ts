@@ -193,19 +193,22 @@ describe("buildSkillContent", () => {
 
   // --- Mutation-killing coverage (Stryker backfill, src/skill.ts) ---
   //
-  // Two test groups below close the survived-mutant gap on src/skill.ts:
+  // Two test groups below close the survived-mutant gap on src/skill.ts.
+  // They are intentionally complementary — the snapshots are the broad
+  // catch-all (any string-literal mutation anywhere in skill.ts fails
+  // them), and the CONSOLIDATED_NAMES exhaustive coverage is the
+  // narrow-and-readable safety net for the resolver Map specifically.
   //
-  // 1. Exhaustive CONSOLIDATED_NAMES coverage \u2014 every (granular,
-  //    consolidated) pair in the resolver Map must render as the granular
-  //    form in granular mode and the consolidated form in consolidated
-  //    mode. Kills ArrayDeclaration mutants on each Map row plus the
-  //    StringLiteral mutants on the row's two strings.
+  // The targeted Map test is redundant with the snapshots in terms of
+  // *which mutants get killed* — the snapshots would catch a mutated
+  // Map entry too. It is kept anyway for two reasons:
   //
-  // 2. Section-content snapshots \u2014 one snapshot per (mode, compact)
-  //    combination. Catches any string-literal mutation in section
-  //    builders that the targeted toContain() assertions above might
-  //    miss, and also exercises both branches of the buildSkillContent
-  //    conditionals (mode === "consolidated", compact).
+  //   (a) When a Map entry is mutated, the snapshot diff is ~5 KB and
+  //       hard to read; the parametrized test fails with a one-line
+  //       message naming the broken pair.
+  //   (b) When a contributor adds a new Map entry, the snapshot is
+  //       silently consistent until updated. The PAIRS list is a
+  //       structural reminder that every entry needs to be exercised.
 
   describe("CONSOLIDATED_NAMES exhaustive coverage", () => {
     // Pairs cover every CONSOLIDATED_NAMES entry that is actually
@@ -238,11 +241,14 @@ describe("buildSkillContent", () => {
       ["patch_active_file", "active_file action: patch"],
     ];
 
+    // Hoisted out of it.each so the content is built once per describe
+    // block, not once per row.
+    const granularContent = buildSkillContent("granular", false);
+    const consolidatedContent = buildSkillContent("consolidated", false);
+
     it.each(PAIRS)(
       "renders %s as granular form in granular mode and consolidated form in consolidated mode",
       (granular, consolidated) => {
-        const granularContent = buildSkillContent("granular", false);
-        const consolidatedContent = buildSkillContent("consolidated", false);
         expect(granularContent).toContain(granular);
         expect(consolidatedContent).toContain(consolidated);
       },

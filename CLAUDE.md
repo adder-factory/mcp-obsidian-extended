@@ -124,6 +124,13 @@ the change with fresh context and returns a JSON verdict:
 - `BLOCK` — do not push. Escalate to the human; the diff has a security,
   scope, or correctness issue that needs out-of-band judgment.
 
+**Fail-closed rule.** If the reviewer times out, errors, or returns output
+that is not parseable as the documented JSON schema, treat it as `BLOCK`
+and escalate to the human. Do **not** default to proceeding — a silent
+reviewer failure must not become a silent push, otherwise the gate is
+defeated. The escalation message should include the raw reviewer output
+(or the timeout/error) so the human can diagnose.
+
 The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`,
 CodeRabbit, and Greptile — those run after the PR is open. The reviewer's
 job is the layer they miss: intent vs. implementation, missing edge cases,

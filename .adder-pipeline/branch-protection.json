@@ -3,6 +3,7 @@
     "strict": true,
     "contexts": [
       "Pipeline gate",
+      "Stryker (affected)",
       "CodeRabbit",
       "build (22)",
       "build (24)"

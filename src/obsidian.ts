@@ -1,15 +1,10 @@
-import { readFileSync } from "node:fs";
-import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
-import { Agent as HttpAgent, request as httpRequest } from "node:http";
-import type { IncomingMessage, RequestOptions } from "node:http";
-
-import {
-  ObsidianApiError,
-  ObsidianAuthError,
-  ObsidianConnectionError,
-} from "./errors.js";
-import type { Config } from "./config.js";
-import { log } from "./config.js";
+import { readFileSync } from 'node:fs';
+import type { IncomingMessage, RequestOptions } from 'node:http';
+import { Agent as HttpAgent, request as httpRequest } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
+import type { Config } from './config.js';
+import { log } from './config.js';
+import { ObsidianApiError, ObsidianAuthError, ObsidianConnectionError } from './errors.js';
 
 // --- Types ---
 
@@ -35,13 +30,13 @@ export interface DocumentMap {
 
 /** Options for PATCH operations on vault files and periodic notes. */
 export interface PatchOptions {
-  readonly operation: "append" | "prepend" | "replace";
-  readonly targetType: "heading" | "block" | "frontmatter";
+  readonly operation: 'append' | 'prepend' | 'replace';
+  readonly targetType: 'heading' | 'block' | 'frontmatter';
   readonly target: string;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: "markdown" | "json" | undefined;
+  readonly contentType?: 'markdown' | 'json' | undefined;
 }
 
 /** A single match within a search result, with position and surrounding context. */
@@ -65,7 +60,7 @@ interface ServerStatus {
   readonly versions: Record<string, unknown>;
 }
 
-type FileFormat = "markdown" | "json" | "map";
+type FileFormat = 'markdown' | 'json' | 'map';
 type FileContentsResult = string | NoteJson | DocumentMap;
 
 // --- Path Sanitization ---
@@ -78,21 +73,21 @@ type FileContentsResult = string | NoteJson | DocumentMap;
  * @throws {Error} If path traversal or absolute path is detected.
  */
 export function sanitizeFilePath(filePath: string): string {
-  const normalized = filePath.replaceAll("\\", "/");
-  if (normalized.startsWith("/")) {
-    throw new Error("Absolute paths not allowed");
+  const normalized = filePath.replaceAll('\\', '/');
+  if (normalized.startsWith('/')) {
+    throw new Error('Absolute paths not allowed');
   }
-  const segments = normalized.split("/");
-  if (segments.includes("..")) {
-    throw new Error("Path traversal not allowed");
+  const segments = normalized.split('/');
+  if (segments.includes('..')) {
+    throw new Error('Path traversal not allowed');
   }
   if (/^[a-zA-Z]:/.test(normalized)) {
-    throw new Error("Absolute paths not allowed");
+    throw new Error('Absolute paths not allowed');
   }
   // Canonicalize: filter out empty and "." segments so foo//bar and foo/./bar → foo/bar
-  const canonical = segments.filter((s) => s !== "" && s !== ".").join("/");
-  if (canonical === "") {
-    throw new Error("Empty path not allowed");
+  const canonical = segments.filter((s) => s !== '' && s !== '.').join('/');
+  if (canonical === '') {
+    throw new Error('Empty path not allowed');
   }
   return canonical;
 }
@@ -131,14 +126,12 @@ function findClosestHeading(
 
   // 2. Case-insensitive match — only if unique
   const targetLower = target.toLowerCase();
-  const caseMatches = headings.filter(
-    (h) => h.trim().toLowerCase() === targetLower,
-  );
+  const caseMatches = headings.filter((h) => h.trim().toLowerCase() === targetLower);
   if (caseMatches.length === 1) return caseMatches[0]!.trim();
 
   // Guard against empty/whitespace delimiter — fall back to default "::"
   const trimmed = delimiter.trim();
-  const safeDelimiter = trimmed.length > 0 ? trimmed : "::";
+  const safeDelimiter = trimmed.length > 0 ? trimmed : '::';
   const delimiterLower = safeDelimiter.toLowerCase();
 
   const segments = targetLower.split(delimiterLower);
@@ -187,13 +180,9 @@ function isHeadingNotFoundError(body: string): boolean {
   let message = body;
   try {
     const parsed: unknown = JSON.parse(body);
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed)
-    ) {
-      const msg = (parsed as Record<string, unknown>)["message"];
-      if (typeof msg === "string") message = msg;
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const msg = (parsed as Record<string, unknown>)['message'];
+      if (typeof msg === 'string') message = msg;
     }
   } catch {
     /* use raw body */
@@ -201,12 +190,10 @@ function isHeadingNotFoundError(body: string): boolean {
   // Known Obsidian patterns: "heading not found", "heading X does not exist"
   // Intentionally broad within the heading namespace to catch API version changes.
   // Require "heading" and the absence indicator to be within 60 chars of each other
-  const matched = /\bheading\b[^.!?]{0,60}(?:not found|does not exist)/i.test(
-    message,
-  );
+  const matched = /\bheading\b[^.!?]{0,60}(?:not found|does not exist)/i.test(message);
   if (!matched) {
     log(
-      "debug",
+      'debug',
       `PATCH 400 body not recognised as heading-not-found — retry skipped: ${message.slice(0, 120)}`,
     );
   }
@@ -218,12 +205,12 @@ function isHeadingNotFoundError(body: string): boolean {
 /** Maps a file format to the corresponding Accept header value for the Obsidian REST API. */
 function acceptHeaderForFormat(format: FileFormat): string {
   switch (format) {
-    case "markdown":
-      return "text/markdown";
-    case "json":
-      return "application/vnd.olrapi.note+json";
-    case "map":
-      return "application/vnd.olrapi.document-map+json";
+    case 'markdown':
+      return 'text/markdown';
+    case 'json':
+      return 'application/vnd.olrapi.note+json';
+    case 'map':
+      return 'application/vnd.olrapi.document-map+json';
   }
 }
 
@@ -250,7 +237,7 @@ function acceptHeaderForFormat(format: FileFormat): string {
  * Full stress test: 40/40 cases pass (scripts/stress-test-patch.ts).
  */
 function encodeTargetHeader(target: string): string {
-  const escaped = target.replaceAll("%", "%25");
+  const escaped = target.replaceAll('%', '%25');
   // Encode non-ASCII and control characters. Regex created inline to avoid
   // shared /g lastIndex state. Uses try/catch to handle unpaired surrogates
   // (encodeURIComponent throws URIError on malformed UTF-16).
@@ -259,7 +246,7 @@ function encodeTargetHeader(target: string): string {
       return encodeURIComponent(match);
     } catch {
       // Unpaired surrogate or malformed UTF-16 — strip the unrepresentable chars
-      return "";
+      return '';
     }
   });
 }
@@ -280,37 +267,37 @@ export function getCompactResponses(): boolean {
 
 /** Maps verbose field names to compact abbreviations for token savings. */
 const COMPACT_FIELD_MAP: ReadonlyMap<string, string> = new Map([
-  ["content", "c"],
-  ["frontmatter", "fm"],
-  ["path", "p"],
-  ["tags", "t"],
-  ["stat", "s"],
-  ["mtime", "m"],
-  ["ctime", "ct"],
-  ["size", "sz"],
-  ["headings", "h"],
-  ["blocks", "b"],
-  ["frontmatterFields", "fmf"],
-  ["query", "q"],
-  ["context", "ctx"],
-  ["score", "sc"],
-  ["matches", "mt"],
-  ["service", "svc"],
-  ["authenticated", "auth"],
-  ["versions", "v"],
-  ["count", "cnt"],
-  ["notes", "n"],
-  ["source", "src"],
-  ["target", "tgt"],
-  ["inbound", "in"],
-  ["outbound", "out"],
-  ["start", "st"],
-  ["end", "en"],
-  ["filename", "fn"],
+  ['content', 'c'],
+  ['frontmatter', 'fm'],
+  ['path', 'p'],
+  ['tags', 't'],
+  ['stat', 's'],
+  ['mtime', 'm'],
+  ['ctime', 'ct'],
+  ['size', 'sz'],
+  ['headings', 'h'],
+  ['blocks', 'b'],
+  ['frontmatterFields', 'fmf'],
+  ['query', 'q'],
+  ['context', 'ctx'],
+  ['score', 'sc'],
+  ['matches', 'mt'],
+  ['service', 'svc'],
+  ['authenticated', 'auth'],
+  ['versions', 'v'],
+  ['count', 'cnt'],
+  ['notes', 'n'],
+  ['source', 'src'],
+  ['target', 'tgt'],
+  ['inbound', 'in'],
+  ['outbound', 'out'],
+  ['start', 'st'],
+  ['end', 'en'],
+  ['filename', 'fn'],
 ]);
 
 /** Keys whose values are opaque user data — never recurse into or rename their contents. */
-const OPAQUE_KEYS: ReadonlySet<string> = new Set(["frontmatter", "result"]);
+const OPAQUE_KEYS: ReadonlySet<string> = new Set(['frontmatter', 'result']);
 
 /**
  * Recursively maps known envelope field names to compact abbreviations.
@@ -323,7 +310,7 @@ export function compactify(data: unknown): unknown {
   if (data === undefined) return undefined;
   if (data === null) return null;
   if (Array.isArray(data)) return data.map(compactify);
-  if (typeof data === "object") {
+  if (typeof data === 'object') {
     const obj = data as Record<string, unknown>;
     const result: Record<string, unknown> = {};
     for (const key of Object.keys(obj)) {
@@ -342,27 +329,25 @@ export function compactify(data: unknown): unknown {
 /** Standard MCP tool response shape (index signature required by MCP SDK). */
 export interface ToolResult {
   [key: string]: unknown;
-  content: Array<{ type: "text"; text: string }>;
+  content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
 }
 
 /** Wraps a plain text string as an MCP tool result. */
 export function textResult(text: string): ToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: 'text', text }] };
 }
 
 /** Wraps an error message as an MCP tool error result. */
 export function errorResult(message: string): ToolResult {
-  return { content: [{ type: "text", text: message }], isError: true };
+  return { content: [{ type: 'text', text: message }], isError: true };
 }
 
 /** Serialises data as JSON in an MCP tool result. Uses compact field names when enabled. */
 export function jsonResult(data: unknown): ToolResult {
   const mapped = compactResponsesEnabled ? compactify(data) : data;
-  const text = compactResponsesEnabled
-    ? JSON.stringify(mapped)
-    : JSON.stringify(mapped, null, 2);
-  return { content: [{ type: "text", text }] };
+  const text = compactResponsesEnabled ? JSON.stringify(mapped) : JSON.stringify(mapped, null, 2);
+  return { content: [{ type: 'text', text }] };
 }
 
 // --- HTTP Client ---
@@ -393,12 +378,11 @@ export class ObsidianClient {
    * @throws {Error} If the TLS certificate path is set but the file cannot be read.
    */
   constructor(config: Config) {
-    const needsBrackets =
-      config.host.includes(":") && !config.host.startsWith("[");
+    const needsBrackets = config.host.includes(':') && !config.host.startsWith('[');
     const host = needsBrackets ? `[${config.host}]` : config.host;
     this.baseUrl = `${config.scheme}://${host}:${String(config.port)}`;
     this.apiKey = config.apiKey;
-    this.isHttps = config.scheme === "https";
+    this.isHttps = config.scheme === 'https';
     this.timeout = config.timeout;
     this.debug = config.debug;
     this.verifyWrites = config.verifyWrites;
@@ -410,18 +394,16 @@ export class ObsidianClient {
       };
       if (config.certPath) {
         try {
-          agentOptions["ca"] = readFileSync(config.certPath);
+          agentOptions['ca'] = readFileSync(config.certPath);
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
-          throw new Error(
-            `Failed to read TLS certificate at "${config.certPath}": ${message}`,
-          );
+          throw new Error(`Failed to read TLS certificate at "${config.certPath}": ${message}`);
         }
-        agentOptions["rejectUnauthorized"] = true;
+        agentOptions['rejectUnauthorized'] = true;
       } else if (config.verifySsl) {
-        agentOptions["rejectUnauthorized"] = true;
+        agentOptions['rejectUnauthorized'] = true;
       } else {
-        agentOptions["rejectUnauthorized"] = false;
+        agentOptions['rejectUnauthorized'] = false;
       }
       this.agent = new HttpsAgent(agentOptions);
     } else {
@@ -449,10 +431,10 @@ export class ObsidianClient {
   ): Record<string, string> {
     const normalized: Record<string, string> = {};
     for (const [key, value] of Object.entries(rawHeaders)) {
-      if (typeof value === "string") {
+      if (typeof value === 'string') {
         normalized[key] = value;
       } else if (Array.isArray(value)) {
-        normalized[key] = value.join(", ");
+        normalized[key] = value.join(', ');
       }
     }
     return normalized;
@@ -480,7 +462,7 @@ export class ObsidianClient {
       const req = requestFn(reqOptions, (res: IncomingMessage) => {
         const chunks: Buffer[] = [];
         let accumulatedBytes = 0;
-        res.on("data", (chunk: Buffer) => {
+        res.on('data', (chunk: Buffer) => {
           accumulatedBytes += chunk.length;
           if (accumulatedBytes > MAX_RESPONSE_BYTES) {
             res.destroy();
@@ -495,27 +477,21 @@ export class ObsidianClient {
           }
           chunks.push(chunk);
         });
-        res.on("error", (err: Error) => {
+        res.on('error', (err: Error) => {
           if (settled) return;
           settled = true;
           reject(
-            new ObsidianConnectionError(
-              `Response stream error: ${err.message}`,
-              { cause: err },
-            ),
+            new ObsidianConnectionError(`Response stream error: ${err.message}`, { cause: err }),
           );
         });
-        res.on("end", () => {
+        res.on('end', () => {
           if (settled) return;
           settled = true;
           const elapsed = Date.now() - startTime;
-          const responseBody = Buffer.concat(chunks).toString("utf-8");
+          const responseBody = Buffer.concat(chunks).toString('utf-8');
           const statusCode = res.statusCode ?? 0;
           if (this.debug) {
-            log(
-              "debug",
-              `${method} ${path} → ${String(statusCode)} (${String(elapsed)}ms)`,
-            );
+            log('debug', `${method} ${path} → ${String(statusCode)} (${String(elapsed)}ms)`);
           }
           resolve({
             statusCode,
@@ -525,7 +501,7 @@ export class ObsidianClient {
         });
       });
 
-      req.on("timeout", () => {
+      req.on('timeout', () => {
         req.destroy();
         if (settled) return;
         settled = true;
@@ -536,13 +512,13 @@ export class ObsidianClient {
         );
       });
 
-      req.on("error", (err: Error) => {
+      req.on('error', (err: Error) => {
         if (settled) return;
         settled = true;
         if (
-          err.message.includes("ECONNREFUSED") ||
-          err.message.includes("ECONNRESET") ||
-          err.message.includes("ENOTFOUND")
+          err.message.includes('ECONNREFUSED') ||
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('ENOTFOUND')
         ) {
           reject(
             new ObsidianConnectionError(
@@ -584,22 +560,17 @@ export class ObsidianClient {
     headers: Record<string, string>;
     body: string;
   }> {
-    const {
-      body,
-      headers: extraHeaders,
-      auth = true,
-      timeoutMultiplier = 1,
-    } = options;
+    const { body, headers: extraHeaders, auth = true, timeoutMultiplier = 1 } = options;
     // Ensure path is relative — absolute URLs would override the base entirely
-    const safePath = path.startsWith("/") ? path : `/${path}`;
+    const safePath = path.startsWith('/') ? path : `/${path}`;
     const url = new URL(safePath, this.baseUrl);
 
     const reqHeaders: Record<string, string> = { ...extraHeaders };
     if (auth && this.apiKey) {
-      reqHeaders["Authorization"] = `Bearer ${this.apiKey}`;
+      reqHeaders['Authorization'] = `Bearer ${this.apiKey}`;
     }
     if (body !== undefined) {
-      reqHeaders["Content-Length"] = String(Buffer.byteLength(body, "utf-8"));
+      reqHeaders['Content-Length'] = String(Buffer.byteLength(body, 'utf-8'));
     }
 
     const effectiveTimeout = this.timeout * timeoutMultiplier;
@@ -613,29 +584,15 @@ export class ObsidianClient {
       timeout: effectiveTimeout,
     };
 
-    return this.executeRequest(
-      reqOptions,
-      method,
-      path,
-      body,
-      Date.now(),
-      effectiveTimeout,
-    );
+    return this.executeRequest(reqOptions, method, path, body, Date.now(), effectiveTimeout);
   }
 
   /** Safely parses a JSON response body, validating Content-Type (case-insensitive) and throwing structured errors. */
-  private parseJsonResponse<T>(
-    body: string,
-    path: string,
-    headers?: Record<string, string>,
-  ): T {
-    const ct = (headers?.["content-type"] ?? "").toLowerCase();
+  private parseJsonResponse<T>(body: string, path: string, headers?: Record<string, string>): T {
+    const ct = (headers?.['content-type'] ?? '').toLowerCase();
     if (!ct) {
-      log(
-        "warn",
-        `Missing Content-Type header from ${path} — expected JSON. Attempting parse.`,
-      );
-    } else if (!ct.includes("json")) {
+      log('warn', `Missing Content-Type header from ${path} — expected JSON. Attempting parse.`);
+    } else if (!ct.includes('json')) {
       throw new ObsidianApiError(
         `Unexpected Content-Type "${ct}" from ${path} (expected JSON)`,
         200,
@@ -664,17 +621,13 @@ export class ObsidianClient {
     let errorCode: number | undefined;
     try {
       const parsed: unknown = JSON.parse(body);
-      if (
-        parsed !== null &&
-        typeof parsed === "object" &&
-        !Array.isArray(parsed)
-      ) {
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const obj = parsed as Record<string, unknown>;
-        if (typeof obj["message"] === "string") {
-          message = obj["message"];
+        if (typeof obj['message'] === 'string') {
+          message = obj['message'];
         }
-        if (typeof obj["errorCode"] === "number") {
-          errorCode = obj["errorCode"];
+        if (typeof obj['errorCode'] === 'number') {
+          errorCode = obj['errorCode'];
         }
       }
     } catch {
@@ -702,10 +655,7 @@ export class ObsidianClient {
    * gets its own rejection if its `fn` throws — errors do not propagate
    * across callers. This is the desired behaviour for independent write ops.
    */
-  private async withFileLock<T>(
-    filePath: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
+  private async withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
     const lockKey = sanitizeFilePath(filePath);
     const existing = this.fileLocks.get(lockKey);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
@@ -725,10 +675,7 @@ export class ObsidianClient {
    * unknown or resolved by Obsidian. Keys use a \0 prefix to guarantee they
    * never collide with sanitized vault paths.
    */
-  private async withSyntheticLock<T>(
-    key: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
+  private async withSyntheticLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const lockKey = `\0${key}`;
     const existing = this.fileLocks.get(lockKey);
     const next = (existing ?? Promise.resolve()).then(fn, fn);
@@ -746,15 +693,14 @@ export class ObsidianClient {
 
   /** Builds HTTP headers for PATCH operations from PatchOptions (createIfMissing is optional). */
   private buildPatchHeaders(
-    options: Omit<PatchOptions, "createIfMissing"> & {
+    options: Omit<PatchOptions, 'createIfMissing'> & {
       createIfMissing?: boolean | undefined;
     },
   ): Record<string, string> {
     const headers: Record<string, string> = {
-      "Content-Type":
-        options.contentType === "json" ? "application/json" : "text/markdown",
+      'Content-Type': options.contentType === 'json' ? 'application/json' : 'text/markdown',
       Operation: options.operation,
-      "Target-Type": options.targetType,
+      'Target-Type': options.targetType,
       // Obsidian always percent-decodes the Target header, so:
       // 1. Escape literal % → %25 first (so "50%C3%BC" becomes "50%25C3%25BC")
       // 2. Encode non-ASCII and control characters (unicode, emoji, \x00-\x1F, \x7F)
@@ -765,34 +711,29 @@ export class ObsidianClient {
       Target: encodeTargetHeader(options.target),
     };
     if (options.targetDelimiter !== undefined) {
-      headers["Target-Delimiter"] = encodeTargetHeader(options.targetDelimiter);
+      headers['Target-Delimiter'] = encodeTargetHeader(options.targetDelimiter);
     }
     if (options.trimTargetWhitespace !== undefined) {
-      headers["Trim-Target-Whitespace"] = String(options.trimTargetWhitespace);
+      headers['Trim-Target-Whitespace'] = String(options.trimTargetWhitespace);
     }
     if (options.createIfMissing !== undefined) {
-      headers["Create-Target-If-Missing"] = String(options.createIfMissing);
+      headers['Create-Target-If-Missing'] = String(options.createIfMissing);
     }
     return headers;
   }
 
   /** Builds the API path for a periodic note at a specific date. */
-  private periodicDatePath(
-    period: string,
-    year: number,
-    month: number,
-    day: number,
-  ): string {
-    return `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/`;
+  private periodicDatePath(period: string, year: number, month: number, day: number): string {
+    return `/periodic/${encodeURIComponent(period)}/${String(year)}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/`;
   }
 
   /** Sanitises and URL-encodes a vault file path for use in API request URLs. */
   private encodePath(filePath: string): string {
     const sanitized = sanitizeFilePath(filePath);
     return sanitized
-      .split("/")
+      .split('/')
       .map((segment) => encodeURIComponent(segment))
-      .join("/");
+      .join('/');
   }
 
   // --- Case-insensitive Fallback ---
@@ -821,7 +762,7 @@ export class ObsidianClient {
     const fullPath = `${basePath}${encoded}`;
     const res = await this.request(method, fullPath, options);
 
-    if (res.statusCode === 404 && method === "GET") {
+    if (res.statusCode === 404 && method === 'GET') {
       const correctedPath = await this.findCaseInsensitivePath(filePath);
       if (correctedPath) {
         const correctedEncoded = this.encodePath(correctedPath);
@@ -838,43 +779,35 @@ export class ObsidianClient {
    * Compares the entire path case-insensitively, handling both filename and directory case mismatches.
    * Returns the corrected path or undefined if no unique match.
    */
-  private async findCaseInsensitivePath(
-    filePath: string,
-  ): Promise<string | undefined> {
+  private async findCaseInsensitivePath(filePath: string): Promise<string | undefined> {
     try {
       const sanitized = sanitizeFilePath(filePath);
       const targetLower = sanitized.toLowerCase();
 
       // List the full vault to handle case mismatches at any path segment
-      const listRes = await this.request("GET", "/vault/");
+      const listRes = await this.request('GET', '/vault/');
       if (listRes.statusCode !== 200) {
         return undefined;
       }
 
       const parsed: unknown = JSON.parse(listRes.body);
-      if (
-        parsed === null ||
-        typeof parsed !== "object" ||
-        !("files" in parsed)
-      ) {
+      if (parsed === null || typeof parsed !== 'object' || !('files' in parsed)) {
         return undefined;
       }
-      const filesVal = (parsed as Record<string, unknown>)["files"];
+      const filesVal = (parsed as Record<string, unknown>)['files'];
       if (!Array.isArray(filesVal)) {
         return undefined;
       }
       // Filter to string elements only (API should return strings, but verify)
-      const files = filesVal.filter((f): f is string => typeof f === "string");
+      const files = filesVal.filter((f): f is string => typeof f === 'string');
 
       // Find files whose full path matches case-insensitively
-      const matches = files.filter(
-        (f) => !f.endsWith("/") && f.toLowerCase() === targetLower,
-      );
+      const matches = files.filter((f) => !f.endsWith('/') && f.toLowerCase() === targetLower);
 
       if (matches.length === 1) {
         // Unique match — use the corrected path
         const match = matches[0];
-        log("debug", `Case-insensitive fallback: "${filePath}" → "${match}"`);
+        log('debug', `Case-insensitive fallback: "${filePath}" → "${match}"`);
         return match;
       }
       // 0 matches = truly not found, >1 = ambiguous — return undefined for both
@@ -888,26 +821,22 @@ export class ObsidianClient {
 
   /** Fetches the Obsidian REST API server status (no auth required). */
   async getServerStatus(): Promise<ServerStatus> {
-    const res = await this.request("GET", "/", { auth: false });
+    const res = await this.request('GET', '/', { auth: false });
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
     }
-    return this.parseJsonResponse<ServerStatus>(res.body, "/", res.headers);
+    return this.parseJsonResponse<ServerStatus>(res.body, '/', res.headers);
   }
 
   // --- Vault Files ---
 
   /** Lists all files and directories in the vault root. */
   async listFilesInVault(): Promise<{ files: string[] }> {
-    const res = await this.request("GET", "/vault/");
+    const res = await this.request('GET', '/vault/');
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
     }
-    return this.parseJsonResponse<{ files: string[] }>(
-      res.body,
-      "/vault/",
-      res.headers,
-    );
+    return this.parseJsonResponse<{ files: string[] }>(res.body, '/vault/', res.headers);
   }
 
   /**
@@ -918,12 +847,12 @@ export class ObsidianClient {
    */
   async listFilesInDir(dirPath: string): Promise<{ files: string[] }> {
     const encoded = this.encodePath(dirPath);
-    const res = await this.request("GET", `/vault/${encoded}/`);
+    const res = await this.request('GET', `/vault/${encoded}/`);
 
     if (res.statusCode === 404) {
       // Disambiguate empty vs non-existent: requires a full vault listing
       const vault = await this.listFilesInVault();
-      const normalizedDir = sanitizeFilePath(dirPath).replace(/\/+$/, "");
+      const normalizedDir = sanitizeFilePath(dirPath).replace(/\/+$/, '');
       const dirExists = vault.files.some(
         (f) => f.startsWith(`${normalizedDir}/`) || f === `${normalizedDir}/`,
       );
@@ -936,11 +865,7 @@ export class ObsidianClient {
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
     }
-    return this.parseJsonResponse<{ files: string[] }>(
-      res.body,
-      dirPath,
-      res.headers,
-    );
+    return this.parseJsonResponse<{ files: string[] }>(res.body, dirPath, res.headers);
   }
 
   /**
@@ -953,10 +878,10 @@ export class ObsidianClient {
    */
   async getFileContents(
     filePath: string,
-    format: FileFormat = "markdown",
+    format: FileFormat = 'markdown',
     skipTruncation = false,
   ): Promise<FileContentsResult> {
-    const res = await this.requestWithFallback("GET", "/vault/", filePath, {
+    const res = await this.requestWithFallback('GET', '/vault/', filePath, {
       headers: { Accept: acceptHeaderForFormat(format) },
     });
 
@@ -964,25 +889,21 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    if (format === "markdown") {
+    if (format === 'markdown') {
       return skipTruncation ? res.body : this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(
-      res.body,
-      filePath,
-      res.headers,
-    );
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, filePath, res.headers);
   }
 
   /** Creates or overwrites a vault file with the given content (idempotent). */
   async putContent(filePath: string): Promise<void>;
   async putContent(filePath: string, content: string): Promise<void>;
-  async putContent(filePath: string, content = ""): Promise<void> {
+  async putContent(filePath: string, content = ''): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
-      const res = await this.request("PUT", `/vault/${encoded}`, {
+      const res = await this.request('PUT', `/vault/${encoded}`, {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -996,29 +917,20 @@ export class ObsidianClient {
       // Wrapped in try/catch so a verification failure doesn't mask a successful write
       if (this.verifyWrites) {
         try {
-          const verifyRes = await this.request("GET", `/vault/${encoded}`, {
-            headers: { Accept: "text/markdown" },
+          const verifyRes = await this.request('GET', `/vault/${encoded}`, {
+            headers: { Accept: 'text/markdown' },
           });
-          if (
-            verifyRes.statusCode === 200 &&
-            verifyRes.body.trim() !== content.trim()
-          ) {
-            log(
-              "warn",
-              `Write verification failed for ${filePath}: content mismatch`,
-            );
+          if (verifyRes.statusCode === 200 && verifyRes.body.trim() !== content.trim()) {
+            log('warn', `Write verification failed for ${filePath}: content mismatch`);
           } else if (verifyRes.statusCode !== 200) {
             log(
-              "warn",
+              'warn',
               `Write verification inconclusive for ${filePath}: read-back returned ${String(verifyRes.statusCode)}`,
             );
           }
         } catch (error_: unknown) {
           const msg = error_ instanceof Error ? error_.message : String(error_);
-          log(
-            "warn",
-            `Write verification could not read back ${filePath}: ${msg}`,
-          );
+          log('warn', `Write verification could not read back ${filePath}: ${msg}`);
         }
       }
     });
@@ -1028,9 +940,9 @@ export class ObsidianClient {
   async appendContent(filePath: string, content: string): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
-      const res = await this.request("POST", `/vault/${encoded}`, {
+      const res = await this.request('POST', `/vault/${encoded}`, {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -1051,14 +963,10 @@ export class ObsidianClient {
    * the lock during re-read+retry prevents other server-initiated writes from changing
    * the heading structure between the map read and the retry PATCH.
    */
-  async patchContent(
-    filePath: string,
-    content: string,
-    options: PatchOptions,
-  ): Promise<void> {
+  async patchContent(filePath: string, content: string, options: PatchOptions): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
-      const res = await this.request("PATCH", `/vault/${encoded}`, {
+      const res = await this.request('PATCH', `/vault/${encoded}`, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
@@ -1073,11 +981,11 @@ export class ObsidianClient {
       // so non-heading 400s fall through to handleErrorResponse below.
       if (
         res.statusCode === 400 &&
-        options.targetType === "heading" &&
+        options.targetType === 'heading' &&
         isHeadingNotFoundError(res.body)
       ) {
         const corrected = await this.retryPatchWithMapLookup(
-          () => this.getFileContents(filePath, "map"),
+          () => this.getFileContents(filePath, 'map'),
           `/vault/${encoded}`,
           content,
           options,
@@ -1085,7 +993,7 @@ export class ObsidianClient {
         );
         if (corrected !== false) {
           log(
-            "debug",
+            'debug',
             `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in ${filePath}`,
           );
           this.cacheRef?.invalidate(sanitizeFilePath(filePath));
@@ -1120,8 +1028,8 @@ export class ObsidianClient {
     try {
       const mapResult = await readMap();
       if (
-        typeof mapResult === "string" ||
-        !("headings" in mapResult) ||
+        typeof mapResult === 'string' ||
+        !('headings' in mapResult) ||
         !Array.isArray(mapResult.headings)
       )
         return false;
@@ -1129,21 +1037,18 @@ export class ObsidianClient {
       const match = findClosestHeading(
         options.target.trim(),
         mapResult.headings,
-        options.targetDelimiter ?? "::",
+        options.targetDelimiter ?? '::',
       );
       if (!match) return false;
 
-      log(
-        "debug",
-        `PATCH retry: heading "${options.target}" → "${match}" in ${label}`,
-      );
+      log('debug', `PATCH retry: heading "${options.target}" → "${match}" in ${label}`);
       const retryOptions = { ...options, target: match };
       const retryHeaders = this.buildPatchHeaders(retryOptions);
       // The corrected heading was confirmed present in the document map;
       // strip Create-Target-If-Missing so the retry doesn't create a stale heading.
       // TypeScript Record allows delete — this is safe
-      delete retryHeaders["Create-Target-If-Missing"];
-      const retryRes = await this.request("PATCH", patchPath, {
+      delete retryHeaders['Create-Target-If-Missing'];
+      const retryRes = await this.request('PATCH', patchPath, {
         body: content,
         headers: retryHeaders,
       });
@@ -1151,14 +1056,11 @@ export class ObsidianClient {
       if (retryRes.statusCode === 204 || retryRes.statusCode === 200) {
         return match;
       }
-      log(
-        "warn",
-        `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`,
-      );
+      log('warn', `PATCH retry failed for ${label}: status ${String(retryRes.statusCode)}`);
       return false;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      log("debug", `PATCH retry lookup failed for ${label}: ${message}`);
+      log('debug', `PATCH retry lookup failed for ${label}: ${message}`);
       return false;
     }
   }
@@ -1167,13 +1069,9 @@ export class ObsidianClient {
   async deleteFile(filePath: string): Promise<void> {
     await this.withFileLock(filePath, async () => {
       const encoded = this.encodePath(filePath);
-      const res = await this.request("DELETE", `/vault/${encoded}`);
+      const res = await this.request('DELETE', `/vault/${encoded}`);
 
-      if (
-        res.statusCode !== 204 &&
-        res.statusCode !== 200 &&
-        res.statusCode !== 404
-      ) {
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
         this.handleErrorResponse(res.statusCode, res.body);
       }
 
@@ -1184,10 +1082,8 @@ export class ObsidianClient {
   // --- Active File ---
 
   /** Reads the currently open file in Obsidian in the specified format. */
-  async getActiveFile(
-    format: FileFormat = "markdown",
-  ): Promise<FileContentsResult> {
-    const res = await this.request("GET", "/active/", {
+  async getActiveFile(format: FileFormat = 'markdown'): Promise<FileContentsResult> {
+    const res = await this.request('GET', '/active/', {
       headers: { Accept: acceptHeaderForFormat(format) },
     });
 
@@ -1195,22 +1091,18 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    if (format === "markdown") {
+    if (format === 'markdown') {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(
-      res.body,
-      "/active/",
-      res.headers,
-    );
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, '/active/', res.headers);
   }
 
   /** Replaces the content of the currently open file (idempotent). Serialized via active-file lock. */
   async putActiveFile(content: string): Promise<void> {
-    await this.withSyntheticLock("active", async () => {
-      const res = await this.request("PUT", "/active/", {
+    await this.withSyntheticLock('active', async () => {
+      const res = await this.request('PUT', '/active/', {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -1223,10 +1115,10 @@ export class ObsidianClient {
 
   /** Appends content to the currently open file (not idempotent). Serialized via active-file lock. */
   async appendActiveFile(content: string): Promise<void> {
-    await this.withSyntheticLock("active", async () => {
-      const res = await this.request("POST", "/active/", {
+    await this.withSyntheticLock('active', async () => {
+      const res = await this.request('POST', '/active/', {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -1239,13 +1131,13 @@ export class ObsidianClient {
   /** Patches the currently open file at a specific target (not idempotent). Active file does not support createIfMissing. Serialized via active-file lock. */
   async patchActiveFile(
     content: string,
-    options: Omit<PatchOptions, "createIfMissing">,
+    options: Omit<PatchOptions, 'createIfMissing'>,
   ): Promise<void> {
-    await this.withSyntheticLock("active", async () => {
+    await this.withSyntheticLock('active', async () => {
       const headers = this.buildPatchHeaders(options);
       // Active file PATCH does not support Create-Target-If-Missing — enforced at type level
-      delete headers["Create-Target-If-Missing"];
-      const res = await this.request("PATCH", "/active/", {
+      delete headers['Create-Target-If-Missing'];
+      const res = await this.request('PATCH', '/active/', {
         body: content,
         headers,
       });
@@ -1261,19 +1153,19 @@ export class ObsidianClient {
       // falling through to the original error. A false-positive match is unlikely.
       if (
         res.statusCode === 400 &&
-        options.targetType === "heading" &&
+        options.targetType === 'heading' &&
         isHeadingNotFoundError(res.body)
       ) {
         const corrected = await this.retryPatchWithMapLookup(
-          () => this.getActiveFile("map"),
-          "/active/",
+          () => this.getActiveFile('map'),
+          '/active/',
           content,
           options,
-          "(active file)",
+          '(active file)',
         );
         if (corrected !== false) {
           log(
-            "debug",
+            'debug',
             `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (active file)`,
           );
           this.cacheRef?.invalidateAll();
@@ -1287,14 +1179,10 @@ export class ObsidianClient {
 
   /** Deletes the currently open file (idempotent). Serialized via active-file lock. */
   async deleteActiveFile(): Promise<void> {
-    await this.withSyntheticLock("active", async () => {
-      const res = await this.request("DELETE", "/active/");
+    await this.withSyntheticLock('active', async () => {
+      const res = await this.request('DELETE', '/active/');
 
-      if (
-        res.statusCode !== 204 &&
-        res.statusCode !== 200 &&
-        res.statusCode !== 404
-      ) {
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
         this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
@@ -1307,7 +1195,7 @@ export class ObsidianClient {
   async listCommands(): Promise<{
     commands: Array<{ id: string; name: string }>;
   }> {
-    const res = await this.request("GET", "/commands/");
+    const res = await this.request('GET', '/commands/');
 
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
@@ -1315,13 +1203,13 @@ export class ObsidianClient {
 
     return this.parseJsonResponse<{
       commands: Array<{ id: string; name: string }>;
-    }>(res.body, "/commands/", res.headers);
+    }>(res.body, '/commands/', res.headers);
   }
 
   /** Executes an Obsidian command by its ID. Invalidates the entire cache since commands may modify vault contents. */
   async executeCommand(commandId: string): Promise<void> {
     const encoded = encodeURIComponent(commandId);
-    const res = await this.request("POST", `/commands/${encoded}/`);
+    const res = await this.request('POST', `/commands/${encoded}/`);
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
@@ -1335,8 +1223,8 @@ export class ObsidianClient {
   /** Opens a file in the Obsidian UI, optionally in a new leaf/tab. */
   async openFile(filePath: string, newLeaf?: boolean): Promise<void> {
     const encoded = this.encodePath(filePath);
-    const query = newLeaf ? "?newLeaf=true" : "";
-    const res = await this.request("POST", `/open/${encoded}${query}`);
+    const query = newLeaf ? '?newLeaf=true' : '';
+    const res = await this.request('POST', `/open/${encoded}${query}`);
 
     if (res.statusCode !== 204 && res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
@@ -1346,42 +1234,14 @@ export class ObsidianClient {
   // --- Search ---
 
   /** Performs a full-text search across all vault files with configurable context length. */
-  async simpleSearch(
-    query: string,
-    contextLength = 100,
-  ): Promise<readonly SearchResult[]> {
+  async simpleSearch(query: string, contextLength = 100): Promise<readonly SearchResult[]> {
     const params = new URLSearchParams({
       query,
       contextLength: String(contextLength),
     });
-    const res = await this.request(
-      "POST",
-      `/search/simple/?${params.toString()}`,
-      {
-        body: "",
-        headers: { "Content-Type": "text/plain" },
-        timeoutMultiplier: 2,
-      },
-    );
-
-    if (res.statusCode !== 200) {
-      this.handleErrorResponse(res.statusCode, res.body);
-    }
-
-    return this.parseJsonResponse<SearchResult[]>(
-      res.body,
-      "/search/simple/",
-      res.headers,
-    );
-  }
-
-  /** Searches the vault using a JsonLogic query (glob, regexp, etc.). */
-  async complexSearch(
-    query: Record<string, unknown>,
-  ): Promise<readonly SearchResult[]> {
-    const res = await this.request("POST", "/search/", {
-      body: JSON.stringify(query),
-      headers: { "Content-Type": "application/vnd.olrapi.jsonlogic+json" },
+    const res = await this.request('POST', `/search/simple/?${params.toString()}`, {
+      body: '',
+      headers: { 'Content-Type': 'text/plain' },
       timeoutMultiplier: 2,
     });
 
@@ -1389,18 +1249,29 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    return this.parseJsonResponse<SearchResult[]>(
-      res.body,
-      "/search/",
-      res.headers,
-    );
+    return this.parseJsonResponse<SearchResult[]>(res.body, '/search/simple/', res.headers);
+  }
+
+  /** Searches the vault using a JsonLogic query (glob, regexp, etc.). */
+  async complexSearch(query: Record<string, unknown>): Promise<readonly SearchResult[]> {
+    const res = await this.request('POST', '/search/', {
+      body: JSON.stringify(query),
+      headers: { 'Content-Type': 'application/vnd.olrapi.jsonlogic+json' },
+      timeoutMultiplier: 2,
+    });
+
+    if (res.statusCode !== 200) {
+      this.handleErrorResponse(res.statusCode, res.body);
+    }
+
+    return this.parseJsonResponse<SearchResult[]>(res.body, '/search/', res.headers);
   }
 
   /** Queries the vault using Dataview DQL (requires the Dataview plugin). */
   async dataviewSearch(dql: string): Promise<readonly SearchResult[]> {
-    const res = await this.request("POST", "/search/", {
+    const res = await this.request('POST', '/search/', {
       body: dql,
-      headers: { "Content-Type": "application/vnd.olrapi.dataview.dql+txt" },
+      headers: { 'Content-Type': 'application/vnd.olrapi.dataview.dql+txt' },
       timeoutMultiplier: 2,
     });
 
@@ -1408,11 +1279,7 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    return this.parseJsonResponse<SearchResult[]>(
-      res.body,
-      "/search/dataview",
-      res.headers,
-    );
+    return this.parseJsonResponse<SearchResult[]>(res.body, '/search/dataview', res.headers);
   }
 
   // --- Periodic Notes (Current) ---
@@ -1420,21 +1287,17 @@ export class ObsidianClient {
   /** Gets the current periodic note for the given period type. */
   async getPeriodicNote(
     period: string,
-    format: FileFormat = "markdown",
+    format: FileFormat = 'markdown',
   ): Promise<FileContentsResult> {
-    const res = await this.request(
-      "GET",
-      `/periodic/${encodeURIComponent(period)}/`,
-      {
-        headers: { Accept: acceptHeaderForFormat(format) },
-      },
-    );
+    const res = await this.request('GET', `/periodic/${encodeURIComponent(period)}/`, {
+      headers: { Accept: acceptHeaderForFormat(format) },
+    });
 
     if (res.statusCode !== 200) {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    if (format === "markdown") {
+    if (format === 'markdown') {
       return this.truncateResponse(res.body);
     }
     return this.parseJsonResponse<NoteJson | DocumentMap>(
@@ -1452,14 +1315,10 @@ export class ObsidianClient {
    */
   async putPeriodicNote(period: string, content: string): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const res = await this.request(
-        "PUT",
-        `/periodic/${encodeURIComponent(period)}/`,
-        {
-          body: content,
-          headers: { "Content-Type": "text/markdown" },
-        },
-      );
+      const res = await this.request('PUT', `/periodic/${encodeURIComponent(period)}/`, {
+        body: content,
+        headers: { 'Content-Type': 'text/markdown' },
+      });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
         this.handleErrorResponse(res.statusCode, res.body);
@@ -1472,14 +1331,10 @@ export class ObsidianClient {
   /** Appends content to the current periodic note (not idempotent). Serialized per period type. */
   async appendPeriodicNote(period: string, content: string): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const res = await this.request(
-        "POST",
-        `/periodic/${encodeURIComponent(period)}/`,
-        {
-          body: content,
-          headers: { "Content-Type": "text/markdown" },
-        },
-      );
+      const res = await this.request('POST', `/periodic/${encodeURIComponent(period)}/`, {
+        body: content,
+        headers: { 'Content-Type': 'text/markdown' },
+      });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
         this.handleErrorResponse(res.statusCode, res.body);
@@ -1489,14 +1344,10 @@ export class ObsidianClient {
   }
 
   /** Patches the current periodic note at a specific target (not idempotent). Serialized per period type. */
-  async patchPeriodicNote(
-    period: string,
-    content: string,
-    options: PatchOptions,
-  ): Promise<void> {
+  async patchPeriodicNote(period: string, content: string, options: PatchOptions): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const periodicPath = `/periodic/${encodeURIComponent(period)}/`;
-      const res = await this.request("PATCH", periodicPath, {
+      const res = await this.request('PATCH', periodicPath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
@@ -1508,11 +1359,11 @@ export class ObsidianClient {
 
       if (
         res.statusCode === 400 &&
-        options.targetType === "heading" &&
+        options.targetType === 'heading' &&
         isHeadingNotFoundError(res.body)
       ) {
         const corrected = await this.retryPatchWithMapLookup(
-          () => this.getPeriodicNote(period, "map"),
+          () => this.getPeriodicNote(period, 'map'),
           periodicPath,
           content,
           options,
@@ -1520,7 +1371,7 @@ export class ObsidianClient {
         );
         if (corrected !== false) {
           log(
-            "debug",
+            'debug',
             `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period})`,
           );
           this.cacheRef?.invalidateAll();
@@ -1535,16 +1386,9 @@ export class ObsidianClient {
   /** Deletes the current periodic note (idempotent). Serialized per period type. */
   async deletePeriodicNote(period: string): Promise<void> {
     await this.withSyntheticLock(`periodic_${period}`, async () => {
-      const res = await this.request(
-        "DELETE",
-        `/periodic/${encodeURIComponent(period)}/`,
-      );
+      const res = await this.request('DELETE', `/periodic/${encodeURIComponent(period)}/`);
 
-      if (
-        res.statusCode !== 204 &&
-        res.statusCode !== 200 &&
-        res.statusCode !== 404
-      ) {
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
         this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();
@@ -1559,10 +1403,10 @@ export class ObsidianClient {
     year: number,
     month: number,
     day: number,
-    format: FileFormat = "markdown",
+    format: FileFormat = 'markdown',
   ): Promise<FileContentsResult> {
     const path = this.periodicDatePath(period, year, month, day);
-    const res = await this.request("GET", path, {
+    const res = await this.request('GET', path, {
       headers: { Accept: acceptHeaderForFormat(format) },
     });
 
@@ -1570,14 +1414,10 @@ export class ObsidianClient {
       this.handleErrorResponse(res.statusCode, res.body);
     }
 
-    if (format === "markdown") {
+    if (format === 'markdown') {
       return this.truncateResponse(res.body);
     }
-    return this.parseJsonResponse<NoteJson | DocumentMap>(
-      res.body,
-      path,
-      res.headers,
-    );
+    return this.parseJsonResponse<NoteJson | DocumentMap>(res.body, path, res.headers);
   }
 
   /** Replaces the periodic note for a specific date (idempotent). Serialized per period+date. */
@@ -1592,9 +1432,9 @@ export class ObsidianClient {
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("PUT", path, {
+      const res = await this.request('PUT', path, {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -1616,9 +1456,9 @@ export class ObsidianClient {
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("POST", path, {
+      const res = await this.request('POST', path, {
         body: content,
-        headers: { "Content-Type": "text/markdown" },
+        headers: { 'Content-Type': 'text/markdown' },
       });
 
       if (res.statusCode !== 204 && res.statusCode !== 200) {
@@ -1641,7 +1481,7 @@ export class ObsidianClient {
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const datePath = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("PATCH", datePath, {
+      const res = await this.request('PATCH', datePath, {
         body: content,
         headers: this.buildPatchHeaders(options),
       });
@@ -1653,11 +1493,11 @@ export class ObsidianClient {
 
       if (
         res.statusCode === 400 &&
-        options.targetType === "heading" &&
+        options.targetType === 'heading' &&
         isHeadingNotFoundError(res.body)
       ) {
         const corrected = await this.retryPatchWithMapLookup(
-          () => this.getPeriodicNoteForDate(period, year, month, day, "map"),
+          () => this.getPeriodicNoteForDate(period, year, month, day, 'map'),
           datePath,
           content,
           options,
@@ -1665,7 +1505,7 @@ export class ObsidianClient {
         );
         if (corrected !== false) {
           log(
-            "debug",
+            'debug',
             `PATCH heading auto-corrected: "${options.target}" → "${corrected}" in (periodic: ${period} date)`,
           );
           this.cacheRef?.invalidateAll();
@@ -1688,13 +1528,9 @@ export class ObsidianClient {
     // both /periodic/{period}/ and /periodic/{period}/{y}/{m}/{d}/ to the same file
     await this.withSyntheticLock(`periodic_${period}`, async () => {
       const path = this.periodicDatePath(period, year, month, day);
-      const res = await this.request("DELETE", path);
+      const res = await this.request('DELETE', path);
 
-      if (
-        res.statusCode !== 204 &&
-        res.statusCode !== 200 &&
-        res.statusCode !== 404
-      ) {
+      if (res.statusCode !== 204 && res.statusCode !== 200 && res.statusCode !== 404) {
         this.handleErrorResponse(res.statusCode, res.body);
       }
       this.cacheRef?.invalidateAll();

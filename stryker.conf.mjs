@@ -6,10 +6,10 @@
 
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
-  packageManager: "npm",
-  reporters: ["html", "clear-text", "progress"],
-  testRunner: "vitest",
-  coverageAnalysis: "perTest",
+  packageManager: 'npm',
+  reporters: ['html', 'clear-text', 'progress'],
+  testRunner: 'vitest',
+  coverageAnalysis: 'perTest',
   // Glob patterns keyed to this repo's actual file types: only .ts (no
   // .tsx in src/) and .test.ts convention (no .spec.* suffix anywhere).
   // Stryker emits a zero-match warning for every unused glob otherwise.
@@ -41,7 +41,7 @@ export default {
   //   Removed 270 NoCoverage mutants (the file was at 0.00 %) from the
   //   aggregate denominator, lifting the score from 66.38 % → 70.30 %
   //   at carve-out time.
-  mutate: ["src/**/*.ts", "!src/**/*.test.ts", "!src/index.ts"],
+  mutate: ['src/**/*.ts', '!src/**/*.test.ts', '!src/index.ts'],
   // Baseline score on v1.1.1 was 56.78 %. The `break` threshold ratchets up
   // `(new_score − 1pp)` after each test-improvement PR so it always sits
   // ~1pp below the current kill rate — tight enough to catch a regression,
@@ -100,5 +100,5 @@ export default {
   // gets tested. Explicit for the same reason as above.
   warnings: { slow: false },
   incremental: true,
-  incrementalFile: "reports/stryker-incremental.json",
+  incrementalFile: 'reports/stryker-incremental.json',
 };

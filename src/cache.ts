@@ -1,12 +1,12 @@
-import type { ObsidianClient, VaultCacheInterface } from "./obsidian.js";
-import { ObsidianConnectionError, ObsidianAuthError } from "./errors.js";
-import { log } from "./config.js";
+import { log } from './config.js';
+import { ObsidianAuthError, ObsidianConnectionError } from './errors.js';
+import type { ObsidianClient, VaultCacheInterface } from './obsidian.js';
 
 /** Sentinel error for generation-mismatch discards — retried immediately without backoff. */
 class CacheBuildDiscardedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "CacheBuildDiscardedError";
+    this.name = 'CacheBuildDiscardedError';
   }
 }
 
@@ -15,7 +15,7 @@ class CacheBuildDiscardedError extends Error {
 /** A parsed link extracted from note content, with resolved target and context. */
 export interface ParsedLink {
   readonly target: string;
-  readonly type: "wikilink" | "markdown";
+  readonly type: 'wikilink' | 'markdown';
   readonly context: string;
 }
 
@@ -45,13 +45,10 @@ export interface CachedNote {
  * @param currentPath - The vault path of the note containing the links.
  */
 export function parseLinks(content: string, currentPath: string): ParsedLink[] {
-  const currentDir = currentPath.includes("/")
-    ? currentPath.slice(0, currentPath.lastIndexOf("/"))
-    : "";
-  return [
-    ...parseWikilinks(content),
-    ...parseMarkdownLinks(content, currentDir),
-  ];
+  const currentDir = currentPath.includes('/')
+    ? currentPath.slice(0, currentPath.lastIndexOf('/'))
+    : '';
+  return [...parseWikilinks(content), ...parseMarkdownLinks(content, currentDir)];
 }
 
 /** Scans content for [[wikilink]] patterns using string scanning (no regex). Handles unclosed [[ by skipping to the next [[ instead of consuming a later ]] greedily. */
@@ -59,12 +56,12 @@ function parseWikilinks(content: string): ParsedLink[] {
   const links: ParsedLink[] = [];
   let pos = 0;
   while (pos < content.length) {
-    const start = content.indexOf("[[", pos);
+    const start = content.indexOf('[[', pos);
     if (start === -1) break;
-    const end = content.indexOf("]]", start + 2);
+    const end = content.indexOf(']]', start + 2);
     if (end === -1) break;
     // Check for a nested [[ between start and end — if found, the outer [[ is unclosed
-    const nestedOpen = content.indexOf("[[", start + 2);
+    const nestedOpen = content.indexOf('[[', start + 2);
     if (nestedOpen !== -1 && nestedOpen < end) {
       // Skip this unclosed [[ and restart from the nested one
       pos = nestedOpen;
@@ -78,8 +75,8 @@ function parseWikilinks(content: string): ParsedLink[] {
       const contextEnd = Math.min(content.length, end + 2 + 25);
       links.push({
         target,
-        type: "wikilink",
-        context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
+        type: 'wikilink',
+        context: content.slice(contextStart, contextEnd).replaceAll('\n', ' '),
       });
     }
     pos = end + 2;
@@ -89,8 +86,8 @@ function parseWikilinks(content: string): ParsedLink[] {
 
 /** Extracts the note name from a wikilink inner text, stripping #heading and |alias. */
 function extractWikilinkTarget(inner: string): string {
-  const hashIdx = inner.indexOf("#");
-  const pipeIdx = inner.indexOf("|");
+  const hashIdx = inner.indexOf('#');
+  const pipeIdx = inner.indexOf('|');
   let raw = inner;
   if (hashIdx !== -1 && (pipeIdx === -1 || hashIdx < pipeIdx)) {
     raw = inner.slice(0, hashIdx);
@@ -104,13 +101,13 @@ function extractWikilinkTarget(inner: string): string {
 function findMatchingParen(content: string, openPos: number): number {
   let depth = 1;
   for (let i = openPos + 1; i < content.length; i++) {
-    if (content[i] === "(") depth++;
-    else if (content[i] === ")") {
+    if (content[i] === '(') depth++;
+    else if (content[i] === ')') {
       depth--;
       if (depth === 0) return i;
     }
     // Stop at newline — markdown links don't span lines
-    if (content[i] === "\n") return -1;
+    if (content[i] === '\n') return -1;
   }
   return -1;
 }
@@ -120,11 +117,11 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
   const links: ParsedLink[] = [];
   let pos = 0;
   while (pos < content.length) {
-    const bracketOpen = content.indexOf("[", pos);
+    const bracketOpen = content.indexOf('[', pos);
     if (bracketOpen === -1) break;
-    const bracketClose = content.indexOf("]", bracketOpen + 1);
+    const bracketClose = content.indexOf(']', bracketOpen + 1);
     if (bracketClose === -1) break;
-    if (content[bracketClose + 1] !== "(") {
+    if (content[bracketClose + 1] !== '(') {
       pos = bracketClose + 1;
       continue;
     }
@@ -148,8 +145,8 @@ function parseMarkdownLinks(content: string, currentDir: string): ParsedLink[] {
       const contextEnd = Math.min(content.length, parenClose + 1 + 25);
       links.push({
         target,
-        type: "markdown",
-        context: content.slice(contextStart, contextEnd).replaceAll("\n", " "),
+        type: 'markdown',
+        context: content.slice(contextStart, contextEnd).replaceAll('\n', ' '),
       });
     }
     pos = parenClose + 1;
@@ -163,8 +160,8 @@ function extractMdLinkPath(url: string): string | undefined {
   if (/^[a-z][a-z0-9+\-.]*:/i.test(url)) {
     return undefined;
   }
-  const hashPos = url.indexOf("#");
-  const queryPos = url.indexOf("?");
+  const hashPos = url.indexOf('#');
+  const queryPos = url.indexOf('?');
   let pathEnd = url.length;
   if (hashPos !== -1 && hashPos < pathEnd) pathEnd = hashPos;
   if (queryPos !== -1 && queryPos < pathEnd) pathEnd = queryPos;
@@ -175,42 +172,40 @@ function extractMdLinkPath(url: string): string | undefined {
   if (titleMatch?.[1]) {
     path = titleMatch[1];
   }
-  return path.toLowerCase().endsWith(".md") && path.length > 3
-    ? path
-    : undefined;
+  return path.toLowerCase().endsWith('.md') && path.length > 3 ? path : undefined;
 }
 
 /** Normalises a wikilink target to a short `.md` filename for later index-based resolution. */
 function resolveWikilink(target: string): string {
   let resolved = target;
-  if (!resolved.toLowerCase().endsWith(".md")) {
+  if (!resolved.toLowerCase().endsWith('.md')) {
     resolved = `${resolved}.md`;
   }
   // Wikilinks are vault-wide; keep as short name — resolved at graph-query time via suffix match
-  return resolved.replaceAll("\\", "/");
+  return resolved.replaceAll('\\', '/');
 }
 
 /** Resolves a relative markdown link path against the directory of the containing note. */
 function resolveRelativePath(target: string, currentDir: string): string {
-  const normalized = target.replaceAll("\\", "/");
+  const normalized = target.replaceAll('\\', '/');
   // For absolute paths, strip the leading slash; for relative, prepend currentDir
   let raw: string;
-  if (normalized.startsWith("/")) {
+  if (normalized.startsWith('/')) {
     raw = normalized.slice(1);
   } else {
-    const base = currentDir ? `${currentDir}/` : "";
+    const base = currentDir ? `${currentDir}/` : '';
     raw = `${base}${normalized}`;
   }
-  const parts = raw.split("/");
+  const parts = raw.split('/');
   const resolved: string[] = [];
   for (const part of parts) {
-    if (part === "..") {
+    if (part === '..') {
       resolved.pop();
-    } else if (part !== "." && part !== "") {
+    } else if (part !== '.' && part !== '') {
       resolved.push(part);
     }
   }
-  return resolved.join("/");
+  return resolved.join('/');
 }
 
 // --- Vault Cache ---
@@ -295,7 +290,7 @@ export class VaultCache implements VaultCacheInterface {
    * Callers share buildPromise; see initialize() finally block for ordering invariants.
    */
   private async doInitialize(): Promise<void> {
-    let lastError: unknown = new Error("No build attempt was made");
+    let lastError: unknown = new Error('No build attempt was made');
     let firstRealError: unknown; // First non-discard error for root cause diagnostics
     let hadNonDiscardError = false;
     for (let attempt = 0; attempt < VaultCache.INIT_MAX_ATTEMPTS; attempt++) {
@@ -327,22 +322,18 @@ export class VaultCache implements VaultCacheInterface {
     attempt: number,
   ): { isDiscard: boolean; backoffMs: number } {
     if (err instanceof ObsidianAuthError) {
-      log(
-        "warn",
-        `Cache initialization failed (non-transient): ${err.message}`,
-      );
+      log('warn', `Cache initialization failed (non-transient): ${err.message}`);
       throw err;
     }
     // ObsidianApiError (including 4xx) is retried — max 3 attempts limits exposure
     const isDiscard = err instanceof CacheBuildDiscardedError;
     const msg = err instanceof Error ? err.message : String(err);
     log(
-      isDiscard ? "debug" : "warn",
+      isDiscard ? 'debug' : 'warn',
       `Cache init attempt ${String(attempt + 1)}/${String(VaultCache.INIT_MAX_ATTEMPTS)} failed: ${msg}`,
     );
     // No backoff on final attempt; shorter for discards, longer for network errors
-    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1)
-      return { isDiscard, backoffMs: 0 };
+    if (attempt >= VaultCache.INIT_MAX_ATTEMPTS - 1) return { isDiscard, backoffMs: 0 };
     const backoffMs = isDiscard
       ? VaultCache.DISCARD_BACKOFF_MS
       : VaultCache.NETWORK_BACKOFF_BASE_MS * (attempt + 1);
@@ -350,33 +341,23 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Throws the appropriate error after exhausting all retry attempts. */
-  private throwExhaustedError(
-    hadNonDiscardError: boolean,
-    lastError: unknown,
-  ): never {
+  private throwExhaustedError(hadNonDiscardError: boolean, lastError: unknown): never {
     const msg = hadNonDiscardError
       ? `Cache initialization failed after ${String(VaultCache.INIT_MAX_ATTEMPTS)} attempts. Try refresh_cache later.`
       : `Cache initialization failed: vault was invalidated ${String(VaultCache.INIT_MAX_ATTEMPTS)} times during build. Try refresh_cache later.`;
     // Don't expose internal CacheBuildDiscardedError as cause — it's a sentinel
     let cause: Error | undefined;
-    if (
-      lastError instanceof Error &&
-      !(lastError instanceof CacheBuildDiscardedError)
-    ) {
+    if (lastError instanceof Error && !(lastError instanceof CacheBuildDiscardedError)) {
       cause = lastError;
     }
     throw new ObsidianConnectionError(msg, { cause });
   }
 
   /** Executes a single build attempt. Throws on generation mismatch or failure. */
-  private async executeBuildAttempt(
-    attempt: number,
-    maxAttempts: number,
-  ): Promise<void> {
+  private async executeBuildAttempt(attempt: number, maxAttempts: number): Promise<void> {
     const startTime = Date.now();
     const buildGeneration = this.generation;
-    const { notes: freshNotes, totalFiles } =
-      await this.fetchAllNotes(buildGeneration);
+    const { notes: freshNotes, totalFiles } = await this.fetchAllNotes(buildGeneration);
 
     if (this.generation !== buildGeneration) {
       throw new CacheBuildDiscardedError(
@@ -394,23 +375,23 @@ export class VaultCache implements VaultCacheInterface {
     this.applySnapshot(freshNotes);
     this.isInitialized = true;
     log(
-      "info",
+      'info',
       `Cache: ready (${String(this.notes.size)} notes, ${String(this.linkCount)} links) in ${String(elapsed)}ms`,
     );
   }
 
   /** Normalizes a path and returns `undefined` if it contains unsafe segments (`..` or absolute). */
   private static normalizePath(raw: string): string | undefined {
-    let normalized = raw.replaceAll("\\", "/");
+    let normalized = raw.replaceAll('\\', '/');
     // Check for absolute paths BEFORE stripping slashes — "/" would become "" otherwise
-    if (normalized.startsWith("/")) return undefined;
-    while (normalized.endsWith("/")) {
+    if (normalized.startsWith('/')) return undefined;
+    while (normalized.endsWith('/')) {
       normalized = normalized.slice(0, -1);
     }
     // Collapse single-dot and empty segments, then check for .. traversal
-    const segments = normalized.split("/").filter((s) => s !== "." && s !== "");
-    if (segments.includes("..")) return undefined;
-    return segments.join("/");
+    const segments = normalized.split('/').filter((s) => s !== '.' && s !== '');
+    if (segments.includes('..')) return undefined;
+    return segments.join('/');
   }
 
   /**
@@ -424,7 +405,7 @@ export class VaultCache implements VaultCacheInterface {
   private async collectAllMarkdownFiles(): Promise<string[]> {
     const allFiles: string[] = [];
     const visited = new Set<string>();
-    await this.traverseDirectory("", allFiles, visited);
+    await this.traverseDirectory('', allFiles, visited);
     return allFiles;
   }
 
@@ -446,21 +427,21 @@ export class VaultCache implements VaultCacheInterface {
   ): Promise<void> {
     if (depth > VaultCache.MAX_TRAVERSAL_DEPTH) {
       log(
-        "warn",
+        'warn',
         `Cache: skipping directory "${dirPath}" — max depth ${String(VaultCache.MAX_TRAVERSAL_DEPTH)} exceeded`,
       );
       return;
     }
     const normalized = VaultCache.normalizePath(dirPath);
     if (normalized === undefined) {
-      log("warn", `Cache: skipping unsafe directory path "${dirPath}"`);
+      log('warn', `Cache: skipping unsafe directory path "${dirPath}"`);
       return;
     }
     // normalizePath(".") collapses to "" (vault root), so a "." entry will also
     // hit this guard — semantically a self-reference rather than a cycle, but
     // the guard is correct either way.
     if (visited.has(normalized)) {
-      log("debug", `Cache: skipping already-visited directory "${dirPath}"`);
+      log('debug', `Cache: skipping already-visited directory "${dirPath}"`);
       return;
     }
     visited.add(normalized);
@@ -468,12 +449,12 @@ export class VaultCache implements VaultCacheInterface {
     const { files } = await this.listDirectory(normalized);
     // The REST API returns paths relative to the listed directory.
     // Prepend the parent path to construct full vault-relative paths.
-    const prefix = normalized === "" ? "" : `${normalized}/`;
+    const prefix = normalized === '' ? '' : `${normalized}/`;
 
     const dirEntries: string[] = [];
     for (const file of files) {
       const fullPath = `${prefix}${file}`;
-      if (file.endsWith("/")) {
+      if (file.endsWith('/')) {
         dirEntries.push(fullPath);
       } else {
         VaultCache.collectFileEntry(fullPath, allFiles);
@@ -488,10 +469,8 @@ export class VaultCache implements VaultCacheInterface {
    * Lists files in a directory, dispatching to vault root or subdirectory listing.
    * @param normalized - Normalized vault-relative directory path.
    */
-  private async listDirectory(
-    normalized: string,
-  ): Promise<{ files: string[] }> {
-    return normalized === ""
+  private async listDirectory(normalized: string): Promise<{ files: string[] }> {
+    return normalized === ''
       ? this.client.listFilesInVault()
       : this.client.listFilesInDir(normalized);
   }
@@ -502,10 +481,10 @@ export class VaultCache implements VaultCacheInterface {
    * @param allFiles - Accumulator array; safe `.md` paths are appended in-place.
    */
   private static collectFileEntry(file: string, allFiles: string[]): void {
-    if (!file.toLowerCase().endsWith(".md")) return;
+    if (!file.toLowerCase().endsWith('.md')) return;
     const safe = VaultCache.normalizePath(file);
     if (safe === undefined) {
-      log("warn", `Cache: skipping unsafe file path "${file}"`);
+      log('warn', `Cache: skipping unsafe file path "${file}"`);
       return;
     }
     allFiles.push(safe);
@@ -525,20 +504,12 @@ export class VaultCache implements VaultCacheInterface {
     depth: number,
   ): Promise<void> {
     try {
-      await this.traverseDirectory(
-        dirEntry.slice(0, -1),
-        allFiles,
-        visited,
-        depth,
-      );
+      await this.traverseDirectory(dirEntry.slice(0, -1), allFiles, visited, depth);
     } catch (err: unknown) {
       if (err instanceof ObsidianAuthError) throw err;
       if (err instanceof ObsidianConnectionError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
-      log(
-        "debug",
-        `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`,
-      );
+      log('debug', `Cache: skipping inaccessible directory "${dirEntry.slice(0, -1)}": ${msg}`);
     }
   }
 
@@ -547,7 +518,7 @@ export class VaultCache implements VaultCacheInterface {
     buildGeneration: number,
   ): Promise<{ notes: Map<string, CachedNote>; totalFiles: number }> {
     const mdFiles = [...new Set(await this.collectAllMarkdownFiles())];
-    log("info", `Cache: indexing ${String(mdFiles.length)} markdown files...`);
+    log('info', `Cache: indexing ${String(mdFiles.length)} markdown files...`);
 
     const freshNotes = new Map<string, CachedNote>();
     const batchSize = 20;
@@ -557,8 +528,8 @@ export class VaultCache implements VaultCacheInterface {
       const batch = mdFiles.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (filePath) => {
-          const result = await this.client.getFileContents(filePath, "json");
-          if (typeof result === "string" || !("content" in result)) {
+          const result = await this.client.getFileContents(filePath, 'json');
+          if (typeof result === 'string' || !('content' in result)) {
             throw new Error(
               `Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`,
             );
@@ -576,8 +547,8 @@ export class VaultCache implements VaultCacheInterface {
         }),
       );
       for (const r of results) {
-        if (r.status === "rejected") {
-          log("debug", `Cache: failed to fetch a file: ${String(r.reason)}`);
+        if (r.status === 'rejected') {
+          log('debug', `Cache: failed to fetch a file: ${String(r.reason)}`);
         }
       }
     }
@@ -621,30 +592,21 @@ export class VaultCache implements VaultCacheInterface {
       const mdFiles = new Set(allMdFiles);
 
       const deleted = this.pruneDeletedNotes(mdFiles);
-      const updated = await this.fetchChangedNotes(
-        [...mdFiles],
-        refreshGeneration,
-      );
+      const updated = await this.fetchChangedNotes([...mdFiles], refreshGeneration);
 
       if (this.generation !== refreshGeneration) {
-        log(
-          "debug",
-          "Cache refresh discarded: vault was invalidated during refresh",
-        );
+        log('debug', 'Cache refresh discarded: vault was invalidated during refresh');
         return;
       }
 
       if (updated > 0 || deleted > 0) {
         this.rebuildIndex();
         this.recalcLinkCount();
-        log(
-          "debug",
-          `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`,
-        );
+        log('debug', `Cache refreshed: ${String(updated)} updated, ${String(deleted)} deleted`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      log("warn", `Cache refresh failed: ${message}`);
+      log('warn', `Cache refresh failed: ${message}`);
     } finally {
       this.isRefreshing = false;
       this.invalidatedDuringRefresh.clear();
@@ -675,8 +637,8 @@ export class VaultCache implements VaultCacheInterface {
       const batch = filesToCheck.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (filePath) => {
-          const result = await this.client.getFileContents(filePath, "json");
-          if (typeof result === "string" || !("content" in result)) {
+          const result = await this.client.getFileContents(filePath, 'json');
+          if (typeof result === 'string' || !('content' in result)) {
             throw new Error(
               `Expected NoteJson for ${filePath}, got unexpected response format. Check Obsidian REST API version.`,
             );
@@ -702,11 +664,8 @@ export class VaultCache implements VaultCacheInterface {
       );
 
       for (const r of results) {
-        if (r.status === "rejected") {
-          log(
-            "debug",
-            `Cache refresh: failed to fetch a file: ${String(r.reason)}`,
-          );
+        if (r.status === 'rejected') {
+          log('debug', `Cache refresh: failed to fetch a file: ${String(r.reason)}`);
         }
       }
     }
@@ -805,7 +764,7 @@ export class VaultCache implements VaultCacheInterface {
           () => undefined,
           (err: unknown) => {
             log(
-              "debug",
+              'debug',
               `Cache build failed during wait: ${err instanceof Error ? err.message : String(err)}`,
             );
           },
@@ -854,8 +813,7 @@ export class VaultCache implements VaultCacheInterface {
     if (this.isRefreshing) {
       this.invalidatedDuringRefresh.add(path);
     }
-    const shortName =
-      path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+    const shortName = path.split('/').pop()?.toLowerCase() ?? path.toLowerCase();
     const bucket = this.shortNameIndex.get(shortName);
     if (bucket) {
       bucket.delete(path);
@@ -925,9 +883,7 @@ export class VaultCache implements VaultCacheInterface {
   }
 
   /** Returns the most connected notes sorted by total link count (inbound + outbound). */
-  getMostConnectedNotes(
-    limit: number,
-  ): Array<{ path: string; inbound: number; outbound: number }> {
+  getMostConnectedNotes(limit: number): Array<{ path: string; inbound: number; outbound: number }> {
     const inboundCounts = new Map<string, number>();
 
     for (const note of this.notes.values()) {
@@ -939,8 +895,7 @@ export class VaultCache implements VaultCacheInterface {
       }
     }
 
-    const results: Array<{ path: string; inbound: number; outbound: number }> =
-      [];
+    const results: Array<{ path: string; inbound: number; outbound: number }> = [];
 
     for (const note of this.notes.values()) {
       // Count only outbound links that resolve to existing notes (consistent with inbound)
@@ -1026,8 +981,8 @@ export class VaultCache implements VaultCacheInterface {
 
   /** Normalises a link target to lowercase with forward slashes and a `.md` extension. */
   private normalizeLinkTarget(path: string): string {
-    let normalized = path.toLowerCase().replaceAll("\\", "/");
-    if (!normalized.endsWith(".md")) {
+    let normalized = path.toLowerCase().replaceAll('\\', '/');
+    if (!normalized.endsWith('.md')) {
       normalized = `${normalized}.md`;
     }
     return normalized;
@@ -1046,8 +1001,7 @@ export class VaultCache implements VaultCacheInterface {
   private rebuildIndex(): void {
     this.shortNameIndex.clear();
     for (const path of this.notes.keys()) {
-      const shortName =
-        path.split("/").pop()?.toLowerCase() ?? path.toLowerCase();
+      const shortName = path.split('/').pop()?.toLowerCase() ?? path.toLowerCase();
       let bucket = this.shortNameIndex.get(shortName);
       if (!bucket) {
         bucket = new Set<string>();
@@ -1074,7 +1028,7 @@ export class VaultCache implements VaultCacheInterface {
       return normalized;
     }
     // Short-name lookup via index (handles short-name wikilinks and remaining case variants)
-    const shortName = normalized.split("/").pop() ?? normalized;
+    const shortName = normalized.split('/').pop() ?? normalized;
     const candidates = this.shortNameIndex.get(shortName);
     if (candidates) {
       // Pass 1: exact normalized path match (also covers root-level notes like "notename.md")

@@ -1,73 +1,68 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-
-import type { ObsidianClient, ToolResult, PatchOptions } from "../obsidian.js";
-import { textResult, errorResult, jsonResult } from "../obsidian.js";
-import type { VaultCache } from "../cache.js";
-import type { Config } from "../config.js";
-import { buildErrorMessage } from "../errors.js";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { VaultCache } from '../cache.js';
+import type { Config } from '../config.js';
+import { buildErrorMessage } from '../errors.js';
+import type { ObsidianClient, PatchOptions, ToolResult } from '../obsidian.js';
+import { errorResult, jsonResult, textResult } from '../obsidian.js';
 import {
   formatSchema,
-  periodSchema,
+  patchContentTypeSchema,
   patchOperationSchema,
   patchTargetTypeSchema,
-  patchContentTypeSchema,
-} from "../schemas.js";
+  periodSchema,
+} from '../schemas.js';
 import {
-  formatFileContents,
-  escapeRegex,
+  batchGetFiles,
   buildVaultStructure,
+  ensureCacheReady,
+  escapeRegex,
+  formatFileContents,
+  handleMoveFile,
   handleRecentChanges,
   handleRecentPeriodicNotes,
-  batchGetFiles,
-  ensureCacheReady,
-  handleMoveFile,
-  registerOpenFileTool,
   registerConfigureTool,
-} from "./shared.js";
+  registerOpenFileTool,
+} from './shared.js';
 
 // --- Preset action restrictions for consolidated mode ---
 
 /** Actions allowed in read-only preset (consolidated mode). */
 const READ_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
-  vault: new Set(["list", "list_dir", "get"]),
-  active_file: new Set(["get"]),
-  commands: new Set(["list"]),
-  periodic_note: new Set(["get"]),
+  vault: new Set(['list', 'list_dir', 'get']),
+  active_file: new Set(['get']),
+  commands: new Set(['list']),
+  periodic_note: new Set(['get']),
   // recent and search are inherently read-only — no action restrictions needed
-  vault_analysis: new Set(["backlinks", "connections", "structure", "refresh"]),
+  vault_analysis: new Set(['backlinks', 'connections', 'structure', 'refresh']),
 };
 
 /** Actions removed in safe preset (consolidated mode). */
 const SAFE_BLOCKED_ACTIONS: Record<string, ReadonlySet<string>> = {
-  vault: new Set(["delete"]),
-  active_file: new Set(["delete"]),
-  periodic_note: new Set(["delete"]),
+  vault: new Set(['delete']),
+  active_file: new Set(['delete']),
+  periodic_note: new Set(['delete']),
 };
 
 /** Actions allowed in minimal preset (consolidated mode). */
 const MINIMAL_ACTIONS: Record<string, ReadonlySet<string>> = {
-  vault: new Set(["list", "list_dir", "get", "append"]),
-  search: new Set(["simple"]),
+  vault: new Set(['list', 'list_dir', 'get', 'append']),
+  search: new Set(['simple']),
 };
 
 // --- Helpers ---
 
 /** Checks if an action is allowed under the active preset for a given tool. */
-function isActionAllowed(
-  toolName: string,
-  action: string,
-  preset: string,
-): boolean {
-  if (preset === "read-only") {
+function isActionAllowed(toolName: string, action: string, preset: string): boolean {
+  if (preset === 'read-only') {
     const allowed = READ_ONLY_ACTIONS[toolName];
     return allowed === undefined || allowed.has(action);
   }
-  if (preset === "safe") {
+  if (preset === 'safe') {
     const blocked = SAFE_BLOCKED_ACTIONS[toolName];
     return !blocked?.has(action);
   }
-  if (preset === "minimal") {
+  if (preset === 'minimal') {
     const allowed = MINIMAL_ACTIONS[toolName];
     return allowed === undefined || allowed.has(action);
   }
@@ -79,27 +74,27 @@ function isActionAllowed(
 /** Inferred args shape for the vault consolidated tool. */
 interface VaultArgs {
   readonly action:
-    | "list"
-    | "list_dir"
-    | "get"
-    | "put"
-    | "append"
-    | "patch"
-    | "delete"
-    | "search_replace"
-    | "move";
+    | 'list'
+    | 'list_dir'
+    | 'get'
+    | 'put'
+    | 'append'
+    | 'patch'
+    | 'delete'
+    | 'search_replace'
+    | 'move';
   readonly path?: string | undefined;
   readonly content?: string | undefined;
   readonly source?: string | undefined;
   readonly destination?: string | undefined;
-  readonly format?: "markdown" | "json" | "map" | undefined;
-  readonly operation?: PatchOptions["operation"] | undefined;
-  readonly targetType?: PatchOptions["targetType"] | undefined;
+  readonly format?: 'markdown' | 'json' | 'map' | undefined;
+  readonly operation?: PatchOptions['operation'] | undefined;
+  readonly targetType?: PatchOptions['targetType'] | undefined;
   readonly target?: string | undefined;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: PatchOptions["contentType"];
+  readonly contentType?: PatchOptions['contentType'];
   readonly search?: string | undefined;
   readonly replace?: string | undefined;
   readonly useRegex: boolean;
@@ -108,10 +103,7 @@ interface VaultArgs {
 }
 
 /** Validates that path is present, returning an error result if missing. */
-function requirePath(
-  action: string,
-  path: string | undefined,
-): ToolResult | undefined {
+function requirePath(action: string, path: string | undefined): ToolResult | undefined {
   if (!path) return errorResult(`[vault] path is required for ${action}`);
   return undefined;
 }
@@ -119,15 +111,14 @@ function requirePath(
 /** Dispatches a vault action to the appropriate client method. */
 async function handleVaultAction(
   client: ObsidianClient,
-  action: VaultArgs["action"],
+  action: VaultArgs['action'],
   path: string | undefined,
   args: VaultArgs,
 ): Promise<ToolResult> {
-  if (action === "list") return jsonResult(await client.listFilesInVault());
-  if (action === "move") {
-    if (!args.source) return errorResult("[vault] source is required for move");
-    if (!args.destination)
-      return errorResult("[vault] destination is required for move");
+  if (action === 'list') return jsonResult(await client.listFilesInVault());
+  if (action === 'move') {
+    if (!args.source) return errorResult('[vault] source is required for move');
+    if (!args.destination) return errorResult('[vault] destination is required for move');
     return handleMoveFile(client, args.source, args.destination);
   }
   const pathErr = requirePath(action, path);
@@ -135,28 +126,24 @@ async function handleVaultAction(
   // After requirePath, path is guaranteed non-empty
   const safePath = path!;
   switch (action) {
-    case "list_dir":
+    case 'list_dir':
       return jsonResult(await client.listFilesInDir(safePath));
-    case "get":
-      return formatFileContents(
-        await client.getFileContents(safePath, args.format),
-      );
-    case "put":
-      if (args.content === undefined)
-        return errorResult("[vault] content is required for put");
+    case 'get':
+      return formatFileContents(await client.getFileContents(safePath, args.format));
+    case 'put':
+      if (args.content === undefined) return errorResult('[vault] content is required for put');
       await client.putContent(safePath, args.content);
       return textResult(`Written: ${safePath}`);
-    case "append":
-      if (args.content === undefined)
-        return errorResult("[vault] content is required for append");
+    case 'append':
+      if (args.content === undefined) return errorResult('[vault] content is required for append');
       await client.appendContent(safePath, args.content);
       return textResult(`Appended to: ${safePath}`);
-    case "patch":
+    case 'patch':
       return handleVaultPatch(client, safePath, args);
-    case "delete":
+    case 'delete':
       await client.deleteFile(safePath);
       return textResult(`Deleted: ${safePath}`);
-    case "search_replace":
+    case 'search_replace':
       return handleVaultSearchReplace(
         client,
         safePath,
@@ -178,13 +165,13 @@ async function handleVaultAction(
 /** Args for the vault "patch" action. */
 interface VaultPatchArgs {
   readonly content?: string | undefined;
-  readonly operation?: PatchOptions["operation"] | undefined;
-  readonly targetType?: PatchOptions["targetType"] | undefined;
+  readonly operation?: PatchOptions['operation'] | undefined;
+  readonly targetType?: PatchOptions['targetType'] | undefined;
   readonly target?: string | undefined;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: PatchOptions["contentType"];
+  readonly contentType?: PatchOptions['contentType'];
 }
 
 /** Handles the vault "patch" action. */
@@ -193,13 +180,10 @@ async function handleVaultPatch(
   path: string,
   args: VaultPatchArgs,
 ): Promise<ToolResult> {
-  if (args.content === undefined)
-    return errorResult("[vault] content is required for patch");
-  if (!args.operation)
-    return errorResult("[vault] operation is required for patch");
-  if (!args.targetType)
-    return errorResult("[vault] targetType is required for patch");
-  if (!args.target) return errorResult("[vault] target is required for patch");
+  if (args.content === undefined) return errorResult('[vault] content is required for patch');
+  if (!args.operation) return errorResult('[vault] operation is required for patch');
+  if (!args.targetType) return errorResult('[vault] targetType is required for patch');
+  if (!args.target) return errorResult('[vault] target is required for patch');
   await client.patchContent(path, args.content, {
     operation: args.operation,
     targetType: args.targetType,
@@ -222,25 +206,24 @@ async function handleVaultSearchReplace(
   replaceAll: boolean,
   useRegex: boolean,
 ): Promise<ToolResult> {
-  if (!search)
-    return errorResult("[vault] search is required for search_replace");
+  if (!search) return errorResult('[vault] search is required for search_replace');
   if (replaceText === undefined)
-    return errorResult("[vault] replace is required for search_replace");
-  const result = await client.getFileContents(path, "markdown", true);
-  if (typeof result !== "string") {
-    return errorResult("[vault] Expected markdown content");
+    return errorResult('[vault] replace is required for search_replace');
+  const result = await client.getFileContents(path, 'markdown', true);
+  if (typeof result !== 'string') {
+    return errorResult('[vault] Expected markdown content');
   }
-  const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
+  const flags = `${caseSensitive ? '' : 'i'}${replaceAll ? 'g' : ''}`;
   let pattern: RegExp;
   if (useRegex) {
     try {
-      // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
+      // Dynamic regex: user-supplied regex is intentional; wrapped in try/catch
       pattern = new RegExp(search, flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
     } catch {
       return errorResult(`[vault] Invalid regex: "${search}"`);
     }
   } else {
-    // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
+    // Dynamic regex: user input is escaped via escapeRegex()
     pattern = new RegExp(escapeRegex(search), flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   }
   const updated = useRegex
@@ -263,13 +246,13 @@ interface PeriodicPatchArgs {
   readonly month: number;
   readonly day: number;
   readonly content: string | undefined;
-  readonly operation: "append" | "prepend" | "replace" | undefined;
-  readonly targetType: "heading" | "block" | "frontmatter" | undefined;
+  readonly operation: 'append' | 'prepend' | 'replace' | undefined;
+  readonly targetType: 'heading' | 'block' | 'frontmatter' | undefined;
   readonly target: string | undefined;
   readonly targetDelimiter: string | undefined;
   readonly trimTargetWhitespace: boolean | undefined;
   readonly createIfMissing: boolean | undefined;
-  readonly contentType: "markdown" | "json" | undefined;
+  readonly contentType: 'markdown' | 'json' | undefined;
 }
 
 /** Handles periodic_note "patch" action. */
@@ -278,13 +261,10 @@ async function handlePeriodicPatch(
   args: PeriodicPatchArgs,
 ): Promise<ToolResult> {
   if (args.content === undefined)
-    return errorResult("[periodic_note] content is required for patch");
-  if (!args.operation)
-    return errorResult("[periodic_note] operation is required for patch");
-  if (!args.targetType)
-    return errorResult("[periodic_note] targetType is required for patch");
-  if (!args.target)
-    return errorResult("[periodic_note] target is required for patch");
+    return errorResult('[periodic_note] content is required for patch');
+  if (!args.operation) return errorResult('[periodic_note] operation is required for patch');
+  if (!args.targetType) return errorResult('[periodic_note] targetType is required for patch');
+  if (!args.target) return errorResult('[periodic_note] target is required for patch');
   const patchOpts = {
     operation: args.operation,
     targetType: args.targetType,
@@ -313,20 +293,20 @@ async function handlePeriodicPatch(
 
 /** Periodic note args shape. */
 interface PeriodicNoteArgs {
-  readonly action: "get" | "put" | "append" | "patch" | "delete";
+  readonly action: 'get' | 'put' | 'append' | 'patch' | 'delete';
   readonly period: string;
   readonly year?: number | undefined;
   readonly month?: number | undefined;
   readonly day?: number | undefined;
   readonly content?: string | undefined;
-  readonly format?: "markdown" | "json" | "map" | undefined;
-  readonly operation?: "append" | "prepend" | "replace" | undefined;
-  readonly targetType?: "heading" | "block" | "frontmatter" | undefined;
+  readonly format?: 'markdown' | 'json' | 'map' | undefined;
+  readonly operation?: 'append' | 'prepend' | 'replace' | undefined;
+  readonly targetType?: 'heading' | 'block' | 'frontmatter' | undefined;
   readonly target?: string | undefined;
   readonly targetDelimiter?: string | undefined;
   readonly trimTargetWhitespace?: boolean | undefined;
   readonly createIfMissing?: boolean | undefined;
-  readonly contentType?: "markdown" | "json" | undefined;
+  readonly contentType?: 'markdown' | 'json' | undefined;
 }
 
 /** Dispatches a periodic_note action to the appropriate client method. */
@@ -341,7 +321,7 @@ async function handlePeriodicNoteAction(
   const dateFieldCount = [hasYear, hasMonth, hasDay].filter(Boolean).length;
   if (dateFieldCount > 0 && dateFieldCount < 3) {
     return errorResult(
-      "[periodic_note] All of year, month, and day are required for date-scoped operations (or omit all for current period)",
+      '[periodic_note] All of year, month, and day are required for date-scoped operations (or omit all for current period)',
     );
   }
   const isByDate = dateFieldCount === 3;
@@ -351,27 +331,25 @@ async function handlePeriodicNoteAction(
   const m = month ?? 0;
   const d = day ?? 0;
   switch (action) {
-    case "get":
+    case 'get':
       return isByDate
-        ? formatFileContents(
-            await client.getPeriodicNoteForDate(period, y, m, d, args.format),
-          )
+        ? formatFileContents(await client.getPeriodicNoteForDate(period, y, m, d, args.format))
         : formatFileContents(await client.getPeriodicNote(period, args.format));
-    case "put":
+    case 'put':
       if (args.content === undefined)
-        return errorResult("[periodic_note] content is required for put");
+        return errorResult('[periodic_note] content is required for put');
       await (isByDate
         ? client.putPeriodicNoteForDate(period, y, m, d, args.content)
         : client.putPeriodicNote(period, args.content));
       return textResult(`Updated ${period} note`);
-    case "append":
+    case 'append':
       if (args.content === undefined)
-        return errorResult("[periodic_note] content is required for append");
+        return errorResult('[periodic_note] content is required for append');
       await (isByDate
         ? client.appendPeriodicNoteForDate(period, y, m, d, args.content)
         : client.appendPeriodicNote(period, args.content));
       return textResult(`Appended to ${period} note`);
-    case "patch":
+    case 'patch':
       return handlePeriodicPatch(client, {
         period,
         isByDate,
@@ -387,16 +365,14 @@ async function handlePeriodicNoteAction(
         createIfMissing: args.createIfMissing,
         contentType: args.contentType,
       });
-    case "delete":
+    case 'delete':
       await (isByDate
         ? client.deletePeriodicNoteForDate(period, y, m, d)
         : client.deletePeriodicNote(period));
       return textResult(`Deleted ${period} note`);
     default: {
       const _exhaustive: never = action;
-      return errorResult(
-        `[periodic_note] Unknown action: ${String(_exhaustive)}`,
-      );
+      return errorResult(`[periodic_note] Unknown action: ${String(_exhaustive)}`);
     }
   }
 }
@@ -407,28 +383,26 @@ async function handlePeriodicNoteAction(
 async function handleVaultAnalysisAction(
   cache: VaultCache,
   config: Config,
-  action: "backlinks" | "connections" | "structure" | "refresh",
+  action: 'backlinks' | 'connections' | 'structure' | 'refresh',
   path: string | undefined,
   limit: number,
 ): Promise<ToolResult> {
   switch (action) {
-    case "backlinks": {
-      if (!path)
-        return errorResult("[vault_analysis] path is required for backlinks");
+    case 'backlinks': {
+      if (!path) return errorResult('[vault_analysis] path is required for backlinks');
       const notReady = await ensureCacheReady({
         cache,
-        tool: "vault_analysis",
+        tool: 'vault_analysis',
         enableCache: config.enableCache,
       });
       if (notReady) return notReady;
       return jsonResult(cache.getBacklinks(path));
     }
-    case "connections": {
-      if (!path)
-        return errorResult("[vault_analysis] path is required for connections");
+    case 'connections': {
+      if (!path) return errorResult('[vault_analysis] path is required for connections');
       const notReady = await ensureCacheReady({
         cache,
-        tool: "vault_analysis",
+        tool: 'vault_analysis',
         enableCache: config.enableCache,
       });
       if (notReady) return notReady;
@@ -437,34 +411,28 @@ async function handleVaultAnalysisAction(
         forwardLinks: cache.getForwardLinks(path),
       });
     }
-    case "structure": {
+    case 'structure': {
       const notReady = await ensureCacheReady({
         cache,
-        tool: "vault_analysis",
+        tool: 'vault_analysis',
         enableCache: config.enableCache,
       });
       if (notReady) return notReady;
       return buildVaultStructure(cache, limit);
     }
-    case "refresh":
+    case 'refresh':
       // refresh bypasses ensureCacheReady since it doesn't need the cache to be initialized
       if (!config.enableCache)
-        return errorResult(
-          "[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true",
-        );
+        return errorResult('[vault_analysis] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true');
       await cache.refresh();
       if (!cache.getIsInitialized())
-        return errorResult(
-          "[vault_analysis] Cache refresh failed — Obsidian may be unreachable",
-        );
+        return errorResult('[vault_analysis] Cache refresh failed — Obsidian may be unreachable');
       return textResult(
         `Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`,
       );
     default: {
       const _exhaustive: never = action;
-      return errorResult(
-        `[vault_analysis] Unknown action: ${String(_exhaustive)}`,
-      );
+      return errorResult(`[vault_analysis] Unknown action: ${String(_exhaustive)}`);
     }
   }
 }
@@ -482,54 +450,48 @@ export function registerConsolidatedTools(
   let count = 0;
 
   // --- 1. vault ---
-  if (shouldRegister("vault")) {
+  if (shouldRegister('vault')) {
     server.registerTool(
-      "vault",
+      'vault',
       {
         description:
-          "Read, write, search vault files. move is .md only. Do not retry append/patch/search_replace/move",
+          'Read, write, search vault files. move is .md only. Do not retry append/patch/search_replace/move',
         inputSchema: z.object({
           action: z
             .enum([
-              "list",
-              "list_dir",
-              "get",
-              "put",
-              "append",
-              "patch",
-              "delete",
-              "search_replace",
-              "move",
+              'list',
+              'list_dir',
+              'get',
+              'put',
+              'append',
+              'patch',
+              'delete',
+              'search_replace',
+              'move',
             ])
-            .describe("Operation"),
-          path: z.string().optional().describe("File or directory path"),
-          content: z.string().optional().describe("Content for writes"),
-          source: z.string().optional().describe("Source path for move"),
-          destination: z
-            .string()
-            .optional()
-            .describe("Destination path for move"),
+            .describe('Operation'),
+          path: z.string().optional().describe('File or directory path'),
+          content: z.string().optional().describe('Content for writes'),
+          source: z.string().optional().describe('Source path for move'),
+          destination: z.string().optional().describe('Destination path for move'),
           format: formatSchema.optional(),
           operation: patchOperationSchema.optional(),
           targetType: patchTargetTypeSchema.optional(),
-          target: z.string().optional().describe("Patch target"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z
-            .boolean()
-            .optional()
-            .describe("Trim whitespace"),
-          createIfMissing: z.boolean().optional().describe("Create if missing"),
+          target: z.string().optional().describe('Patch target'),
+          targetDelimiter: z.string().optional().describe('Heading delimiter'),
+          trimTargetWhitespace: z.boolean().optional().describe('Trim whitespace'),
+          createIfMissing: z.boolean().optional().describe('Create if missing'),
           contentType: patchContentTypeSchema.optional(),
-          search: z.string().optional().describe("Search text"),
-          replace: z.string().optional().describe("Replace text"),
-          useRegex: z.boolean().default(false).describe("Regex matching"),
-          caseSensitive: z.boolean().default(true).describe("Case sensitive"),
-          replaceAll: z.boolean().default(true).describe("Replace all"),
+          search: z.string().optional().describe('Search text'),
+          replace: z.string().optional().describe('Replace text'),
+          useRegex: z.boolean().default(false).describe('Regex matching'),
+          caseSensitive: z.boolean().default(true).describe('Case sensitive'),
+          replaceAll: z.boolean().default(true).describe('Replace all'),
         }),
       },
       async (args) => {
         const { action, path } = args;
-        if (!isActionAllowed("vault", action, config.toolPreset)) {
+        if (!isActionAllowed('vault', action, config.toolPreset)) {
           return errorResult(
             `[vault] Action "${action}" is not allowed in "${config.toolPreset}" preset`,
           );
@@ -537,10 +499,8 @@ export function registerConsolidatedTools(
         try {
           return await handleVaultAction(client, action, path, args);
         } catch (err: unknown) {
-          const errorPath = action === "move" ? (args.source ?? path) : path;
-          return errorResult(
-            buildErrorMessage(err, { tool: "vault", path: errorPath }),
-          );
+          const errorPath = action === 'move' ? (args.source ?? path) : path;
+          return errorResult(buildErrorMessage(err, { tool: 'vault', path: errorPath }));
         }
       },
     );
@@ -548,71 +508,52 @@ export function registerConsolidatedTools(
   }
 
   // --- 2. active_file ---
-  if (shouldRegister("active_file")) {
+  if (shouldRegister('active_file')) {
     server.registerTool(
-      "active_file",
+      'active_file',
       {
-        description:
-          "Read, write, or delete the open file. Do not retry append/patch on timeout",
+        description: 'Read, write, or delete the open file. Do not retry append/patch on timeout',
         inputSchema: z.object({
-          action: z
-            .enum(["get", "put", "append", "patch", "delete"])
-            .describe("Operation"),
-          content: z.string().optional().describe("Content for writes"),
+          action: z.enum(['get', 'put', 'append', 'patch', 'delete']).describe('Operation'),
+          content: z.string().optional().describe('Content for writes'),
           format: formatSchema.optional(),
           operation: patchOperationSchema.optional(),
           targetType: patchTargetTypeSchema.optional(),
-          target: z.string().optional().describe("Patch target"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z
-            .boolean()
-            .optional()
-            .describe("Trim whitespace"),
+          target: z.string().optional().describe('Patch target'),
+          targetDelimiter: z.string().optional().describe('Heading delimiter'),
+          trimTargetWhitespace: z.boolean().optional().describe('Trim whitespace'),
           contentType: patchContentTypeSchema.optional(),
         }),
       },
       async (args) => {
         const { action } = args;
-        if (!isActionAllowed("active_file", action, config.toolPreset)) {
+        if (!isActionAllowed('active_file', action, config.toolPreset)) {
           return errorResult(
             `[active_file] Action "${action}" is not allowed in "${config.toolPreset}" preset`,
           );
         }
         try {
           switch (action) {
-            case "get":
-              return formatFileContents(
-                await client.getActiveFile(args.format),
-              );
-            case "put":
+            case 'get':
+              return formatFileContents(await client.getActiveFile(args.format));
+            case 'put':
               if (args.content === undefined)
-                return errorResult("[active_file] content is required for put");
+                return errorResult('[active_file] content is required for put');
               await client.putActiveFile(args.content);
-              return textResult("Active file updated");
-            case "append":
+              return textResult('Active file updated');
+            case 'append':
               if (args.content === undefined)
-                return errorResult(
-                  "[active_file] content is required for append",
-                );
+                return errorResult('[active_file] content is required for append');
               await client.appendActiveFile(args.content);
-              return textResult("Appended to active file");
-            case "patch": {
+              return textResult('Appended to active file');
+            case 'patch': {
               if (args.content === undefined)
-                return errorResult(
-                  "[active_file] content is required for patch",
-                );
+                return errorResult('[active_file] content is required for patch');
               if (!args.operation)
-                return errorResult(
-                  "[active_file] operation is required for patch",
-                );
+                return errorResult('[active_file] operation is required for patch');
               if (!args.targetType)
-                return errorResult(
-                  "[active_file] targetType is required for patch",
-                );
-              if (!args.target)
-                return errorResult(
-                  "[active_file] target is required for patch",
-                );
+                return errorResult('[active_file] targetType is required for patch');
+              if (!args.target) return errorResult('[active_file] target is required for patch');
               await client.patchActiveFile(args.content, {
                 operation: args.operation,
                 targetType: args.targetType,
@@ -621,20 +562,18 @@ export function registerConsolidatedTools(
                 trimTargetWhitespace: args.trimTargetWhitespace,
                 contentType: args.contentType,
               });
-              return textResult("Active file patched");
+              return textResult('Active file patched');
             }
-            case "delete":
+            case 'delete':
               await client.deleteActiveFile();
-              return textResult("Active file deleted");
+              return textResult('Active file deleted');
             default: {
               const _exhaustive: never = action;
-              return errorResult(
-                `[active_file] Unknown action: ${String(_exhaustive)}`,
-              );
+              return errorResult(`[active_file] Unknown action: ${String(_exhaustive)}`);
             }
           }
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "active_file" }));
+          return errorResult(buildErrorMessage(err, { tool: 'active_file' }));
         }
       },
     );
@@ -642,42 +581,37 @@ export function registerConsolidatedTools(
   }
 
   // --- 3. commands ---
-  if (shouldRegister("commands")) {
+  if (shouldRegister('commands')) {
     server.registerTool(
-      "commands",
+      'commands',
       {
-        description: "List or execute Obsidian commands",
+        description: 'List or execute Obsidian commands',
         inputSchema: z.object({
-          action: z.enum(["list", "execute"]).describe("Operation"),
-          commandId: z.string().optional().describe("Command ID for execute"),
+          action: z.enum(['list', 'execute']).describe('Operation'),
+          commandId: z.string().optional().describe('Command ID for execute'),
         }),
       },
       async ({ action, commandId }) => {
-        if (!isActionAllowed("commands", action, config.toolPreset)) {
+        if (!isActionAllowed('commands', action, config.toolPreset)) {
           return errorResult(
             `[commands] Action "${action}" is not allowed in "${config.toolPreset}" preset`,
           );
         }
         try {
           switch (action) {
-            case "list":
+            case 'list':
               return jsonResult(await client.listCommands());
-            case "execute":
-              if (!commandId)
-                return errorResult(
-                  "[commands] commandId is required for execute",
-                );
+            case 'execute':
+              if (!commandId) return errorResult('[commands] commandId is required for execute');
               await client.executeCommand(commandId);
               return textResult(`Executed: ${commandId}`);
             default: {
               const _exhaustive: never = action;
-              return errorResult(
-                `[commands] Unknown action: ${String(_exhaustive)}`,
-              );
+              return errorResult(`[commands] Unknown action: ${String(_exhaustive)}`);
             }
           }
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "commands" }));
+          return errorResult(buildErrorMessage(err, { tool: 'commands' }));
         }
       },
     );
@@ -688,60 +622,43 @@ export function registerConsolidatedTools(
   count += registerOpenFileTool(server, client, shouldRegister);
 
   // --- 5. search ---
-  if (shouldRegister("search")) {
+  if (shouldRegister('search')) {
     server.registerTool(
-      "search",
+      'search',
       {
-        description: "Search vault with text, JsonLogic, or Dataview TABLE",
+        description: 'Search vault with text, JsonLogic, or Dataview TABLE',
         inputSchema: z.object({
-          type: z
-            .enum(["simple", "jsonlogic", "dataview"])
-            .describe("Search type"),
-          query: z.string().optional().describe("Query for simple/dataview"),
-          jsonQuery: z
-            .record(z.string(), z.unknown())
-            .optional()
-            .describe("JsonLogic object"),
-          contextLength: z.number().default(100).describe("Context chars"),
+          type: z.enum(['simple', 'jsonlogic', 'dataview']).describe('Search type'),
+          query: z.string().optional().describe('Query for simple/dataview'),
+          jsonQuery: z.record(z.string(), z.unknown()).optional().describe('JsonLogic object'),
+          contextLength: z.number().default(100).describe('Context chars'),
         }),
       },
       async ({ type, query, jsonQuery, contextLength }) => {
-        if (!isActionAllowed("search", type, config.toolPreset)) {
+        if (!isActionAllowed('search', type, config.toolPreset)) {
           return errorResult(
             `[search] Type "${type}" is not allowed in "${config.toolPreset}" preset`,
           );
         }
         try {
           switch (type) {
-            case "simple":
-              if (!query)
-                return errorResult(
-                  "[search] query is required for simple search",
-                );
-              return jsonResult(
-                await client.simpleSearch(query, contextLength),
-              );
-            case "jsonlogic":
+            case 'simple':
+              if (!query) return errorResult('[search] query is required for simple search');
+              return jsonResult(await client.simpleSearch(query, contextLength));
+            case 'jsonlogic':
               if (!jsonQuery)
-                return errorResult(
-                  "[search] jsonQuery is required for jsonlogic search",
-                );
+                return errorResult('[search] jsonQuery is required for jsonlogic search');
               return jsonResult(await client.complexSearch(jsonQuery));
-            case "dataview":
-              if (!query)
-                return errorResult(
-                  "[search] query is required for dataview search",
-                );
+            case 'dataview':
+              if (!query) return errorResult('[search] query is required for dataview search');
               return jsonResult(await client.dataviewSearch(query));
             default: {
               const _exhaustive: never = type;
-              return errorResult(
-                `[search] Unknown type: ${String(_exhaustive)}`,
-              );
+              return errorResult(`[search] Unknown type: ${String(_exhaustive)}`);
             }
           }
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "search" }));
+          return errorResult(buildErrorMessage(err, { tool: 'search' }));
         }
       },
     );
@@ -749,48 +666,30 @@ export function registerConsolidatedTools(
   }
 
   // --- 6. periodic_note ---
-  if (shouldRegister("periodic_note")) {
+  if (shouldRegister('periodic_note')) {
     server.registerTool(
-      "periodic_note",
+      'periodic_note',
       {
-        description:
-          "CRUD on periodic notes. Do not retry append/patch on timeout",
+        description: 'CRUD on periodic notes. Do not retry append/patch on timeout',
         inputSchema: z.object({
-          action: z
-            .enum(["get", "put", "append", "patch", "delete"])
-            .describe("Operation"),
+          action: z.enum(['get', 'put', 'append', 'patch', 'delete']).describe('Operation'),
           period: periodSchema,
-          year: z.number().int().optional().describe("Year (omit for current)"),
-          month: z
-            .number()
-            .int()
-            .min(1)
-            .max(12)
-            .optional()
-            .describe("Month (1-12)"),
-          day: z
-            .number()
-            .int()
-            .min(1)
-            .max(31)
-            .optional()
-            .describe("Day (1-31)"),
-          content: z.string().optional().describe("Content for writes"),
+          year: z.number().int().optional().describe('Year (omit for current)'),
+          month: z.number().int().min(1).max(12).optional().describe('Month (1-12)'),
+          day: z.number().int().min(1).max(31).optional().describe('Day (1-31)'),
+          content: z.string().optional().describe('Content for writes'),
           format: formatSchema.optional(),
           operation: patchOperationSchema.optional(),
           targetType: patchTargetTypeSchema.optional(),
-          target: z.string().optional().describe("Patch target"),
-          targetDelimiter: z.string().optional().describe("Heading delimiter"),
-          trimTargetWhitespace: z
-            .boolean()
-            .optional()
-            .describe("Trim whitespace"),
-          createIfMissing: z.boolean().optional().describe("Create if missing"),
+          target: z.string().optional().describe('Patch target'),
+          targetDelimiter: z.string().optional().describe('Heading delimiter'),
+          trimTargetWhitespace: z.boolean().optional().describe('Trim whitespace'),
+          createIfMissing: z.boolean().optional().describe('Create if missing'),
           contentType: patchContentTypeSchema.optional(),
         }),
       },
       async (args) => {
-        if (!isActionAllowed("periodic_note", args.action, config.toolPreset)) {
+        if (!isActionAllowed('periodic_note', args.action, config.toolPreset)) {
           return errorResult(
             `[periodic_note] Action "${args.action}" is not allowed in "${config.toolPreset}" preset`,
           );
@@ -798,7 +697,7 @@ export function registerConsolidatedTools(
         try {
           return await handlePeriodicNoteAction(client, args);
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "periodic_note" }));
+          return errorResult(buildErrorMessage(err, { tool: 'periodic_note' }));
         }
       },
     );
@@ -806,17 +705,17 @@ export function registerConsolidatedTools(
   }
 
   // --- 7. status (PROTECTED) ---
-  if (shouldRegister("status")) {
+  if (shouldRegister('status')) {
     server.registerTool(
-      "status",
+      'status',
       {
-        description: "Check Obsidian API connection and version",
+        description: 'Check Obsidian API connection and version',
       },
       async () => {
         try {
           return jsonResult(await client.getServerStatus());
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "status" }));
+          return errorResult(buildErrorMessage(err, { tool: 'status' }));
         }
       },
     );
@@ -824,13 +723,13 @@ export function registerConsolidatedTools(
   }
 
   // --- 8. batch_get ---
-  if (shouldRegister("batch_get")) {
+  if (shouldRegister('batch_get')) {
     server.registerTool(
-      "batch_get",
+      'batch_get',
       {
-        description: "Read multiple vault files in one call",
+        description: 'Read multiple vault files in one call',
         inputSchema: z.object({
-          paths: z.array(z.string()).min(1).describe("File paths"),
+          paths: z.array(z.string()).min(1).describe('File paths'),
           format: formatSchema.optional(),
         }),
       },
@@ -838,7 +737,7 @@ export function registerConsolidatedTools(
         try {
           return jsonResult(await batchGetFiles(client, paths, format));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "batch_get" }));
+          return errorResult(buildErrorMessage(err, { tool: 'batch_get' }));
         }
       },
     );
@@ -846,37 +745,32 @@ export function registerConsolidatedTools(
   }
 
   // --- 9. recent ---
-  if (shouldRegister("recent")) {
+  if (shouldRegister('recent')) {
     server.registerTool(
-      "recent",
+      'recent',
       {
-        description: "Get recently modified files or periodic notes",
+        description: 'Get recently modified files or periodic notes',
         inputSchema: z.object({
-          type: z.enum(["changes", "periodic_notes"]).describe("Query type"),
+          type: z.enum(['changes', 'periodic_notes']).describe('Query type'),
           period: periodSchema.optional(),
-          limit: z.number().int().min(1).default(10).describe("Max results"),
+          limit: z.number().int().min(1).default(10).describe('Max results'),
         }),
       },
       async ({ type, period, limit }) => {
         try {
           switch (type) {
-            case "changes":
+            case 'changes':
               return await handleRecentChanges(client, cache, config, limit);
-            case "periodic_notes":
-              if (!period)
-                return errorResult(
-                  "[recent] period is required for periodic_notes",
-                );
+            case 'periodic_notes':
+              if (!period) return errorResult('[recent] period is required for periodic_notes');
               return await handleRecentPeriodicNotes(client, period, limit);
             default: {
               const _exhaustive: never = type;
-              return errorResult(
-                `[recent] Unknown type: ${String(_exhaustive)}`,
-              );
+              return errorResult(`[recent] Unknown type: ${String(_exhaustive)}`);
             }
           }
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "recent" }));
+          return errorResult(buildErrorMessage(err, { tool: 'recent' }));
         }
       },
     );
@@ -887,45 +781,29 @@ export function registerConsolidatedTools(
   count += registerConfigureTool(server, shouldRegister, config);
 
   // --- 11. vault_analysis ---
-  if (shouldRegister("vault_analysis")) {
+  if (shouldRegister('vault_analysis')) {
     server.registerTool(
-      "vault_analysis",
+      'vault_analysis',
       {
-        description: "Backlinks, connections, structure, and cache refresh",
+        description: 'Backlinks, connections, structure, and cache refresh',
         inputSchema: z.object({
           action: z
-            .enum(["backlinks", "connections", "structure", "refresh"])
-            .describe("Analysis type"),
-          path: z
-            .string()
-            .optional()
-            .describe("File path for backlinks/connections"),
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .default(10)
-            .describe("Top N for structure"),
+            .enum(['backlinks', 'connections', 'structure', 'refresh'])
+            .describe('Analysis type'),
+          path: z.string().optional().describe('File path for backlinks/connections'),
+          limit: z.number().int().min(1).default(10).describe('Top N for structure'),
         }),
       },
       async ({ action, path, limit }) => {
-        if (!isActionAllowed("vault_analysis", action, config.toolPreset)) {
+        if (!isActionAllowed('vault_analysis', action, config.toolPreset)) {
           return errorResult(
             `[vault_analysis] Action "${action}" is not allowed in "${config.toolPreset}" preset`,
           );
         }
         try {
-          return await handleVaultAnalysisAction(
-            cache,
-            config,
-            action,
-            path,
-            limit,
-          );
+          return await handleVaultAnalysisAction(cache, config, action, path, limit);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "vault_analysis", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'vault_analysis', path }));
         }
       },
     );

@@ -2,14 +2,13 @@
 // Smoke tests for mcp-obsidian-extended — runs against live Obsidian instance.
 // All output goes to stderr. Exit 0 = pass, Exit 1 = fail.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
-
-import { loadConfig } from "../src/config.js";
-import { ObsidianClient } from "../src/obsidian.js";
-import { VaultCache } from "../src/cache.js";
-import { ObsidianApiError } from "../src/errors.js";
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { VaultCache } from '../src/cache.js';
+import { loadConfig } from '../src/config.js';
+import { ObsidianApiError } from '../src/errors.js';
+import { ObsidianClient } from '../src/obsidian.js';
 
 // --- Helpers ---
 
@@ -31,27 +30,27 @@ function fail(step: number, description: string, error: unknown): void {
 
 /** Load .env file from cwd if it exists, setting vars that are not already in process.env. */
 function loadDotenv(): void {
-  const envPath = resolve(process.cwd(), ".env");
+  const envPath = resolve(process.cwd(), '.env');
   let content: string;
   try {
-    content = readFileSync(envPath, "utf-8");
+    content = readFileSync(envPath, 'utf-8');
   } catch {
     // No .env file — that's fine, env vars may be set directly
     return;
   }
-  for (const line of content.split("\n")) {
+  for (const line of content.split('\n')) {
     const trimmed = line.trim();
     // Skip empty lines and comments
-    if (trimmed === "" || trimmed.startsWith("#")) {
+    if (trimmed === '' || trimmed.startsWith('#')) {
       continue;
     }
-    const eqIndex = trimmed.indexOf("=");
+    const eqIndex = trimmed.indexOf('=');
     if (eqIndex === -1) {
       continue;
     }
     // Strip optional `export ` prefix (e.g. `export FOO=bar`)
     let key = trimmed.slice(0, eqIndex).trim();
-    if (key.startsWith("export ")) {
+    if (key.startsWith('export ')) {
       key = key.slice(7).trim();
     }
     let value = trimmed.slice(eqIndex + 1).trim();
@@ -59,15 +58,15 @@ function loadDotenv(): void {
     if (value.startsWith('"') && value.endsWith('"')) {
       value = value
         .slice(1, -1)
-        .replaceAll("\\n", "\n")
-        .replaceAll("\\t", "\t")
+        .replaceAll('\\n', '\n')
+        .replaceAll('\\t', '\t')
         .replaceAll('\\"', '"');
     } else if (value.startsWith("'") && value.endsWith("'")) {
       // Single-quoted: literal value, no escape processing
       value = value.slice(1, -1);
     } else {
       // Unquoted: strip inline comments
-      const commentIndex = value.indexOf(" #");
+      const commentIndex = value.indexOf(' #');
       if (commentIndex !== -1) {
         value = value.slice(0, commentIndex).trim();
       }
@@ -91,32 +90,30 @@ const VAULT_FILE_LIMIT = 50;
 
 /** Refuses to run if the vault exceeds the file count limit, preventing accidental runs on real vaults. */
 async function guardTestVault(client: ObsidianClient): Promise<void> {
-  if (process.env["SMOKE_TEST_CONFIRM"] === "true") {
+  if (process.env['SMOKE_TEST_CONFIRM'] === 'true') {
     return;
   }
   const { files } = await client.listFilesInVault();
   if (files.length > VAULT_FILE_LIMIT) {
     throw new Error(
       `Vault has ${String(files.length)} files (limit: ${String(VAULT_FILE_LIMIT)}). ` +
-        "This looks like a real vault, not a test vault. " +
-        "Set SMOKE_TEST_CONFIRM=true to override this safety check.",
+        'This looks like a real vault, not a test vault. ' +
+        'Set SMOKE_TEST_CONFIRM=true to override this safety check.',
     );
   }
 }
 
 // --- Test Files ---
 
-const TEST_FILE = "_smoke_test.md";
-const TEST_CONTENT =
-  "# Smoke Test\n\nThis is a smoke test file.\n\n[[some link]]";
-const APPEND_CONTENT = "\n\nAppended content.";
+const TEST_FILE = '_smoke_test.md';
+const TEST_CONTENT = '# Smoke Test\n\nThis is a smoke test file.\n\n[[some link]]';
+const APPEND_CONTENT = '\n\nAppended content.';
 
-const LINK_FILE_A = "_smoke_link_a.md";
-const LINK_FILE_B = "_smoke_link_b.md";
+const LINK_FILE_A = '_smoke_link_a.md';
+const LINK_FILE_B = '_smoke_link_b.md';
 // Explicit .md extension in wikilink to avoid relying on VaultCache's implicit .md appending
-const LINK_CONTENT_A =
-  "# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n";
-const LINK_CONTENT_B = "# Target Note\n\nTarget note content.\n";
+const LINK_CONTENT_A = '# Link Source\n\nThis note links to [[_smoke_link_b.md]].\n';
+const LINK_CONTENT_B = '# Target Note\n\nTarget note content.\n';
 
 // --- Test Steps ---
 
@@ -136,7 +133,7 @@ async function step1StatusCheck(client: ObsidianClient): Promise<void> {
 async function step2ListVaultFiles(client: ObsidianClient): Promise<void> {
   const result = await client.listFilesInVault();
   if (!Array.isArray(result.files)) {
-    throw new Error("Expected files to be an array");
+    throw new Error('Expected files to be an array');
   }
   write(`    (${String(result.files.length)} files found)`);
 }
@@ -148,12 +145,12 @@ async function step3PutTestFile(client: ObsidianClient): Promise<void> {
 
 /** Reads back the test file and verifies content matches what was written. */
 async function step4ReadBack(client: ObsidianClient): Promise<void> {
-  const content = await client.getFileContents(TEST_FILE, "markdown");
-  if (typeof content !== "string") {
-    throw new Error("Expected string response for markdown format");
+  const content = await client.getFileContents(TEST_FILE, 'markdown');
+  if (typeof content !== 'string') {
+    throw new Error('Expected string response for markdown format');
   }
   // Obsidian may add a trailing newline; trim for comparison
-  if (!content.includes("# Smoke Test") || !content.includes("[[some link]]")) {
+  if (!content.includes('# Smoke Test') || !content.includes('[[some link]]')) {
     throw new Error(`Content mismatch. Got: ${content.slice(0, 200)}`);
   }
 }
@@ -161,14 +158,12 @@ async function step4ReadBack(client: ObsidianClient): Promise<void> {
 /** Appends content to the test file and verifies the appended text is present. */
 async function step5AppendAndVerify(client: ObsidianClient): Promise<void> {
   await client.appendContent(TEST_FILE, APPEND_CONTENT);
-  const content = await client.getFileContents(TEST_FILE, "markdown");
-  if (typeof content !== "string") {
-    throw new Error("Expected string response for markdown format");
+  const content = await client.getFileContents(TEST_FILE, 'markdown');
+  if (typeof content !== 'string') {
+    throw new Error('Expected string response for markdown format');
   }
-  if (!content.includes("Appended content.")) {
-    throw new Error(
-      `Appended content not found. Got: ${content.slice(0, 300)}`,
-    );
+  if (!content.includes('Appended content.')) {
+    throw new Error(`Appended content not found. Got: ${content.slice(0, 300)}`);
   }
 }
 
@@ -179,8 +174,8 @@ async function step6Search(client: ObsidianClient): Promise<void> {
   const retryDelay = 1000;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await sleep(retryDelay);
-    const results = await client.simpleSearch("smoke test");
-    const found = results.some((r) => r.filename.includes("_smoke_test"));
+    const results = await client.simpleSearch('smoke test');
+    const found = results.some((r) => r.filename.includes('_smoke_test'));
     if (found) {
       return;
     }
@@ -189,7 +184,7 @@ async function step6Search(client: ObsidianClient): Promise<void> {
         `    (search attempt ${String(attempt)}/${String(maxAttempts)} — not indexed yet, retrying...)`,
       );
     } else {
-      const filenames = results.map((r) => r.filename).join(", ");
+      const filenames = results.map((r) => r.filename).join(', ');
       throw new Error(
         `_smoke_test.md not found after ${String(maxAttempts)} search attempts. Got: [${filenames}]`,
       );
@@ -202,8 +197,8 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
   await client.deleteFile(TEST_FILE);
   // Verify it's gone — expect a 404
   try {
-    await client.getFileContents(TEST_FILE, "markdown");
-    throw new Error("File still exists after delete — expected 404");
+    await client.getFileContents(TEST_FILE, 'markdown');
+    throw new Error('File still exists after delete — expected 404');
   } catch (err: unknown) {
     if (err instanceof ObsidianApiError && err.statusCode === 404) {
       // Expected — file is deleted
@@ -213,7 +208,7 @@ async function step7Delete(client: ObsidianClient): Promise<void> {
   }
 }
 
-const CACHE_SEED_FILE = "_smoke_cache_seed.md";
+const CACHE_SEED_FILE = '_smoke_cache_seed.md';
 
 // Short TTL for smoke tests — auto-refresh is stopped immediately, so this only affects the constructor
 const SMOKE_CACHE_TTL = 60_000;
@@ -228,24 +223,20 @@ async function step8CacheCheck(client: ObsidianClient): Promise<void> {
     // Seed a note to guarantee the cache has at least one entry, even on an empty vault
     await client.putContent(
       CACHE_SEED_FILE,
-      "# Cache Seed\n\nEnsures cache is non-empty for testing.\n",
+      '# Cache Seed\n\nEnsures cache is non-empty for testing.\n',
     );
     await cache.initialize();
     if (cache.noteCount <= 0) {
       throw new Error(`Expected noteCount > 0, got ${String(cache.noteCount)}`);
     }
-    write(
-      `    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`,
-    );
+    write(`    (${String(cache.noteCount)} notes, ${String(cache.linkCount)} links cached)`);
   } finally {
     cache.stopAutoRefresh();
     // Clean up seed file
     try {
       await client.deleteFile(CACHE_SEED_FILE);
     } catch (e: unknown) {
-      write(
-        `    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`,
-      );
+      write(`    (cleanup: ${CACHE_SEED_FILE} — ${e instanceof Error ? e.message : String(e)})`);
     }
   }
 }
@@ -266,10 +257,8 @@ async function step9BacklinksTest(client: ObsidianClient): Promise<void> {
     const backlinks = cache.getBacklinks(LINK_FILE_B);
     const hasBacklink = backlinks.some((bl) => bl.source === LINK_FILE_A);
     if (!hasBacklink) {
-      const sources = backlinks.map((bl) => bl.source).join(", ");
-      throw new Error(
-        `Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`,
-      );
+      const sources = backlinks.map((bl) => bl.source).join(', ');
+      throw new Error(`Expected backlink from ${LINK_FILE_A}, got sources: [${sources}]`);
     }
   } finally {
     // Always stop timer and clean up, even if initialize() or assertions throw
@@ -283,16 +272,12 @@ async function cleanupLinkFiles(client: ObsidianClient): Promise<void> {
   try {
     await client.deleteFile(LINK_FILE_A);
   } catch (e: unknown) {
-    write(
-      `    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`,
-    );
+    write(`    (cleanup: ${LINK_FILE_A} — ${e instanceof Error ? e.message : String(e)})`);
   }
   try {
     await client.deleteFile(LINK_FILE_B);
   } catch (e: unknown) {
-    write(
-      `    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`,
-    );
+    write(`    (cleanup: ${LINK_FILE_B} — ${e instanceof Error ? e.message : String(e)})`);
   }
 }
 
@@ -307,9 +292,7 @@ async function cleanup(client: ObsidianClient): Promise<void> {
       await client.deleteFile(file);
     } catch (e: unknown) {
       // Expected for already-deleted files; log for unexpected failures
-      write(
-        `    (cleanup: ${file} — ${e instanceof Error ? e.message : String(e)})`,
-      );
+      write(`    (cleanup: ${file} — ${e instanceof Error ? e.message : String(e)})`);
     }
   }
 }
@@ -327,9 +310,9 @@ interface Step {
 
 /** Entry point: loads config, runs all smoke test steps, and reports results. */
 async function main(): Promise<void> {
-  write("");
-  write("=== mcp-obsidian-extended smoke tests ===");
-  write("");
+  write('');
+  write('=== mcp-obsidian-extended smoke tests ===');
+  write('');
 
   // Load .env before loadConfig so API key is available
   loadDotenv();
@@ -337,9 +320,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   if (!config.apiKey) {
-    write(
-      "[error] OBSIDIAN_API_KEY is not set. Set it in .env or as an environment variable.",
-    );
+    write('[error] OBSIDIAN_API_KEY is not set. Set it in .env or as an environment variable.');
     process.exit(1);
   }
 
@@ -358,23 +339,23 @@ async function main(): Promise<void> {
 
   // CRUD steps are sequential — each depends on the previous one
   const crudSteps: readonly Step[] = [
-    { num: 1, name: "Status check", fn: () => step1StatusCheck(client) },
-    { num: 2, name: "List vault files", fn: () => step2ListVaultFiles(client) },
-    { num: 3, name: "Put test file", fn: () => step3PutTestFile(client) },
-    { num: 4, name: "Read it back", fn: () => step4ReadBack(client) },
+    { num: 1, name: 'Status check', fn: () => step1StatusCheck(client) },
+    { num: 2, name: 'List vault files', fn: () => step2ListVaultFiles(client) },
+    { num: 3, name: 'Put test file', fn: () => step3PutTestFile(client) },
+    { num: 4, name: 'Read it back', fn: () => step4ReadBack(client) },
     {
       num: 5,
-      name: "Append and verify",
+      name: 'Append and verify',
       fn: () => step5AppendAndVerify(client),
     },
-    { num: 6, name: "Search", fn: () => step6Search(client) },
-    { num: 7, name: "Delete and verify 404", fn: () => step7Delete(client) },
+    { num: 6, name: 'Search', fn: () => step6Search(client) },
+    { num: 7, name: 'Delete and verify 404', fn: () => step7Delete(client) },
   ];
 
   // Independent steps — use their own files, run even if CRUD steps fail
   const independentSteps: readonly Step[] = [
-    { num: 8, name: "Cache check", fn: () => step8CacheCheck(client) },
-    { num: 9, name: "Backlinks test", fn: () => step9BacklinksTest(client) },
+    { num: 8, name: 'Cache check', fn: () => step8CacheCheck(client) },
+    { num: 9, name: 'Backlinks test', fn: () => step9BacklinksTest(client) },
   ];
 
   const totalSteps = crudSteps.length + independentSteps.length;
@@ -406,30 +387,28 @@ async function main(): Promise<void> {
     }
   } finally {
     // Always clean up test artifacts
-    write("");
-    write("  Cleaning up test files...");
+    write('');
+    write('  Cleaning up test files...');
     await cleanup(client);
   }
 
   const skipped = totalSteps - passed - failed;
-  write("");
-  const skipNote = skipped > 0 ? `, ${String(skipped)} skipped` : "";
+  write('');
+  const skipNote = skipped > 0 ? `, ${String(skipped)} skipped` : '';
   write(
     `Results: ${String(passed)} passed, ${String(failed)} failed${skipNote} out of ${String(totalSteps)} steps`,
   );
-  write("");
+  write('');
   // Informational note — not counted as a test step
   write(
-    "  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).",
+    '  Note: To verify tool counts, run with TOOL_MODE=granular (38 tools) or TOOL_MODE=consolidated (11 tools).',
   );
-  write("");
+  write('');
 
   process.exit(failed > 0 ? 1 : 0);
 }
 
 main().catch((err: unknown) => {
-  write(
-    `[fatal] Unexpected error: ${err instanceof Error ? err.message : String(err)}`,
-  );
+  write(`[fatal] Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

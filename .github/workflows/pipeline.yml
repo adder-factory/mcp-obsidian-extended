@@ -44,40 +44,38 @@ jobs:
           SEMGREP_VERSION=1.157.0
           python3 -m pip install --quiet "semgrep==${SEMGREP_VERSION}"
 
-      - name: Prettier
-        run: npx prettier --check .
-
-      - name: ESLint
-        run: npx eslint . --max-warnings=0
+      # Biome (format + lint + import organization) — replaces the former
+      # Prettier + ESLint steps. `biome ci` is always read-only and scans the
+      # full tree. `--error-on-warnings` makes warnings fail too (parity with
+      # the old `eslint --max-warnings=0`); without it, biome ci exits 0 on
+      # warning-level lint findings.
+      - name: Biome
+        run: npx --no-install @biomejs/biome ci --error-on-warnings .
 
       - name: TypeScript
         run: npx tsc --noEmit
 
+      # Type-aware ESLint layer (opt-in) — the typescript-eslint type-checked
+      # rules Biome can't do yet (no-floating-promises, no-unsafe-*, etc.).
+      # Runs only when eslint.config.mjs is present; skips cleanly otherwise so
+      # repos that haven't adopted it don't fail. --max-warnings=0 fails on any
+      # finding.
+      - name: Type-aware lint
+        if: ${{ hashFiles('eslint.config.mjs', 'eslint.config.js', 'eslint.config.cjs', 'eslint.config.ts') != '' }}
+        run: |
+          if [ -d src ]; then
+            npx eslint src --max-warnings=0
+          else
+            npx eslint . --max-warnings=0
+          fi
+
+      # Gate ordering mirrors scripts/pre-pr.sh: fast static + security first,
+      # expensive (tests + coverage) last. On CI this is about getting a clear
+      # failure signal early; Stryker is partitioned into its own workflows so
+      # it isn't inline here at all.
+
       - name: Knip
         run: npx knip
-
-      # JSDoc coverage (opt-in). Skips cleanly on repos that haven't adopted
-      # the gate yet — their next install.sh run copies the script and the
-      # step becomes a hard check.
-      - name: JSDoc coverage
-        if: ${{ hashFiles('scripts/jsdoc-coverage.ts') != '' }}
-        run: npx tsx scripts/jsdoc-coverage.ts --threshold 85
-
-      - name: Tests + coverage
-        run: npm test -- --coverage
-
-      # Stryker is partitioned into two dedicated workflows:
-      #   - stryker-affected.yml — runs on every PR, only mutates files in the
-      #     diff against base (target steady-state wall-clock <2 min).
-      #   - stryker-full.yml — runs nightly + on every push to main, full sweep
-      #     (catches incremental-cache staleness; populates the cache that
-      #     stryker-affected.yml restores from).
-      # See ~/projects/code-review-pipeline/pipeline-state.md "Mutation-testing
-      # policy" for rationale (2026-04-26 audit Q4: Stryker was 93 % of
-      # Pipeline-gate wall-clock).
-
-      - name: Gitleaks
-        run: gitleaks detect --source . --verbose --redact --no-banner
 
       - name: Madge (circular deps)
         run: |
@@ -87,13 +85,36 @@ jobs:
             npx madge --circular --extensions ts,tsx,js,jsx .
           fi
 
-      - name: Semgrep
-        run: semgrep --config p/default --config p/typescript --config p/javascript --error --metrics=off --quiet .
+      - name: Gitleaks
+        run: gitleaks detect --source . --verbose --redact --no-banner
 
-      # Qwen step intentionally omitted — runs locally only via
-      # scripts/pre-pr.sh (spec step 15). CI relies on CodeRabbit (required)
-      # plus advisory reviewers (Gemini, Greptile, CodeQL) for the post-push
-      # AI review perspective. The live reviewer roster lives in
+      # Semgrep scoped to `p/default` only — see gate_semgrep header
+      # comment in scripts/pre-pr.sh for the audit-Q1 rationale (CodeQL
+      # covers dataflow, Sonar covers code-smell, p/default catches the
+      # remaining cross-cutting issues; p/typescript + p/javascript
+      # produced no findings across the audit window and were dropped).
+      - name: Semgrep
+        run: semgrep --config p/default --error --metrics=off --quiet .
+
+      # JSDoc coverage (opt-in). Skips cleanly on repos that haven't adopted
+      # the gate yet — their next install.sh run copies the script and the
+      # step becomes a hard check.
+      - name: JSDoc coverage
+        if: ${{ hashFiles('scripts/jsdoc-coverage.ts') != '' }}
+        run: npx tsx scripts/jsdoc-coverage.ts --threshold "${JSDOC_COVERAGE_THRESHOLD:-85}"
+
+      # Tests + coverage last — the most expensive inline gate. Stryker is
+      # partitioned into stryker-affected.yml (PR-scoped) + stryker-full.yml
+      # (nightly + main push); see those files and pipeline-state.md
+      # "Mutation-testing policy" (2026-04-26 audit Q4: Stryker was 93 % of
+      # Pipeline-gate wall-clock when it ran inline).
+      - name: Tests + coverage
+        run: npm test -- --coverage
+
+      # AI review runs off the CI gate: a pre-PR reviewer subagent (invoked
+      # by Claude Code before the PR is opened) plus post-push PR reviewers —
+      # CodeRabbit (required) and advisory Gemini / Greptile (public repos) /
+      # CodeQL. The live reviewer roster lives in
       # ~/projects/code-review-pipeline/pipeline-state.md.
 
   sonar:
@@ -127,7 +148,11 @@ jobs:
       - uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
         if: env.SONAR_TOKEN != ''
 
-      - uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
+      # Pinned to immutable SHA (= v1.2.0) for the same supply-chain
+      # reason as the scan-action above. Avoids tag-drift if SonarSource
+      # ever re-tags v1.2.0 to a different commit.
+      # nosemgrep: generic.secrets.security.detected-sonarqube-docs-api-key.detected-sonarqube-docs-api-key
+      - uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
         if: env.SONAR_TOKEN != ''
         # Leave headroom above pollingTimeoutSec so the GHA wall-clock doesn't
         # race the action's internal polling timeout (action warm-up adds time).

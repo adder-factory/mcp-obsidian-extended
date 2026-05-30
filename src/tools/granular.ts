@@ -1,33 +1,32 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-
-import type { ObsidianClient } from "../obsidian.js";
-import { textResult, errorResult, jsonResult } from "../obsidian.js";
-import type { VaultCache } from "../cache.js";
-import type { Config } from "../config.js";
-import { buildErrorMessage } from "../errors.js";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { VaultCache } from '../cache.js';
+import type { Config } from '../config.js';
+import { buildErrorMessage } from '../errors.js';
+import type { ObsidianClient } from '../obsidian.js';
+import { errorResult, jsonResult, textResult } from '../obsidian.js';
 import {
-  formatSchema,
-  periodSchema,
-  pathContentFields,
   dateFields,
-  periodDateContentFields,
+  dateLabel,
+  formatSchema,
   patchOptionFields,
   patchOptionFieldsNoCim,
-  dateLabel,
-} from "../schemas.js";
+  pathContentFields,
+  periodDateContentFields,
+  periodSchema,
+} from '../schemas.js';
 import {
-  formatFileContents,
-  escapeRegex,
+  batchGetFiles,
   buildVaultStructure,
+  ensureCacheReady,
+  escapeRegex,
+  formatFileContents,
+  handleMoveFile,
   handleRecentChanges,
   handleRecentPeriodicNotes,
-  batchGetFiles,
-  ensureCacheReady,
-  handleMoveFile,
-  registerOpenFileTool,
   registerConfigureTool,
-} from "./shared.js";
+  registerOpenFileTool,
+} from './shared.js';
 
 // --- Registration sub-functions (split to keep complexity below 15) ---
 
@@ -40,17 +39,15 @@ function registerVaultTools(
   let count = 0;
 
   // --- 1. list_files_in_vault ---
-  if (shouldRegister("list_files_in_vault")) {
+  if (shouldRegister('list_files_in_vault')) {
     server.registerTool(
-      "list_files_in_vault",
-      { description: "List all files and directories in vault root" },
+      'list_files_in_vault',
+      { description: 'List all files and directories in vault root' },
       async () => {
         try {
           return jsonResult(await client.listFilesInVault());
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "list_files_in_vault" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'list_files_in_vault' }));
         }
       },
     );
@@ -58,13 +55,13 @@ function registerVaultTools(
   }
 
   // --- 2. list_files_in_dir ---
-  if (shouldRegister("list_files_in_dir")) {
+  if (shouldRegister('list_files_in_dir')) {
     server.registerTool(
-      "list_files_in_dir",
+      'list_files_in_dir',
       {
-        description: "List files in a vault directory",
+        description: 'List files in a vault directory',
         inputSchema: z.object({
-          dirPath: z.string().describe("Directory path"),
+          dirPath: z.string().describe('Directory path'),
         }),
       },
       async ({ dirPath }) => {
@@ -73,7 +70,7 @@ function registerVaultTools(
         } catch (err: unknown) {
           return errorResult(
             buildErrorMessage(err, {
-              tool: "list_files_in_dir",
+              tool: 'list_files_in_dir',
               path: dirPath,
             }),
           );
@@ -84,13 +81,13 @@ function registerVaultTools(
   }
 
   // --- 3. get_file_contents ---
-  if (shouldRegister("get_file_contents")) {
+  if (shouldRegister('get_file_contents')) {
     server.registerTool(
-      "get_file_contents",
+      'get_file_contents',
       {
-        description: "Read a vault file as markdown, JSON, or document map",
+        description: 'Read a vault file as markdown, JSON, or document map',
         inputSchema: z.object({
-          path: z.string().describe("File path"),
+          path: z.string().describe('File path'),
           format: formatSchema.optional(),
         }),
       },
@@ -98,9 +95,7 @@ function registerVaultTools(
         try {
           return formatFileContents(await client.getFileContents(path, format));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_file_contents", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_file_contents', path }));
         }
       },
     );
@@ -108,11 +103,11 @@ function registerVaultTools(
   }
 
   // --- 4. put_content ---
-  if (shouldRegister("put_content")) {
+  if (shouldRegister('put_content')) {
     server.registerTool(
-      "put_content",
+      'put_content',
       {
-        description: "Create or overwrite a vault file (idempotent)",
+        description: 'Create or overwrite a vault file (idempotent)',
         inputSchema: z.object(pathContentFields),
       },
       async ({ path, content }) => {
@@ -120,9 +115,7 @@ function registerVaultTools(
           await client.putContent(path, content);
           return textResult(`Written: ${path}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "put_content", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'put_content', path }));
         }
       },
     );
@@ -130,12 +123,11 @@ function registerVaultTools(
   }
 
   // --- 5. append_content ---
-  if (shouldRegister("append_content")) {
+  if (shouldRegister('append_content')) {
     server.registerTool(
-      "append_content",
+      'append_content',
       {
-        description:
-          "Append to a vault file (not idempotent, do not retry on timeout)",
+        description: 'Append to a vault file (not idempotent, do not retry on timeout)',
         inputSchema: z.object(pathContentFields),
       },
       async ({ path, content }) => {
@@ -143,9 +135,7 @@ function registerVaultTools(
           await client.appendContent(path, content);
           return textResult(`Appended to: ${path}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "append_content", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'append_content', path }));
         }
       },
     );
@@ -153,12 +143,12 @@ function registerVaultTools(
   }
 
   // --- 6. patch_content ---
-  if (shouldRegister("patch_content")) {
+  if (shouldRegister('patch_content')) {
     server.registerTool(
-      "patch_content",
+      'patch_content',
       {
         description:
-          "Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)",
+          'Insert at heading/block/frontmatter (not idempotent, do not retry on timeout)',
         inputSchema: z.object({ ...pathContentFields, ...patchOptionFields }),
       },
       async ({
@@ -184,9 +174,7 @@ function registerVaultTools(
           });
           return textResult(`Patched: ${path}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "patch_content", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'patch_content', path }));
         }
       },
     );
@@ -194,21 +182,19 @@ function registerVaultTools(
   }
 
   // --- 7. delete_file ---
-  if (shouldRegister("delete_file")) {
+  if (shouldRegister('delete_file')) {
     server.registerTool(
-      "delete_file",
+      'delete_file',
       {
-        description: "Delete a vault file to Obsidian trash (idempotent)",
-        inputSchema: z.object({ path: z.string().describe("File path") }),
+        description: 'Delete a vault file to Obsidian trash (idempotent)',
+        inputSchema: z.object({ path: z.string().describe('File path') }),
       },
       async ({ path }) => {
         try {
           await client.deleteFile(path);
           return textResult(`Deleted: ${path}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "delete_file", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'delete_file', path }));
         }
       },
     );
@@ -216,63 +202,46 @@ function registerVaultTools(
   }
 
   // --- 8. search_replace ---
-  if (shouldRegister("search_replace")) {
+  if (shouldRegister('search_replace')) {
     server.registerTool(
-      "search_replace",
+      'search_replace',
       {
-        description:
-          "Find and replace in a vault file (not idempotent, do not retry on timeout)",
+        description: 'Find and replace in a vault file (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
-          path: z.string().describe("File path"),
-          search: z.string().describe("Text to find"),
-          replace: z.string().describe("Replacement text"),
-          useRegex: z.boolean().default(false).describe("Use regex matching"),
-          caseSensitive: z
-            .boolean()
-            .default(true)
-            .describe("Case-sensitive match"),
-          replaceAll: z
-            .boolean()
-            .default(true)
-            .describe("Replace all occurrences"),
+          path: z.string().describe('File path'),
+          search: z.string().describe('Text to find'),
+          replace: z.string().describe('Replacement text'),
+          useRegex: z.boolean().default(false).describe('Use regex matching'),
+          caseSensitive: z.boolean().default(true).describe('Case-sensitive match'),
+          replaceAll: z.boolean().default(true).describe('Replace all occurrences'),
         }),
       },
-      async ({
-        path,
-        search,
-        replace,
-        useRegex,
-        caseSensitive,
-        replaceAll,
-      }) => {
+      async ({ path, search, replace, useRegex, caseSensitive, replaceAll }) => {
         try {
-          const result = await client.getFileContents(path, "markdown", true);
-          if (typeof result !== "string")
-            return errorResult("[search_replace] Expected markdown content");
-          const flags = `${caseSensitive ? "" : "i"}${replaceAll ? "g" : ""}`;
+          const result = await client.getFileContents(path, 'markdown', true);
+          if (typeof result !== 'string')
+            return errorResult('[search_replace] Expected markdown content');
+          const flags = `${caseSensitive ? '' : 'i'}${replaceAll ? 'g' : ''}`;
           let pattern: RegExp;
           if (useRegex) {
             try {
-              // eslint-disable-next-line security/detect-non-literal-regexp -- user-supplied regex is intentional; wrapped in try/catch
+              // Dynamic regex: user-supplied regex is intentional; wrapped in try/catch
               pattern = new RegExp(search, flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
             } catch {
               return errorResult(`[search_replace] Invalid regex: "${search}"`);
             }
           } else {
-            // eslint-disable-next-line security/detect-non-literal-regexp -- user input is escaped via escapeRegex()
+            // Dynamic regex: user input is escaped via escapeRegex()
             pattern = new RegExp(escapeRegex(search), flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
           }
           const updated = useRegex
             ? result.replace(pattern, replace)
             : result.replace(pattern, () => replace);
-          if (updated === result)
-            return textResult(`No matches found for "${search}" in ${path}`);
+          if (updated === result) return textResult(`No matches found for "${search}" in ${path}`);
           await client.putContent(path, updated);
           return textResult(`Replaced in: ${path}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "search_replace", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'search_replace', path }));
         }
       },
     );
@@ -280,24 +249,21 @@ function registerVaultTools(
   }
 
   // --- 9. move_file ---
-  if (shouldRegister("move_file")) {
+  if (shouldRegister('move_file')) {
     server.registerTool(
-      "move_file",
+      'move_file',
       {
-        description:
-          "Move or rename a .md vault file (not idempotent, do not retry)",
+        description: 'Move or rename a .md vault file (not idempotent, do not retry)',
         inputSchema: z.object({
-          source: z.string().describe("Source file path"),
-          destination: z.string().describe("Destination file path"),
+          source: z.string().describe('Source file path'),
+          destination: z.string().describe('Destination file path'),
         }),
       },
       async ({ source, destination }) => {
         try {
           return await handleMoveFile(client, source, destination);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "move_file", path: source }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'move_file', path: source }));
         }
       },
     );
@@ -316,20 +282,18 @@ function registerActiveFileTools(
   let count = 0;
 
   // --- 10. get_active_file ---
-  if (shouldRegister("get_active_file")) {
+  if (shouldRegister('get_active_file')) {
     server.registerTool(
-      "get_active_file",
+      'get_active_file',
       {
-        description: "Read the currently open file in Obsidian",
+        description: 'Read the currently open file in Obsidian',
         inputSchema: z.object({ format: formatSchema.optional() }),
       },
       async ({ format }) => {
         try {
           return formatFileContents(await client.getActiveFile(format));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_active_file" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_active_file' }));
         }
       },
     );
@@ -337,23 +301,21 @@ function registerActiveFileTools(
   }
 
   // --- 10. put_active_file ---
-  if (shouldRegister("put_active_file")) {
+  if (shouldRegister('put_active_file')) {
     server.registerTool(
-      "put_active_file",
+      'put_active_file',
       {
-        description: "Replace content of the open file (idempotent)",
+        description: 'Replace content of the open file (idempotent)',
         inputSchema: z.object({
-          content: z.string().describe("New file content"),
+          content: z.string().describe('New file content'),
         }),
       },
       async ({ content }) => {
         try {
           await client.putActiveFile(content);
-          return textResult("Active file updated");
+          return textResult('Active file updated');
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "put_active_file" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'put_active_file' }));
         }
       },
     );
@@ -361,24 +323,21 @@ function registerActiveFileTools(
   }
 
   // --- 11. append_active_file ---
-  if (shouldRegister("append_active_file")) {
+  if (shouldRegister('append_active_file')) {
     server.registerTool(
-      "append_active_file",
+      'append_active_file',
       {
-        description:
-          "Append to the open file (not idempotent, do not retry on timeout)",
+        description: 'Append to the open file (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
-          content: z.string().describe("Content to append"),
+          content: z.string().describe('Content to append'),
         }),
       },
       async ({ content }) => {
         try {
           await client.appendActiveFile(content);
-          return textResult("Appended to active file");
+          return textResult('Appended to active file');
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "append_active_file" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'append_active_file' }));
         }
       },
     );
@@ -386,14 +345,13 @@ function registerActiveFileTools(
   }
 
   // --- 12. patch_active_file ---
-  if (shouldRegister("patch_active_file")) {
+  if (shouldRegister('patch_active_file')) {
     server.registerTool(
-      "patch_active_file",
+      'patch_active_file',
       {
-        description:
-          "Patch the active file at a target (not idempotent, do not retry on timeout)",
+        description: 'Patch the active file at a target (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
-          content: z.string().describe("Content to insert"),
+          content: z.string().describe('Content to insert'),
           ...patchOptionFieldsNoCim,
         }),
       },
@@ -415,11 +373,9 @@ function registerActiveFileTools(
             trimTargetWhitespace,
             contentType,
           });
-          return textResult("Active file patched");
+          return textResult('Active file patched');
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "patch_active_file" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'patch_active_file' }));
         }
       },
     );
@@ -427,18 +383,16 @@ function registerActiveFileTools(
   }
 
   // --- 13. delete_active_file ---
-  if (shouldRegister("delete_active_file")) {
+  if (shouldRegister('delete_active_file')) {
     server.registerTool(
-      "delete_active_file",
-      { description: "Delete the currently open file (idempotent)" },
+      'delete_active_file',
+      { description: 'Delete the currently open file (idempotent)' },
       async () => {
         try {
           await client.deleteActiveFile();
-          return textResult("Active file deleted");
+          return textResult('Active file deleted');
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "delete_active_file" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'delete_active_file' }));
         }
       },
     );
@@ -457,15 +411,15 @@ function registerCommandAndSearchTools(
   let count = 0;
 
   // --- 14. list_commands ---
-  if (shouldRegister("list_commands")) {
+  if (shouldRegister('list_commands')) {
     server.registerTool(
-      "list_commands",
-      { description: "List all Obsidian command palette commands" },
+      'list_commands',
+      { description: 'List all Obsidian command palette commands' },
       async () => {
         try {
           return jsonResult(await client.listCommands());
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "list_commands" }));
+          return errorResult(buildErrorMessage(err, { tool: 'list_commands' }));
         }
       },
     );
@@ -473,21 +427,19 @@ function registerCommandAndSearchTools(
   }
 
   // --- 15. execute_command ---
-  if (shouldRegister("execute_command")) {
+  if (shouldRegister('execute_command')) {
     server.registerTool(
-      "execute_command",
+      'execute_command',
       {
-        description: "Run an Obsidian command by ID",
-        inputSchema: z.object({ commandId: z.string().describe("Command ID") }),
+        description: 'Run an Obsidian command by ID',
+        inputSchema: z.object({ commandId: z.string().describe('Command ID') }),
       },
       async ({ commandId }) => {
         try {
           await client.executeCommand(commandId);
           return textResult(`Executed: ${commandId}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "execute_command" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'execute_command' }));
         }
       },
     );
@@ -498,21 +450,21 @@ function registerCommandAndSearchTools(
   count += registerOpenFileTool(server, client, shouldRegister);
 
   // --- 17. simple_search ---
-  if (shouldRegister("simple_search")) {
+  if (shouldRegister('simple_search')) {
     server.registerTool(
-      "simple_search",
+      'simple_search',
       {
-        description: "Full-text search across all vault files",
+        description: 'Full-text search across all vault files',
         inputSchema: z.object({
-          query: z.string().describe("Search query"),
-          contextLength: z.number().default(100).describe("Context chars"),
+          query: z.string().describe('Search query'),
+          contextLength: z.number().default(100).describe('Context chars'),
         }),
       },
       async ({ query, contextLength }) => {
         try {
           return jsonResult(await client.simpleSearch(query, contextLength));
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "simple_search" }));
+          return errorResult(buildErrorMessage(err, { tool: 'simple_search' }));
         }
       },
     );
@@ -520,24 +472,20 @@ function registerCommandAndSearchTools(
   }
 
   // --- 18. complex_search ---
-  if (shouldRegister("complex_search")) {
+  if (shouldRegister('complex_search')) {
     server.registerTool(
-      "complex_search",
+      'complex_search',
       {
-        description: "Search vault with JsonLogic queries (glob, regexp)",
+        description: 'Search vault with JsonLogic queries (glob, regexp)',
         inputSchema: z.object({
-          query: z
-            .record(z.string(), z.unknown())
-            .describe("JsonLogic query object"),
+          query: z.record(z.string(), z.unknown()).describe('JsonLogic query object'),
         }),
       },
       async ({ query }) => {
         try {
           return jsonResult(await client.complexSearch(query));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "complex_search" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'complex_search' }));
         }
       },
     );
@@ -545,21 +493,18 @@ function registerCommandAndSearchTools(
   }
 
   // --- 19. dataview_search ---
-  if (shouldRegister("dataview_search")) {
+  if (shouldRegister('dataview_search')) {
     server.registerTool(
-      "dataview_search",
+      'dataview_search',
       {
-        description:
-          "Query vault with Dataview TABLE queries (LIST not supported)",
-        inputSchema: z.object({ dql: z.string().describe("DQL query string") }),
+        description: 'Query vault with Dataview TABLE queries (LIST not supported)',
+        inputSchema: z.object({ dql: z.string().describe('DQL query string') }),
       },
       async ({ dql }) => {
         try {
           return jsonResult(await client.dataviewSearch(dql));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "dataview_search" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'dataview_search' }));
         }
       },
     );
@@ -578,11 +523,11 @@ function registerPeriodicNoteTools(
   let count = 0;
 
   // --- 20. get_periodic_note ---
-  if (shouldRegister("get_periodic_note")) {
+  if (shouldRegister('get_periodic_note')) {
     server.registerTool(
-      "get_periodic_note",
+      'get_periodic_note',
       {
-        description: "Get the current periodic note",
+        description: 'Get the current periodic note',
         inputSchema: z.object({
           period: periodSchema,
           format: formatSchema.optional(),
@@ -590,13 +535,9 @@ function registerPeriodicNoteTools(
       },
       async ({ period, format }) => {
         try {
-          return formatFileContents(
-            await client.getPeriodicNote(period, format),
-          );
+          return formatFileContents(await client.getPeriodicNote(period, format));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_periodic_note" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_periodic_note' }));
         }
       },
     );
@@ -604,14 +545,14 @@ function registerPeriodicNoteTools(
   }
 
   // --- 21. put_periodic_note ---
-  if (shouldRegister("put_periodic_note")) {
+  if (shouldRegister('put_periodic_note')) {
     server.registerTool(
-      "put_periodic_note",
+      'put_periodic_note',
       {
-        description: "Replace current periodic note content (idempotent)",
+        description: 'Replace current periodic note content (idempotent)',
         inputSchema: z.object({
           period: periodSchema,
-          content: z.string().describe("Note content"),
+          content: z.string().describe('Note content'),
         }),
       },
       async ({ period, content }) => {
@@ -619,9 +560,7 @@ function registerPeriodicNoteTools(
           await client.putPeriodicNote(period, content);
           return textResult(`Updated ${period} note`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "put_periodic_note" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'put_periodic_note' }));
         }
       },
     );
@@ -629,15 +568,14 @@ function registerPeriodicNoteTools(
   }
 
   // --- 22. append_periodic_note ---
-  if (shouldRegister("append_periodic_note")) {
+  if (shouldRegister('append_periodic_note')) {
     server.registerTool(
-      "append_periodic_note",
+      'append_periodic_note',
       {
-        description:
-          "Append to current periodic note (not idempotent, do not retry on timeout)",
+        description: 'Append to current periodic note (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
           period: periodSchema,
-          content: z.string().describe("Content to append"),
+          content: z.string().describe('Content to append'),
         }),
       },
       async ({ period, content }) => {
@@ -645,9 +583,7 @@ function registerPeriodicNoteTools(
           await client.appendPeriodicNote(period, content);
           return textResult(`Appended to ${period} note`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "append_periodic_note" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'append_periodic_note' }));
         }
       },
     );
@@ -655,15 +591,15 @@ function registerPeriodicNoteTools(
   }
 
   // --- 23. patch_periodic_note ---
-  if (shouldRegister("patch_periodic_note")) {
+  if (shouldRegister('patch_periodic_note')) {
     server.registerTool(
-      "patch_periodic_note",
+      'patch_periodic_note',
       {
         description:
-          "Patch current periodic note at target (not idempotent, do not retry on timeout)",
+          'Patch current periodic note at target (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
           period: periodSchema,
-          content: z.string().describe("Content to insert"),
+          content: z.string().describe('Content to insert'),
           ...patchOptionFields,
         }),
       },
@@ -690,9 +626,7 @@ function registerPeriodicNoteTools(
           });
           return textResult(`Patched ${period} note`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "patch_periodic_note" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'patch_periodic_note' }));
         }
       },
     );
@@ -700,11 +634,11 @@ function registerPeriodicNoteTools(
   }
 
   // --- 24. delete_periodic_note ---
-  if (shouldRegister("delete_periodic_note")) {
+  if (shouldRegister('delete_periodic_note')) {
     server.registerTool(
-      "delete_periodic_note",
+      'delete_periodic_note',
       {
-        description: "Delete current periodic note (idempotent)",
+        description: 'Delete current periodic note (idempotent)',
         inputSchema: z.object({ period: periodSchema }),
       },
       async ({ period }) => {
@@ -712,9 +646,7 @@ function registerPeriodicNoteTools(
           await client.deletePeriodicNote(period);
           return textResult(`Deleted ${period} note`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "delete_periodic_note" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'delete_periodic_note' }));
         }
       },
     );
@@ -733,11 +665,11 @@ function registerPeriodicNoteDateTools(
   let count = 0;
 
   // --- 25. get_periodic_note_for_date ---
-  if (shouldRegister("get_periodic_note_for_date")) {
+  if (shouldRegister('get_periodic_note_for_date')) {
     server.registerTool(
-      "get_periodic_note_for_date",
+      'get_periodic_note_for_date',
       {
-        description: "Get periodic note for a specific date",
+        description: 'Get periodic note for a specific date',
         inputSchema: z.object({
           period: periodSchema,
           ...dateFields,
@@ -747,18 +679,10 @@ function registerPeriodicNoteDateTools(
       async ({ period, year, month, day, format }) => {
         try {
           return formatFileContents(
-            await client.getPeriodicNoteForDate(
-              period,
-              year,
-              month,
-              day,
-              format,
-            ),
+            await client.getPeriodicNoteForDate(period, year, month, day, format),
           );
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_periodic_note_for_date" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_periodic_note_for_date' }));
         }
       },
     );
@@ -766,29 +690,19 @@ function registerPeriodicNoteDateTools(
   }
 
   // --- 26. put_periodic_note_for_date ---
-  if (shouldRegister("put_periodic_note_for_date")) {
+  if (shouldRegister('put_periodic_note_for_date')) {
     server.registerTool(
-      "put_periodic_note_for_date",
+      'put_periodic_note_for_date',
       {
-        description: "Replace periodic note for a date (idempotent)",
+        description: 'Replace periodic note for a date (idempotent)',
         inputSchema: z.object(periodDateContentFields),
       },
       async ({ period, year, month, day, content }) => {
         try {
-          await client.putPeriodicNoteForDate(
-            period,
-            year,
-            month,
-            day,
-            content,
-          );
-          return textResult(
-            `Updated ${period} note for ${dateLabel(year, month, day)}`,
-          );
+          await client.putPeriodicNoteForDate(period, year, month, day, content);
+          return textResult(`Updated ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "put_periodic_note_for_date" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'put_periodic_note_for_date' }));
         }
       },
     );
@@ -796,30 +710,19 @@ function registerPeriodicNoteDateTools(
   }
 
   // --- 27. append_periodic_note_for_date ---
-  if (shouldRegister("append_periodic_note_for_date")) {
+  if (shouldRegister('append_periodic_note_for_date')) {
     server.registerTool(
-      "append_periodic_note_for_date",
+      'append_periodic_note_for_date',
       {
-        description:
-          "Append to periodic note for a date (not idempotent, do not retry on timeout)",
+        description: 'Append to periodic note for a date (not idempotent, do not retry on timeout)',
         inputSchema: z.object(periodDateContentFields),
       },
       async ({ period, year, month, day, content }) => {
         try {
-          await client.appendPeriodicNoteForDate(
-            period,
-            year,
-            month,
-            day,
-            content,
-          );
-          return textResult(
-            `Appended to ${period} note for ${dateLabel(year, month, day)}`,
-          );
+          await client.appendPeriodicNoteForDate(period, year, month, day, content);
+          return textResult(`Appended to ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "append_periodic_note_for_date" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'append_periodic_note_for_date' }));
         }
       },
     );
@@ -827,12 +730,11 @@ function registerPeriodicNoteDateTools(
   }
 
   // --- 28. patch_periodic_note_for_date ---
-  if (shouldRegister("patch_periodic_note_for_date")) {
+  if (shouldRegister('patch_periodic_note_for_date')) {
     server.registerTool(
-      "patch_periodic_note_for_date",
+      'patch_periodic_note_for_date',
       {
-        description:
-          "Patch periodic note for a date (not idempotent, do not retry on timeout)",
+        description: 'Patch periodic note for a date (not idempotent, do not retry on timeout)',
         inputSchema: z.object({
           ...periodDateContentFields,
           ...patchOptionFields,
@@ -853,29 +755,18 @@ function registerPeriodicNoteDateTools(
         contentType,
       }) => {
         try {
-          await client.patchPeriodicNoteForDate(
-            period,
-            year,
-            month,
-            day,
-            content,
-            {
-              operation,
-              targetType,
-              target,
-              targetDelimiter,
-              trimTargetWhitespace,
-              createIfMissing,
-              contentType,
-            },
-          );
-          return textResult(
-            `Patched ${period} note for ${dateLabel(year, month, day)}`,
-          );
+          await client.patchPeriodicNoteForDate(period, year, month, day, content, {
+            operation,
+            targetType,
+            target,
+            targetDelimiter,
+            trimTargetWhitespace,
+            createIfMissing,
+            contentType,
+          });
+          return textResult(`Patched ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "patch_periodic_note_for_date" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'patch_periodic_note_for_date' }));
         }
       },
     );
@@ -883,23 +774,19 @@ function registerPeriodicNoteDateTools(
   }
 
   // --- 29. delete_periodic_note_for_date ---
-  if (shouldRegister("delete_periodic_note_for_date")) {
+  if (shouldRegister('delete_periodic_note_for_date')) {
     server.registerTool(
-      "delete_periodic_note_for_date",
+      'delete_periodic_note_for_date',
       {
-        description: "Delete periodic note for a date (idempotent)",
+        description: 'Delete periodic note for a date (idempotent)',
         inputSchema: z.object({ period: periodSchema, ...dateFields }),
       },
       async ({ period, year, month, day }) => {
         try {
           await client.deletePeriodicNoteForDate(period, year, month, day);
-          return textResult(
-            `Deleted ${period} note for ${dateLabel(year, month, day)}`,
-          );
+          return textResult(`Deleted ${period} note for ${dateLabel(year, month, day)}`);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "delete_periodic_note_for_date" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'delete_periodic_note_for_date' }));
         }
       },
     );
@@ -920,17 +807,15 @@ function registerSystemAndAnalysisTools(
   let count = 0;
 
   // --- 30. get_server_status (PROTECTED) ---
-  if (shouldRegister("get_server_status")) {
+  if (shouldRegister('get_server_status')) {
     server.registerTool(
-      "get_server_status",
-      { description: "Check Obsidian API connection and version" },
+      'get_server_status',
+      { description: 'Check Obsidian API connection and version' },
       async () => {
         try {
           return jsonResult(await client.getServerStatus());
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_server_status" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_server_status' }));
         }
       },
     );
@@ -938,13 +823,13 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 31. batch_get_file_contents ---
-  if (shouldRegister("batch_get_file_contents")) {
+  if (shouldRegister('batch_get_file_contents')) {
     server.registerTool(
-      "batch_get_file_contents",
+      'batch_get_file_contents',
       {
-        description: "Read multiple vault files in one call",
+        description: 'Read multiple vault files in one call',
         inputSchema: z.object({
-          paths: z.array(z.string()).min(1).describe("File paths"),
+          paths: z.array(z.string()).min(1).describe('File paths'),
           format: formatSchema.optional(),
         }),
       },
@@ -952,9 +837,7 @@ function registerSystemAndAnalysisTools(
         try {
           return jsonResult(await batchGetFiles(client, paths, format));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "batch_get_file_contents" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'batch_get_file_contents' }));
         }
       },
     );
@@ -962,22 +845,20 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 32. get_recent_changes ---
-  if (shouldRegister("get_recent_changes")) {
+  if (shouldRegister('get_recent_changes')) {
     server.registerTool(
-      "get_recent_changes",
+      'get_recent_changes',
       {
-        description: "Get recently modified files sorted by date",
+        description: 'Get recently modified files sorted by date',
         inputSchema: z.object({
-          limit: z.number().int().min(1).default(10).describe("Max results"),
+          limit: z.number().int().min(1).default(10).describe('Max results'),
         }),
       },
       async ({ limit }) => {
         try {
           return await handleRecentChanges(client, cache, config, limit);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_recent_changes" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_recent_changes' }));
         }
       },
     );
@@ -985,23 +866,21 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 33. get_recent_periodic_notes ---
-  if (shouldRegister("get_recent_periodic_notes")) {
+  if (shouldRegister('get_recent_periodic_notes')) {
     server.registerTool(
-      "get_recent_periodic_notes",
+      'get_recent_periodic_notes',
       {
-        description: "Get recent periodic notes for a period type",
+        description: 'Get recent periodic notes for a period type',
         inputSchema: z.object({
           period: periodSchema,
-          limit: z.number().int().min(1).default(5).describe("Max results"),
+          limit: z.number().int().min(1).default(5).describe('Max results'),
         }),
       },
       async ({ period, limit }) => {
         try {
           return await handleRecentPeriodicNotes(client, period, limit);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_recent_periodic_notes" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_recent_periodic_notes' }));
         }
       },
     );
@@ -1012,26 +891,24 @@ function registerSystemAndAnalysisTools(
   count += registerConfigureTool(server, shouldRegister, config);
 
   // --- 35. get_backlinks ---
-  if (shouldRegister("get_backlinks")) {
+  if (shouldRegister('get_backlinks')) {
     server.registerTool(
-      "get_backlinks",
+      'get_backlinks',
       {
-        description: "Get all notes that link to a file (from cache)",
-        inputSchema: z.object({ path: z.string().describe("File path") }),
+        description: 'Get all notes that link to a file (from cache)',
+        inputSchema: z.object({ path: z.string().describe('File path') }),
       },
       async ({ path }) => {
         try {
           const notReady = await ensureCacheReady({
             cache,
-            tool: "get_backlinks",
+            tool: 'get_backlinks',
             enableCache: config.enableCache,
           });
           if (notReady) return notReady;
           return jsonResult(cache.getBacklinks(path));
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_backlinks", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_backlinks', path }));
         }
       },
     );
@@ -1039,34 +916,26 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 36. get_vault_structure ---
-  if (shouldRegister("get_vault_structure")) {
+  if (shouldRegister('get_vault_structure')) {
     server.registerTool(
-      "get_vault_structure",
+      'get_vault_structure',
       {
-        description:
-          "Get vault stats: note count, links, orphans, most connected",
+        description: 'Get vault stats: note count, links, orphans, most connected',
         inputSchema: z.object({
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .default(10)
-            .describe("Top N connected"),
+          limit: z.number().int().min(1).default(10).describe('Top N connected'),
         }),
       },
       async ({ limit }) => {
         try {
           const notReady = await ensureCacheReady({
             cache,
-            tool: "get_vault_structure",
+            tool: 'get_vault_structure',
             enableCache: config.enableCache,
           });
           if (notReady) return notReady;
           return buildVaultStructure(cache, limit);
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_vault_structure" }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_vault_structure' }));
         }
       },
     );
@@ -1074,18 +943,18 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 37. get_note_connections ---
-  if (shouldRegister("get_note_connections")) {
+  if (shouldRegister('get_note_connections')) {
     server.registerTool(
-      "get_note_connections",
+      'get_note_connections',
       {
-        description: "Get backlinks and forward links for a note",
-        inputSchema: z.object({ path: z.string().describe("File path") }),
+        description: 'Get backlinks and forward links for a note',
+        inputSchema: z.object({ path: z.string().describe('File path') }),
       },
       async ({ path }) => {
         try {
           const notReady = await ensureCacheReady({
             cache,
-            tool: "get_note_connections",
+            tool: 'get_note_connections',
             enableCache: config.enableCache,
           });
           if (notReady) return notReady;
@@ -1094,9 +963,7 @@ function registerSystemAndAnalysisTools(
             forwardLinks: cache.getForwardLinks(path),
           });
         } catch (err: unknown) {
-          return errorResult(
-            buildErrorMessage(err, { tool: "get_note_connections", path }),
-          );
+          return errorResult(buildErrorMessage(err, { tool: 'get_note_connections', path }));
         }
       },
     );
@@ -1104,27 +971,25 @@ function registerSystemAndAnalysisTools(
   }
 
   // --- 38. refresh_cache (PROTECTED) ---
-  if (shouldRegister("refresh_cache")) {
+  if (shouldRegister('refresh_cache')) {
     server.registerTool(
-      "refresh_cache",
-      { description: "Force refresh vault cache and link graph" },
+      'refresh_cache',
+      { description: 'Force refresh vault cache and link graph' },
       async () => {
         try {
           if (!config.enableCache)
-            return errorResult(
-              "[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true",
-            );
+            return errorResult('[refresh_cache] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true');
           await cache.refresh();
           if (!cache.getIsInitialized()) {
             return errorResult(
-              "[refresh_cache] Cache refresh failed — Obsidian may be unreachable",
+              '[refresh_cache] Cache refresh failed — Obsidian may be unreachable',
             );
           }
           return textResult(
             `Cache refreshed: ${String(cache.noteCount)} notes, ${String(cache.linkCount)} links`,
           );
         } catch (err: unknown) {
-          return errorResult(buildErrorMessage(err, { tool: "refresh_cache" }));
+          return errorResult(buildErrorMessage(err, { tool: 'refresh_cache' }));
         }
       },
     );
@@ -1150,12 +1015,6 @@ export function registerGranularTools(
     registerCommandAndSearchTools(server, client, shouldRegister) +
     registerPeriodicNoteTools(server, client, shouldRegister) +
     registerPeriodicNoteDateTools(server, client, shouldRegister) +
-    registerSystemAndAnalysisTools(
-      server,
-      client,
-      cache,
-      shouldRegister,
-      config,
-    )
+    registerSystemAndAnalysisTools(server, client, cache, shouldRegister, config)
   );
 }

@@ -8,18 +8,18 @@
  * Prerequisites: npm run build (compiles TypeScript to dist/)
  */
 
-import { execSync } from "node:child_process";
-import { writeFileSync, copyFileSync, unlinkSync, existsSync } from "node:fs";
+import { execSync } from 'node:child_process';
+import { copyFileSync, existsSync, unlinkSync, writeFileSync } from 'node:fs';
 
-const BINARY_NAME = "mcp-obsidian-extended";
-const BLOB_FILE = "sea-prep.blob";
-const CONFIG_FILE = "sea-config.json";
-const SEA_FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+const BINARY_NAME = 'mcp-obsidian-extended';
+const BLOB_FILE = 'sea-prep.blob';
+const CONFIG_FILE = 'sea-config.json';
+const SEA_FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 
 function run(cmd) {
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`  $ ${cmd}`);
-  execSync(cmd, { stdio: "inherit" });
+  execSync(cmd, { stdio: 'inherit' });
 }
 
 function cleanup() {
@@ -28,9 +28,9 @@ function cleanup() {
   }
 }
 
-if (process.platform === "win32") {
+if (process.platform === 'win32') {
   // eslint-disable-next-line no-console -- build script, not MCP transport
-  console.error("SEA build is not supported on Windows. Use macOS or Linux.");
+  console.error('SEA build is not supported on Windows. Use macOS or Linux.');
   process.exit(1);
 }
 
@@ -47,16 +47,16 @@ try {
 
   // 1. Bundle dist/ into a single file with esbuild
   // eslint-disable-next-line no-console -- build script, not MCP transport
-  console.log("Step 1: Bundling with esbuild...");
+  console.log('Step 1: Bundling with esbuild...');
   run(
-    "npx esbuild dist/index.js --bundle --platform=node --format=cjs --outfile=sea-entry.cjs --external:node:*",
+    'npx esbuild dist/index.js --bundle --platform=node --format=cjs --outfile=sea-entry.cjs --external:node:*',
   );
 
   // 2. Write SEA config
   // eslint-disable-next-line no-console -- build script, not MCP transport
-  console.log("Step 2: Generating SEA blob...");
+  console.log('Step 2: Generating SEA blob...');
   const seaConfig = {
-    main: "sea-entry.cjs",
+    main: 'sea-entry.cjs',
     output: BLOB_FILE,
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
@@ -69,25 +69,23 @@ try {
 
   // 4. Copy node binary
   // eslint-disable-next-line no-console -- build script, not MCP transport
-  console.log("Step 3: Creating binary...");
+  console.log('Step 3: Creating binary...');
   copyFileSync(process.execPath, BINARY_NAME);
 
   // 5. Inject blob (platform-specific)
-  if (process.platform === "darwin") {
+  if (process.platform === 'darwin') {
     run(`codesign --remove-signature ${BINARY_NAME}`);
     run(
       `npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE} --macho-segment-name NODE_SEA`,
     );
     run(`codesign --sign - ${BINARY_NAME}`);
   } else {
-    run(
-      `npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE}`,
-    );
+    run(`npx postject ${BINARY_NAME} NODE_SEA_BLOB ${BLOB_FILE} --sentinel-fuse ${SEA_FUSE}`);
   }
 
   // 6. Cleanup
   cleanup();
-  if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
+  if (existsSync('sea-entry.cjs')) unlinkSync('sea-entry.cjs');
 
   // eslint-disable-next-line no-console -- build script, not MCP transport
   console.log(`\nBuilt: ./${BINARY_NAME}\n`);
@@ -98,7 +96,7 @@ try {
     /* best-effort */
   }
   try {
-    if (existsSync("sea-entry.cjs")) unlinkSync("sea-entry.cjs");
+    if (existsSync('sea-entry.cjs')) unlinkSync('sea-entry.cjs');
   } catch {
     /* best-effort */
   }
@@ -108,6 +106,6 @@ try {
     /* best-effort */
   }
   // eslint-disable-next-line no-console -- build script, not MCP transport
-  console.error("SEA build failed:", err.message);
+  console.error('SEA build failed:', err.message);
   process.exit(1);
 }

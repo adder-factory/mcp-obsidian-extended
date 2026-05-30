@@ -6,18 +6,17 @@
  * All output goes to stderr. Exit 0 = pass, Exit 1 = fail.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { loadConfig } from "../src/config.js";
-import { ObsidianClient } from "../src/obsidian.js";
-import { VaultCache } from "../src/cache.js";
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { VaultCache } from '../src/cache.js';
+import { loadConfig } from '../src/config.js';
+import { ObsidianClient } from '../src/obsidian.js';
 
 // --- Config ---
 
 const DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const REPORT_INTERVAL_MS = 30_000; // Print stats every 30s
-const STRESS_PREFIX = "_stress5m_";
+const STRESS_PREFIX = '_stress5m_';
 const VAULT_FILE_LIMIT = 50;
 const CONCURRENCY = 8; // Parallel workers
 const FILE_POOL_SIZE = 30; // Rotating file pool
@@ -32,14 +31,14 @@ function write(msg: string): void {
 /** Loads .env from cwd if present. */
 function loadDotenv(): void {
   try {
-    const content = readFileSync(resolve(process.cwd(), ".env"), "utf-8");
-    for (const line of content.split("\n")) {
+    const content = readFileSync(resolve(process.cwd(), '.env'), 'utf-8');
+    for (const line of content.split('\n')) {
       const trimmed = line.trim();
-      if (trimmed === "" || trimmed.startsWith("#")) continue;
-      const eqIndex = trimmed.indexOf("=");
+      if (trimmed === '' || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
       if (eqIndex === -1) continue;
       let key = trimmed.slice(0, eqIndex).trim();
-      if (key.startsWith("export ")) key = key.slice(7).trim();
+      if (key.startsWith('export ')) key = key.slice(7).trim();
       let value = trimmed.slice(eqIndex + 1).trim();
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
@@ -114,13 +113,9 @@ class Stats {
     const now = Date.now();
     const intervalOps = this.totalOps - this.lastReportOps;
     const intervalSec = (now - this.lastReportTime) / 1000;
-    const opsPerSec =
-      intervalSec > 0 ? (intervalOps / intervalSec).toFixed(1) : "0";
+    const opsPerSec = intervalSec > 0 ? (intervalOps / intervalSec).toFixed(1) : '0';
     const elapsed = ((now - this.startTime) / 1000).toFixed(0);
-    const remaining = Math.max(
-      0,
-      (DURATION_MS - (now - this.startTime)) / 1000,
-    ).toFixed(0);
+    const remaining = Math.max(0, (DURATION_MS - (now - this.startTime)) / 1000).toFixed(0);
     const memMb = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
 
     write(
@@ -133,16 +128,14 @@ class Stats {
 
   /** Prints the final summary with per-operation percentiles. */
   printFinal(): void {
-    write("");
-    write("=== Final Results ===");
-    write("");
+    write('');
+    write('=== Final Results ===');
+    write('');
 
     const totalSec = this.elapsedSec;
     const opsPerSec = (this.totalOps / totalSec).toFixed(1);
     const errorRate =
-      this.totalOps > 0
-        ? ((this.totalErrors / this.totalOps) * 100).toFixed(2)
-        : "0";
+      this.totalOps > 0 ? ((this.totalErrors / this.totalOps) * 100).toFixed(2) : '0';
     const memMb = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
 
     write(`  Duration:    ${totalSec.toFixed(1)}s`);
@@ -150,17 +143,13 @@ class Stats {
     write(`  Throughput:  ${opsPerSec} ops/s`);
     write(`  Errors:      ${String(this.totalErrors)} (${errorRate}%)`);
     write(`  Heap:        ${memMb}MB`);
-    write("");
+    write('');
 
     // Per-operation breakdown
-    write(
-      "  Operation              Count    Errors   p50      p95      p99      max",
-    );
-    write("  " + "─".repeat(80));
+    write('  Operation              Count    Errors   p50      p95      p99      max');
+    write('  ' + '─'.repeat(80));
 
-    const sortedOps = [...this.buckets.entries()].sort(
-      (a, b) => b[1].count - a[1].count,
-    );
+    const sortedOps = [...this.buckets.entries()].sort((a, b) => b[1].count - a[1].count);
     for (const [op, bucket] of sortedOps) {
       const sorted = bucket.latencies.slice().sort((a, b) => a - b);
       const p50 = this.percentile(sorted, 50).toFixed(0);
@@ -174,17 +163,13 @@ class Stats {
         `  ${name} ${count}    ${errors}   ${p50.padStart(4)}ms   ${p95.padStart(4)}ms   ${p99.padStart(4)}ms   ${max.padStart(4)}ms`,
       );
     }
-    write("");
+    write('');
   }
 }
 
 // --- Operations ---
 
-type OpFn = (
-  client: ObsidianClient,
-  stats: Stats,
-  filePool: string[],
-) => Promise<void>;
+type OpFn = (client: ObsidianClient, stats: Stats, filePool: string[]) => Promise<void>;
 
 /** Picks a random element from an array. */
 function pick<T>(arr: readonly T[]): T {
@@ -194,13 +179,13 @@ function pick<T>(arr: readonly T[]): T {
 /** PUT a file with random content. */
 const opPut: OpFn = async (client, stats, filePool) => {
   const file = pick(filePool);
-  const content = `# Stress ${file}\n\nTimestamp: ${Date.now()}\n\n${"Data block. ".repeat(20)}\n`;
+  const content = `# Stress ${file}\n\nTimestamp: ${Date.now()}\n\n${'Data block. '.repeat(20)}\n`;
   const start = Date.now();
   try {
     await client.putContent(file, content);
-    stats.record("put", Date.now() - start, false);
+    stats.record('put', Date.now() - start, false);
   } catch {
-    stats.record("put", Date.now() - start, true);
+    stats.record('put', Date.now() - start, true);
   }
 };
 
@@ -209,10 +194,10 @@ const opGet: OpFn = async (client, stats, filePool) => {
   const file = pick(filePool);
   const start = Date.now();
   try {
-    await client.getFileContents(file, "markdown");
-    stats.record("get", Date.now() - start, false);
+    await client.getFileContents(file, 'markdown');
+    stats.record('get', Date.now() - start, false);
   } catch {
-    stats.record("get", Date.now() - start, true);
+    stats.record('get', Date.now() - start, true);
   }
 };
 
@@ -221,10 +206,10 @@ const opGetJson: OpFn = async (client, stats, filePool) => {
   const file = pick(filePool);
   const start = Date.now();
   try {
-    await client.getFileContents(file, "json");
-    stats.record("get_json", Date.now() - start, false);
+    await client.getFileContents(file, 'json');
+    stats.record('get_json', Date.now() - start, false);
   } catch {
-    stats.record("get_json", Date.now() - start, true);
+    stats.record('get_json', Date.now() - start, true);
   }
 };
 
@@ -234,9 +219,9 @@ const opAppend: OpFn = async (client, stats, filePool) => {
   const start = Date.now();
   try {
     await client.appendContent(file, `\nAppended at ${Date.now()}\n`);
-    stats.record("append", Date.now() - start, false);
+    stats.record('append', Date.now() - start, false);
   } catch {
-    stats.record("append", Date.now() - start, true);
+    stats.record('append', Date.now() - start, true);
   }
 };
 
@@ -247,29 +232,21 @@ const opDeletePut: OpFn = async (client, stats, filePool) => {
   try {
     await client.deleteFile(file);
     await client.putContent(file, `# Recreated\n\nAt ${Date.now()}\n`);
-    stats.record("delete_put", Date.now() - start, false);
+    stats.record('delete_put', Date.now() - start, false);
   } catch {
-    stats.record("delete_put", Date.now() - start, true);
+    stats.record('delete_put', Date.now() - start, true);
   }
 };
 
 /** Simple search. */
 const opSearch: OpFn = async (client, stats) => {
-  const queries = [
-    "stress",
-    "test",
-    "timestamp",
-    "data",
-    "block",
-    "recreated",
-    "appended",
-  ];
+  const queries = ['stress', 'test', 'timestamp', 'data', 'block', 'recreated', 'appended'];
   const start = Date.now();
   try {
     await client.simpleSearch(pick(queries));
-    stats.record("search", Date.now() - start, false);
+    stats.record('search', Date.now() - start, false);
   } catch {
-    stats.record("search", Date.now() - start, true);
+    stats.record('search', Date.now() - start, true);
   }
 };
 
@@ -278,9 +255,9 @@ const opList: OpFn = async (client, stats) => {
   const start = Date.now();
   try {
     await client.listFilesInVault();
-    stats.record("list", Date.now() - start, false);
+    stats.record('list', Date.now() - start, false);
   } catch {
-    stats.record("list", Date.now() - start, true);
+    stats.record('list', Date.now() - start, true);
   }
 };
 
@@ -289,9 +266,9 @@ const opStatus: OpFn = async (client, stats) => {
   const start = Date.now();
   try {
     await client.getServerStatus();
-    stats.record("status", Date.now() - start, false);
+    stats.record('status', Date.now() - start, false);
   } catch {
-    stats.record("status", Date.now() - start, true);
+    stats.record('status', Date.now() - start, true);
   }
 };
 
@@ -301,22 +278,16 @@ const opSearchReplace: OpFn = async (client, stats, filePool) => {
   const start = Date.now();
   try {
     // First ensure file exists
-    await client.putContent(
-      file,
-      `# SR Test\n\nReplace target: OLD_VALUE_${Date.now()}\n`,
-    );
+    await client.putContent(file, `# SR Test\n\nReplace target: OLD_VALUE_${Date.now()}\n`);
     // Read content, do manual search-replace via put
-    const content = await client.getFileContents(file, "markdown");
-    if (typeof content === "string") {
-      const updated = content.replace(
-        /OLD_VALUE_\d+/,
-        `NEW_VALUE_${Date.now()}`,
-      );
+    const content = await client.getFileContents(file, 'markdown');
+    if (typeof content === 'string') {
+      const updated = content.replace(/OLD_VALUE_\d+/, `NEW_VALUE_${Date.now()}`);
       await client.putContent(file, updated);
     }
-    stats.record("search_replace", Date.now() - start, false);
+    stats.record('search_replace', Date.now() - start, false);
   } catch {
-    stats.record("search_replace", Date.now() - start, true);
+    stats.record('search_replace', Date.now() - start, true);
   }
 };
 
@@ -328,10 +299,10 @@ const opCacheRebuild: OpFn = async (client, stats) => {
   try {
     await cache.initialize();
     cache.stopAutoRefresh();
-    stats.record("cache_rebuild", Date.now() - start, false);
+    stats.record('cache_rebuild', Date.now() - start, false);
   } catch {
     cache.stopAutoRefresh();
-    stats.record("cache_rebuild", Date.now() - start, true);
+    stats.record('cache_rebuild', Date.now() - start, true);
   }
 };
 
@@ -364,7 +335,7 @@ function pickOp(): OpFn {
 
 /** Runs operations continuously until deadline. */
 async function worker(
-  id: number,
+  _id: number,
   client: ObsidianClient,
   stats: Stats,
   filePool: string[],
@@ -382,9 +353,7 @@ async function worker(
 async function cleanup(client: ObsidianClient): Promise<void> {
   const { files } = await client.listFilesInVault();
   const stressFiles = files.filter((f) => f.includes(STRESS_PREFIX));
-  await Promise.all(
-    stressFiles.map((f) => client.deleteFile(f).catch(() => {})),
-  );
+  await Promise.all(stressFiles.map((f) => client.deleteFile(f).catch(() => {})));
   if (stressFiles.length > 0) {
     write(`  Cleaned up ${String(stressFiles.length)} stress test files`);
   }
@@ -393,20 +362,20 @@ async function cleanup(client: ObsidianClient): Promise<void> {
 // --- Main ---
 
 async function main(): Promise<void> {
-  write("");
-  write("=== mcp-obsidian-extended 5-minute stress test ===");
-  write("");
+  write('');
+  write('=== mcp-obsidian-extended 5-minute stress test ===');
+  write('');
   write(`  Duration:    ${String(DURATION_MS / 1000)}s`);
   write(`  Concurrency: ${String(CONCURRENCY)} workers`);
   write(`  File pool:   ${String(FILE_POOL_SIZE)} files`);
   write(`  Reports:     every ${String(REPORT_INTERVAL_MS / 1000)}s`);
-  write("");
+  write('');
 
   loadDotenv();
   const config = loadConfig();
 
   if (!config.apiKey) {
-    write("[error] OBSIDIAN_API_KEY is not set.");
+    write('[error] OBSIDIAN_API_KEY is not set.');
     process.exit(1);
   }
 
@@ -415,18 +384,16 @@ async function main(): Promise<void> {
   // Safety guard
   const { files } = await client.listFilesInVault();
   if (files.length > VAULT_FILE_LIMIT) {
-    write(
-      `[error] Vault has ${String(files.length)} files — use a test vault.`,
-    );
+    write(`[error] Vault has ${String(files.length)} files — use a test vault.`);
     process.exit(1);
   }
 
   // Seed file pool
   const filePool = Array.from(
     { length: FILE_POOL_SIZE },
-    (_, i) => `${STRESS_PREFIX}${String(i).padStart(3, "0")}.md`,
+    (_, i) => `${STRESS_PREFIX}${String(i).padStart(3, '0')}.md`,
   );
-  write("  Seeding file pool...");
+  write('  Seeding file pool...');
   await Promise.all(
     filePool.map((f, i) =>
       client.putContent(
@@ -436,7 +403,7 @@ async function main(): Promise<void> {
     ),
   );
   write(`  ${String(filePool.length)} files created`);
-  write("");
+  write('');
 
   const stats = new Stats();
   const deadline = Date.now() + DURATION_MS;
@@ -446,15 +413,13 @@ async function main(): Promise<void> {
     stats.printProgress();
   }, REPORT_INTERVAL_MS);
 
-  write("  Starting workers...");
-  write("");
+  write('  Starting workers...');
+  write('');
 
   try {
     // Launch concurrent workers
     await Promise.all(
-      Array.from({ length: CONCURRENCY }, (_, i) =>
-        worker(i, client, stats, filePool, deadline),
-      ),
+      Array.from({ length: CONCURRENCY }, (_, i) => worker(i, client, stats, filePool, deadline)),
     );
   } finally {
     clearInterval(reportTimer);
@@ -465,23 +430,18 @@ async function main(): Promise<void> {
   stats.printFinal();
 
   // Cleanup
-  write("  Cleaning up...");
+  write('  Cleaning up...');
   await cleanup(client);
 
   // Pass/fail criteria
-  const errorRate =
-    stats.totalOps > 0 ? (stats.totalErrors / stats.totalOps) * 100 : 0;
+  const errorRate = stats.totalOps > 0 ? (stats.totalErrors / stats.totalOps) * 100 : 0;
   const opsPerSec = stats.totalOps / stats.elapsedSec;
 
-  write("  Pass criteria:");
-  write(
-    `    Error rate < 5%:     ${errorRate < 5 ? "PASS" : "FAIL"} (${errorRate.toFixed(2)}%)`,
-  );
-  write(
-    `    Throughput > 10/s:   ${opsPerSec > 10 ? "PASS" : "FAIL"} (${opsPerSec.toFixed(1)}/s)`,
-  );
+  write('  Pass criteria:');
+  write(`    Error rate < 5%:     ${errorRate < 5 ? 'PASS' : 'FAIL'} (${errorRate.toFixed(2)}%)`);
+  write(`    Throughput > 10/s:   ${opsPerSec > 10 ? 'PASS' : 'FAIL'} (${opsPerSec.toFixed(1)}/s)`);
   write(`    No crashes:          PASS`);
-  write("");
+  write('');
 
   process.exit(errorRate < 5 && opsPerSec > 10 ? 0 : 1);
 }

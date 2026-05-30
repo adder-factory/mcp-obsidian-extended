@@ -10,52 +10,52 @@
 
 /** Maps granular tool names to consolidated equivalents. */
 const CONSOLIDATED_NAMES: ReadonlyMap<string, string> = new Map([
-  ["get_file_contents", "vault action: get"],
-  ["patch_content", "vault action: patch"],
-  ["put_content", "vault action: put"],
-  ["append_content", "vault action: append"],
-  ["search_replace", "vault action: search_replace"],
-  ["move_file", "vault action: move"],
-  ["delete_file", "vault action: delete"],
-  ["batch_get_file_contents", "batch_get"],
-  ["simple_search", "search type: simple"],
-  ["dataview_search", "search type: dataview"],
-  ["complex_search", "search type: jsonlogic"],
-  ["get_vault_structure", "vault_analysis action: structure"],
-  ["get_backlinks", "vault_analysis action: backlinks"],
-  ["get_note_connections", "vault_analysis action: connections"],
-  ["refresh_cache", "vault_analysis action: refresh"],
-  ["get_server_status", "status"],
-  ["list_files_in_dir", "vault action: list_dir"],
-  ["list_files_in_vault", "vault action: list"],
-  ["list_commands", "commands action: list"],
-  ["execute_command", "commands action: execute"],
-  ["append_active_file", "active_file action: append"],
-  ["patch_active_file", "active_file action: patch"],
+  ['get_file_contents', 'vault action: get'],
+  ['patch_content', 'vault action: patch'],
+  ['put_content', 'vault action: put'],
+  ['append_content', 'vault action: append'],
+  ['search_replace', 'vault action: search_replace'],
+  ['move_file', 'vault action: move'],
+  ['delete_file', 'vault action: delete'],
+  ['batch_get_file_contents', 'batch_get'],
+  ['simple_search', 'search type: simple'],
+  ['dataview_search', 'search type: dataview'],
+  ['complex_search', 'search type: jsonlogic'],
+  ['get_vault_structure', 'vault_analysis action: structure'],
+  ['get_backlinks', 'vault_analysis action: backlinks'],
+  ['get_note_connections', 'vault_analysis action: connections'],
+  ['refresh_cache', 'vault_analysis action: refresh'],
+  ['get_server_status', 'status'],
+  ['list_files_in_dir', 'vault action: list_dir'],
+  ['list_files_in_vault', 'vault action: list'],
+  ['list_commands', 'commands action: list'],
+  ['execute_command', 'commands action: execute'],
+  ['append_active_file', 'active_file action: append'],
+  ['patch_active_file', 'active_file action: patch'],
 ]);
 
 /** Resolves a granular tool name to the correct name for the active mode. */
-function t(mode: "granular" | "consolidated", granularName: string): string {
-  if (mode === "granular") return granularName;
+function t(mode: 'granular' | 'consolidated', granularName: string): string {
+  if (mode === 'granular') return granularName;
   return CONSOLIDATED_NAMES.get(granularName) ?? granularName;
 }
 
 // --- Section builders (extracted to keep buildSkillContent under 50 lines) ---
 
 /** Section 1: Golden rules that always apply. */
-function goldenRules(mode: "granular" | "consolidated"): string {
-  const get = t(mode, "get_file_contents");
-  const patch = t(mode, "patch_content");
-  const put = t(mode, "put_content");
-  const append = t(mode, "append_content");
-  const sr = t(mode, "search_replace");
-  const batch = t(mode, "batch_get_file_contents");
-  const structure = t(mode, "get_vault_structure");
-  const move = t(mode, "move_file");
-  const listDir = t(mode, "list_files_in_dir");
-  const search = t(mode, "simple_search");
-  const appendActive = t(mode, "append_active_file");
-  const patchActive = t(mode, "patch_active_file");
+function goldenRules(mode: 'granular' | 'consolidated'): string {
+  const get = t(mode, 'get_file_contents');
+  const patch = t(mode, 'patch_content');
+  const put = t(mode, 'put_content');
+  const append = t(mode, 'append_content');
+  const sr = t(mode, 'search_replace');
+  const batch = t(mode, 'batch_get_file_contents');
+  const structure = t(mode, 'get_vault_structure');
+  const move = t(mode, 'move_file');
+  const listDir = t(mode, 'list_files_in_dir');
+  const search = t(mode, 'simple_search');
+  const appendActive = t(mode, 'append_active_file');
+  const patchActive = t(mode, 'patch_active_file');
   return `## Golden Rules
 
 - ALWAYS ${get}(path, format: "map") BEFORE any ${patch} — verify the heading exists first. Never patch a heading you haven't confirmed.
@@ -69,21 +69,21 @@ function goldenRules(mode: "granular" | "consolidated"): string {
 }
 
 /** Section 2: Step-by-step common workflows. */
-function commonWorkflows(mode: "granular" | "consolidated"): string {
-  const get = t(mode, "get_file_contents");
-  const patch = t(mode, "patch_content");
-  const put = t(mode, "put_content");
-  const sr = t(mode, "search_replace");
-  const batch = t(mode, "batch_get_file_contents");
-  const move = t(mode, "move_file");
-  const search = t(mode, "simple_search");
-  const dataview = t(mode, "dataview_search");
-  const complex = t(mode, "complex_search");
-  const structure = t(mode, "get_vault_structure");
-  const backlinks = t(mode, "get_backlinks");
-  const connections = t(mode, "get_note_connections");
-  const refresh = t(mode, "refresh_cache");
-  const exec = t(mode, "execute_command");
+function commonWorkflows(mode: 'granular' | 'consolidated'): string {
+  const get = t(mode, 'get_file_contents');
+  const patch = t(mode, 'patch_content');
+  const put = t(mode, 'put_content');
+  const sr = t(mode, 'search_replace');
+  const batch = t(mode, 'batch_get_file_contents');
+  const move = t(mode, 'move_file');
+  const search = t(mode, 'simple_search');
+  const dataview = t(mode, 'dataview_search');
+  const complex = t(mode, 'complex_search');
+  const structure = t(mode, 'get_vault_structure');
+  const backlinks = t(mode, 'get_backlinks');
+  const connections = t(mode, 'get_note_connections');
+  const refresh = t(mode, 'refresh_cache');
+  const exec = t(mode, 'execute_command');
   return `## Common Workflows
 
 ### Edit under a heading
@@ -126,13 +126,13 @@ If heading has special characters (em dashes, parentheses), use ${sr} instead �
 }
 
 /** Section 3: Error recovery guidance. */
-function errorRecovery(mode: "granular" | "consolidated"): string {
-  const get = t(mode, "get_file_contents");
-  const sr = t(mode, "search_replace");
-  const listDir = t(mode, "list_files_in_dir");
-  const status = t(mode, "get_server_status");
-  const search = t(mode, "simple_search");
-  const move = t(mode, "move_file");
+function errorRecovery(mode: 'granular' | 'consolidated'): string {
+  const get = t(mode, 'get_file_contents');
+  const sr = t(mode, 'search_replace');
+  const listDir = t(mode, 'list_files_in_dir');
+  const status = t(mode, 'get_server_status');
+  const search = t(mode, 'simple_search');
+  const move = t(mode, 'move_file');
   return `## Error Recovery
 
 **404 NOT FOUND** — File doesn't exist.
@@ -158,20 +158,20 @@ function errorRecovery(mode: "granular" | "consolidated"): string {
 }
 
 /** Section 4: Tool selection guide. */
-function toolSelectionGuide(mode: "granular" | "consolidated"): string {
-  const get = t(mode, "get_file_contents");
-  const batch = t(mode, "batch_get_file_contents");
-  const append = t(mode, "append_content");
-  const put = t(mode, "put_content");
-  const patch = t(mode, "patch_content");
-  const sr = t(mode, "search_replace");
-  const search = t(mode, "simple_search");
-  const dataview = t(mode, "dataview_search");
-  const structure = t(mode, "get_vault_structure");
-  const backlinks = t(mode, "get_backlinks");
-  const connections = t(mode, "get_note_connections");
-  const exec = t(mode, "execute_command");
-  const move = t(mode, "move_file");
+function toolSelectionGuide(mode: 'granular' | 'consolidated'): string {
+  const get = t(mode, 'get_file_contents');
+  const batch = t(mode, 'batch_get_file_contents');
+  const append = t(mode, 'append_content');
+  const put = t(mode, 'put_content');
+  const patch = t(mode, 'patch_content');
+  const sr = t(mode, 'search_replace');
+  const search = t(mode, 'simple_search');
+  const dataview = t(mode, 'dataview_search');
+  const structure = t(mode, 'get_vault_structure');
+  const backlinks = t(mode, 'get_backlinks');
+  const connections = t(mode, 'get_note_connections');
+  const exec = t(mode, 'execute_command');
+  const move = t(mode, 'move_file');
   return `## Tool Selection Guide
 
 | I want to... | Use this tool |
@@ -186,23 +186,23 @@ function toolSelectionGuide(mode: "granular" | "consolidated"): string {
 | Check vault health | ${structure} — shows orphans, most connected |
 | Who links to this note? | ${backlinks} |
 | Full link analysis | ${connections} (backlinks + forward links) |
-| Run an Obsidian command | ${t(mode, "list_commands")}, find ID, then ${exec} |
+| Run an Obsidian command | ${t(mode, 'list_commands')}, find ID, then ${exec} |
 | Open file in Obsidian | open_file (newLeaf: true for new tab) |
 | Move/rename a file | ${move} (v1.1.0+) |`;
 }
 
 /** Section 5: Known pitfalls from real-world usage. */
-function knownPitfalls(mode: "granular" | "consolidated"): string {
-  const put = t(mode, "put_content");
-  const patch = t(mode, "patch_content");
-  const sr = t(mode, "search_replace");
+function knownPitfalls(mode: 'granular' | 'consolidated'): string {
+  const put = t(mode, 'put_content');
+  const patch = t(mode, 'patch_content');
+  const sr = t(mode, 'search_replace');
   return `## Things That Will Break If You Ignore Them
 
 - ${put} OVERWRITES the entire file. If you use it to "edit a section" you will destroy all other content. This is the #1 mistake.
 - ${patch} with replace operation on a top-level heading replaces EVERYTHING under it — including all sub-headings.
 - PATCH with :: heading delimiter has ~10.5% failure rate under concurrent writes. For concurrent editing, prefer ${sr}.
 - Dataview LIST queries are not supported — only TABLE. This is the REST API plugin's limitation.
-- Active file operations (${mode === "consolidated" ? "active_file" : "get_active_file, put_active_file, etc."}) depend on what the USER has open in Obsidian — if they switch files, the active file changes under you.`;
+- Active file operations (${mode === 'consolidated' ? 'active_file' : 'get_active_file, put_active_file, etc.'}) depend on what the USER has open in Obsidian — if they switch files, the active file changes under you.`;
 }
 
 /** Section 6: Consolidated mode action → required params mapping. */
@@ -313,12 +313,9 @@ Responses use abbreviated field names to save tokens:
  * @param compact - Whether compact responses are enabled.
  * @returns Complete markdown skill document.
  */
-export function buildSkillContent(
-  mode: "granular" | "consolidated",
-  compact: boolean,
-): string {
+export function buildSkillContent(mode: 'granular' | 'consolidated', compact: boolean): string {
   const sections = [
-    "# Obsidian MCP — Tool Usage Guide",
+    '# Obsidian MCP — Tool Usage Guide',
     goldenRules(mode),
     commonWorkflows(mode),
     errorRecovery(mode),
@@ -326,7 +323,7 @@ export function buildSkillContent(
     knownPitfalls(mode),
   ];
 
-  if (mode === "consolidated") {
+  if (mode === 'consolidated') {
     sections.push(consolidatedActionReference());
   }
 
@@ -334,5 +331,5 @@ export function buildSkillContent(
     sections.push(compactFieldReference());
   }
 
-  return `${sections.join("\n\n")}\n`;
+  return `${sections.join('\n\n')}\n`;
 }

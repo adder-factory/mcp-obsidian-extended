@@ -19,6 +19,7 @@
     "sonar-scanner"
   ],
   "ignoreDependencies": [
+    "@biomejs/biome",
     "esbuild",
     "glob",
     "postject",

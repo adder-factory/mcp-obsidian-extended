@@ -1,6 +1,6 @@
 # common.sh — shared bash helpers for Adder pipeline scripts.
 #
-# Sourced by pre-pr.sh, qwen-review.sh, install.sh. NOT executed directly.
+# Sourced by pre-pr.sh, install.sh. NOT executed directly.
 # Assumes `set -u` at source time; callers decide their own `set -e` policy
 # because the gate deliberately keeps running after individual gate failures.
 

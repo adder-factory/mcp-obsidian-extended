@@ -1,34 +1,28 @@
-import { resolve } from "node:path";
+import { resolve } from 'node:path';
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-
-import type {
-  NoteJson,
-  DocumentMap,
-  ToolResult,
-  ObsidianClient,
-} from "../obsidian.js";
-import {
-  textResult,
-  errorResult,
-  jsonResult,
-  setCompactResponses,
-  getCompactResponses,
-  sanitizeFilePath,
-} from "../obsidian.js";
-import type { VaultCache } from "../cache.js";
-import type { Config } from "../config.js";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { VaultCache } from '../cache.js';
+import type { Config } from '../config.js';
 import {
   DEFAULTS,
+  getDebugEnabled,
   getRedactedConfig,
+  log,
   saveConfigToFile,
   setDebugEnabled,
-  getDebugEnabled,
-  log,
-} from "../config.js";
-import { ObsidianApiError, buildErrorMessage } from "../errors.js";
-import { buildSkillContent } from "../skill.js";
+} from '../config.js';
+import { buildErrorMessage, ObsidianApiError } from '../errors.js';
+import type { DocumentMap, NoteJson, ObsidianClient, ToolResult } from '../obsidian.js';
+import {
+  errorResult,
+  getCompactResponses,
+  jsonResult,
+  sanitizeFilePath,
+  setCompactResponses,
+  textResult,
+} from '../obsidian.js';
+import { buildSkillContent } from '../skill.js';
 
 // --- Cache readiness ---
 
@@ -62,9 +56,7 @@ export async function ensureCacheReady({
   enableCache,
 }: EnsureCacheReadyOptions): Promise<ToolResult | undefined> {
   if (!enableCache)
-    return errorResult(
-      `[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`,
-    );
+    return errorResult(`[${tool}] Cache is disabled. Set OBSIDIAN_ENABLE_CACHE=true`);
   if (cache.getIsInitialized()) return undefined;
   if (await cache.waitForInitialization(CACHE_INIT_TIMEOUT_MS)) {
     return undefined; // Cache was initialized at time of check
@@ -74,7 +66,7 @@ export async function ensureCacheReady({
   // Trigger a background rebuild so the next call will find the cache building
   void cache.initialize().catch((err: unknown) => {
     log(
-      "debug",
+      'debug',
       `Background cache rebuild failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
@@ -91,7 +83,7 @@ export async function ensureCacheReady({
 export function formatFileContents(
   result: string | NoteJson | DocumentMap,
 ): ReturnType<typeof textResult> {
-  if (typeof result === "string") {
+  if (typeof result === 'string') {
     return textResult(result);
   }
   return jsonResult(result);
@@ -116,8 +108,8 @@ export function escapeRegex(str: string): string {
  * @returns The boolean value, or undefined if invalid.
  */
 function parseBoolValue(value: string): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
   return undefined;
 }
 
@@ -128,7 +120,7 @@ function parseBoolValue(value: string): boolean | undefined {
  * @returns The parsed number, or undefined if invalid (empty, decimal, non-finite, or below min).
  */
 function parsePosIntValue(value: string, min: number): number | undefined {
-  if (value.trim() === "") return undefined;
+  if (value.trim() === '') return undefined;
   const n = Number(value);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < min) return undefined;
   return n;
@@ -147,7 +139,7 @@ const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<
   ConfigUpdateParser
 >([
   [
-    "debug",
+    'debug',
     {
       parse: (v) => {
         const b = parseBoolValue(v);
@@ -156,7 +148,7 @@ const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<
     },
   ],
   [
-    "compactResponses",
+    'compactResponses',
     {
       parse: (v) => {
         const b = parseBoolValue(v);
@@ -165,7 +157,7 @@ const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<
     },
   ],
   [
-    "timeout",
+    'timeout',
     {
       parse: (v) => {
         const n = parsePosIntValue(v, 1);
@@ -174,41 +166,34 @@ const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<
     },
   ],
   [
-    "verifyWrites",
+    'verifyWrites',
     {
       parse: (v) => {
         const b = parseBoolValue(v);
-        return b === undefined
-          ? undefined
-          : { reliability: { verifyWrites: b } };
+        return b === undefined ? undefined : { reliability: { verifyWrites: b } };
       },
     },
   ],
   [
-    "maxResponseChars",
+    'maxResponseChars',
     {
       parse: (v) => {
         const n = parsePosIntValue(v, 0);
-        return n === undefined
-          ? undefined
-          : { reliability: { maxResponseChars: n } };
+        return n === undefined ? undefined : { reliability: { maxResponseChars: n } };
       },
     },
   ],
   [
-    "toolMode",
+    'toolMode',
     {
-      parse: (v) =>
-        v === "granular" || v === "consolidated"
-          ? { tools: { mode: v } }
-          : undefined,
+      parse: (v) => (v === 'granular' || v === 'consolidated' ? { tools: { mode: v } } : undefined),
     },
   ],
   [
-    "toolPreset",
+    'toolPreset',
     {
       parse: (v) =>
-        v === "full" || v === "read-only" || v === "minimal" || v === "safe"
+        v === 'full' || v === 'read-only' || v === 'minimal' || v === 'safe'
           ? { tools: { preset: v } }
           : undefined,
     },
@@ -221,10 +206,7 @@ const CONFIG_UPDATE_PARSERS: ReadonlyMap<string, ConfigUpdateParser> = new Map<
  * @param value - The new string value.
  * @returns A partial config update object, or undefined if the value is invalid.
  */
-function buildConfigUpdate(
-  setting: string,
-  value: string,
-): Record<string, unknown> | undefined {
+function buildConfigUpdate(setting: string, value: string): Record<string, unknown> | undefined {
   const parser = CONFIG_UPDATE_PARSERS.get(setting);
   return parser ? parser.parse(value) : undefined;
 }
@@ -234,23 +216,21 @@ function buildConfigUpdate(
  * @param setting - The setting name to reset.
  * @returns A partial config update object, or undefined for unknown settings.
  */
-function buildConfigReset(
-  setting: string,
-): Record<string, unknown> | undefined {
+function buildConfigReset(setting: string): Record<string, unknown> | undefined {
   switch (setting) {
-    case "debug":
+    case 'debug':
       return { debug: DEFAULTS.debug };
-    case "compactResponses":
+    case 'compactResponses':
       return { compactResponses: DEFAULTS.compactResponses };
-    case "timeout":
+    case 'timeout':
       return { reliability: { timeout: DEFAULTS.timeout } };
-    case "verifyWrites":
+    case 'verifyWrites':
       return { reliability: { verifyWrites: DEFAULTS.verifyWrites } };
-    case "maxResponseChars":
+    case 'maxResponseChars':
       return { reliability: { maxResponseChars: DEFAULTS.maxResponseChars } };
-    case "toolMode":
+    case 'toolMode':
       return { tools: { mode: DEFAULTS.toolMode } };
-    case "toolPreset":
+    case 'toolPreset':
       return { tools: { preset: DEFAULTS.toolPreset } };
     default:
       return undefined;
@@ -264,16 +244,13 @@ function buildConfigReset(
  * @param value - The new string value.
  */
 function applyImmediateSetting(setting: string, value: string): void {
-  if (setting === "debug") {
-    setDebugEnabled(value === "true");
-    log("info", `Debug logging ${value === "true" ? "enabled" : "disabled"}`);
+  if (setting === 'debug') {
+    setDebugEnabled(value === 'true');
+    log('info', `Debug logging ${value === 'true' ? 'enabled' : 'disabled'}`);
   }
-  if (setting === "compactResponses") {
-    setCompactResponses(value === "true");
-    log(
-      "info",
-      `Compact responses ${value === "true" ? "enabled" : "disabled"}`,
-    );
+  if (setting === 'compactResponses') {
+    setCompactResponses(value === 'true');
+    log('info', `Compact responses ${value === 'true' ? 'enabled' : 'disabled'}`);
   }
 }
 
@@ -296,33 +273,28 @@ function handleConfigureSet(
   if (value === undefined) {
     return errorResult("[configure] Value is required for 'set' action");
   }
-  const immediateSettings = new Set(["debug", "compactResponses"]);
+  const immediateSettings = new Set(['debug', 'compactResponses']);
   const restartSettings = new Set([
-    "timeout",
-    "verifyWrites",
-    "maxResponseChars",
-    "toolMode",
-    "toolPreset",
+    'timeout',
+    'verifyWrites',
+    'maxResponseChars',
+    'toolMode',
+    'toolPreset',
   ]);
   if (!immediateSettings.has(setting) && !restartSettings.has(setting)) {
     return errorResult(
-      `[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(", ")}`,
+      `[configure] Unknown setting: ${setting}. Available: ${[...immediateSettings, ...restartSettings].join(', ')}`,
     );
   }
-  const configPath =
-    config.configFilePath ?? resolve("obsidian-mcp.config.json");
+  const configPath = config.configFilePath ?? resolve('obsidian-mcp.config.json');
   const updates = buildConfigUpdate(setting, value);
   if (updates === undefined) {
-    return errorResult(
-      `[configure] Invalid value "${value}" for setting "${setting}"`,
-    );
+    return errorResult(`[configure] Invalid value "${value}" for setting "${setting}"`);
   }
   saveConfigToFile(configPath, updates);
   if (immediateSettings.has(setting)) {
     applyImmediateSetting(setting, value);
-    return textResult(
-      `Setting "${setting}" updated to "${value}" (effective immediately)`,
-    );
+    return textResult(`Setting "${setting}" updated to "${value}" (effective immediately)`);
   }
   return textResult(
     `Setting "${setting}" saved to config file. Restart the server for this change to take effect.`,
@@ -335,30 +307,18 @@ function handleConfigureSet(
  * @param config - The active config object (for file path lookup).
  * @returns A tool result describing success or the validation error.
  */
-function handleConfigureReset(
-  setting: string | undefined,
-  config: Config,
-): ToolResult {
-  if (!setting)
-    return errorResult(
-      "[configure] Setting name is required for 'reset' action",
-    );
-  const configPath =
-    config.configFilePath ?? resolve("obsidian-mcp.config.json");
+function handleConfigureReset(setting: string | undefined, config: Config): ToolResult {
+  if (!setting) return errorResult("[configure] Setting name is required for 'reset' action");
+  const configPath = config.configFilePath ?? resolve('obsidian-mcp.config.json');
   const resetUpdates = buildConfigReset(setting);
   if (resetUpdates === undefined) {
     return errorResult(`[configure] Unknown setting: ${setting}`);
   }
   saveConfigToFile(configPath, resetUpdates);
   // Apply immediately for settings that take effect without restart
-  if (setting === "debug" || setting === "compactResponses") {
-    applyImmediateSetting(
-      setting,
-      String(DEFAULTS[setting as keyof typeof DEFAULTS]),
-    );
-    return textResult(
-      `Setting "${setting}" reset to default (effective immediately)`,
-    );
+  if (setting === 'debug' || setting === 'compactResponses') {
+    applyImmediateSetting(setting, String(DEFAULTS[setting as keyof typeof DEFAULTS]));
+    return textResult(`Setting "${setting}" reset to default (effective immediately)`);
   }
   return textResult(
     `Setting "${setting}" reset to default in config file. Restart the server for this change to take effect.`,
@@ -387,20 +347,17 @@ function handleConfigureShow(config: Config): ToolResult {
  * @param limit - Maximum number of most-connected notes to include.
  * @returns A JSON tool result with vault stats.
  */
-export function buildVaultStructure(
-  cache: VaultCache,
-  limit: number,
-): ToolResult {
+export function buildVaultStructure(cache: VaultCache, limit: number): ToolResult {
   const orphans = cache.getOrphanNotes();
   const mostConnected = cache.getMostConnectedNotes(limit);
   const dirs = new Set<string>();
   for (const p of cache.getFileList()) {
-    let lastSlash = p.lastIndexOf("/");
+    let lastSlash = p.lastIndexOf('/');
     while (lastSlash !== -1) {
       const dir = p.slice(0, lastSlash);
       if (dirs.has(dir)) break; // this dir and all its parents are already tracked
       dirs.add(dir);
-      lastSlash = dir.lastIndexOf("/");
+      lastSlash = dir.lastIndexOf('/');
     }
   }
   return jsonResult({
@@ -442,20 +399,13 @@ interface RecordBatchResultParams {
  * cognitive-complexity ceiling (S3776).
  * @param params - Destructured params per CLAUDE.md style guide.
  */
-function recordBatchResult({
-  result,
-  fp,
-  successes,
-}: RecordBatchResultParams): void {
-  if (result.status === "fulfilled") {
+function recordBatchResult({ result, fp, successes }: RecordBatchResultParams): void {
+  if (result.status === 'fulfilled') {
     successes.push(result.value);
     return;
   }
-  const reason =
-    result.reason instanceof Error
-      ? result.reason.message
-      : String(result.reason);
-  log("warn", `recent_changes: skipping ${fp} (read failed: ${reason})`);
+  const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+  log('warn', `recent_changes: skipping ${fp} (read failed: ${reason})`);
 }
 
 /**
@@ -473,8 +423,8 @@ async function readBatchStats(
 ): Promise<RecentChangeStat[]> {
   const results = await Promise.allSettled(
     batch.map(async (fp): Promise<RecentChangeStat> => {
-      const result = await client.getFileContents(fp, "json");
-      if (typeof result !== "string" && "stat" in result) {
+      const result = await client.getFileContents(fp, 'json');
+      if (typeof result !== 'string' && 'stat' in result) {
         return { path: fp, mtime: result.stat.mtime };
       }
       return { path: fp, mtime: 0 };
@@ -482,7 +432,7 @@ async function readBatchStats(
   );
   const successes: RecentChangeStat[] = [];
   results.forEach((r, j) => {
-    recordBatchResult({ result: r, fp: batch[j] ?? "<unknown>", successes });
+    recordBatchResult({ result: r, fp: batch[j] ?? '<unknown>', successes });
   });
   return successes;
 }
@@ -511,7 +461,7 @@ export async function handleRecentChanges(
     return jsonResult(sorted);
   }
   const { files } = await client.listFilesInVault();
-  const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
+  const mdFiles = files.filter((f) => f.toLowerCase().endsWith('.md'));
   const withStats: Array<{ path: string; mtime: number }> = [];
   for (let i = 0; i < mdFiles.length; i += RECENT_CHANGES_BATCH_SIZE) {
     const batch = mdFiles.slice(i, i + RECENT_CHANGES_BATCH_SIZE);
@@ -537,17 +487,15 @@ export async function handleRecentPeriodicNotes(
   // Folder names are Obsidian defaults — the REST API does not expose user-configured paths.
   // Users with custom folder names should use get_periodic_note_for_date instead.
   const periodDirs: Record<string, string> = {
-    daily: "Daily Notes",
-    weekly: "Weekly Notes",
-    monthly: "Monthly Notes",
-    quarterly: "Quarterly Notes",
-    yearly: "Yearly Notes",
+    daily: 'Daily Notes',
+    weekly: 'Weekly Notes',
+    monthly: 'Monthly Notes',
+    quarterly: 'Quarterly Notes',
+    yearly: 'Yearly Notes',
   };
   const dirName = periodDirs[period] ?? period;
   const periodFiles = files
-    .filter(
-      (f) => f.startsWith(`${dirName}/`) && f.toLowerCase().endsWith(".md"),
-    )
+    .filter((f) => f.startsWith(`${dirName}/`) && f.toLowerCase().endsWith('.md'))
     .sort((a, b) => b.localeCompare(a))
     .slice(0, limit);
   return jsonResult(periodFiles);
@@ -576,7 +524,7 @@ const BATCH_GET_BATCH_SIZE = 20;
 export async function batchGetFiles(
   client: ObsidianClient,
   filePaths: readonly string[],
-  format: "markdown" | "json" | "map" | undefined,
+  format: 'markdown' | 'json' | 'map' | undefined,
 ): Promise<BatchFileResult[]> {
   const output: BatchFileResult[] = [];
   for (let i = 0; i < filePaths.length; i += BATCH_GET_BATCH_SIZE) {
@@ -615,36 +563,28 @@ export async function handleMoveFile(
   const normalizedSource = sanitizeFilePath(source);
   const normalizedDest = sanitizeFilePath(destination);
   if (normalizedSource === normalizedDest) {
-    return textResult(
-      `No-op: source and destination are the same (${normalizedSource})`,
-    );
+    return textResult(`No-op: source and destination are the same (${normalizedSource})`);
   }
-  if (!normalizedSource.toLowerCase().endsWith(".md")) {
+  if (!normalizedSource.toLowerCase().endsWith('.md')) {
     return errorResult(
-      "[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.",
+      '[move_file] Only .md files can be moved. Non-markdown files may lose data in the text round-trip.',
     );
   }
-  if (!normalizedDest.toLowerCase().endsWith(".md")) {
-    return errorResult("[move_file] Destination must be a .md file.");
+  if (!normalizedDest.toLowerCase().endsWith('.md')) {
+    return errorResult('[move_file] Destination must be a .md file.');
   }
   // Lock ordering: acquire source lock first (via getFileContents), then destination (via putContent).
   // Each client method internally uses withFileLock, serializing per-path writes.
   // MCP tool calls are sequential (single client), so cross-call races are not possible.
   // The conflict check is best-effort — Obsidian itself is the final arbiter.
-  const content = await client.getFileContents(
-    normalizedSource,
-    "markdown",
-    true,
-  );
-  if (typeof content !== "string") {
-    return errorResult(
-      "[move_file] Expected markdown content from source file",
-    );
+  const content = await client.getFileContents(normalizedSource, 'markdown', true);
+  if (typeof content !== 'string') {
+    return errorResult('[move_file] Expected markdown content from source file');
   }
   try {
-    await client.getFileContents(normalizedDest, "markdown");
+    await client.getFileContents(normalizedDest, 'markdown');
     return errorResult(
-      "CONFLICT: Destination already exists. Delete it first or choose a different path.",
+      'CONFLICT: Destination already exists. Delete it first or choose a different path.',
     );
   } catch (err: unknown) {
     if (!(err instanceof ObsidianApiError && err.statusCode === 404)) {
@@ -677,14 +617,14 @@ export function registerOpenFileTool(
   client: ObsidianClient,
   shouldRegister: (name: string) => boolean,
 ): number {
-  if (!shouldRegister("open_file")) return 0;
+  if (!shouldRegister('open_file')) return 0;
   server.registerTool(
-    "open_file",
+    'open_file',
     {
-      description: "Open a file in the Obsidian UI",
+      description: 'Open a file in the Obsidian UI',
       inputSchema: z.object({
-        path: z.string().describe("File path"),
-        newLeaf: z.boolean().default(false).describe("Open in new tab"),
+        path: z.string().describe('File path'),
+        newLeaf: z.boolean().default(false).describe('Open in new tab'),
       }),
     },
     async ({ path, newLeaf }) => {
@@ -692,7 +632,7 @@ export function registerOpenFileTool(
         await client.openFile(path, newLeaf);
         return textResult(`Opened: ${path}`);
       } catch (err: unknown) {
-        return errorResult(buildErrorMessage(err, { tool: "open_file", path }));
+        return errorResult(buildErrorMessage(err, { tool: 'open_file', path }));
       }
     },
   );
@@ -708,39 +648,35 @@ export function registerConfigureTool(
   shouldRegister: (name: string) => boolean,
   config: Config,
 ): number {
-  if (!shouldRegister("configure")) return 0;
+  if (!shouldRegister('configure')) return 0;
   server.registerTool(
-    "configure",
+    'configure',
     {
-      description: "View or change server settings, or load LLM usage guide",
+      description: 'View or change server settings, or load LLM usage guide',
       inputSchema: z.object({
-        action: z.enum(["show", "set", "reset", "skill"]).describe("Action"),
-        setting: z.string().optional().describe("Setting name for set/reset"),
-        value: z.string().optional().describe("New value for set"),
+        action: z.enum(['show', 'set', 'reset', 'skill']).describe('Action'),
+        setting: z.string().optional().describe('Setting name for set/reset'),
+        value: z.string().optional().describe('New value for set'),
       }),
     },
-    async ({ action, setting, value }) => {
+    ({ action, setting, value }) => {
       try {
         switch (action) {
-          case "show":
+          case 'show':
             return handleConfigureShow(config);
-          case "set":
+          case 'set':
             return handleConfigureSet(setting, value, config);
-          case "reset":
+          case 'reset':
             return handleConfigureReset(setting, config);
-          case "skill":
-            return textResult(
-              buildSkillContent(config.toolMode, getCompactResponses()),
-            );
+          case 'skill':
+            return textResult(buildSkillContent(config.toolMode, getCompactResponses()));
           default: {
             const _exhaustive: never = action;
-            return errorResult(
-              `[configure] Unknown action: ${String(_exhaustive)}`,
-            );
+            return errorResult(`[configure] Unknown action: ${String(_exhaustive)}`);
           }
         }
       } catch (err: unknown) {
-        return errorResult(buildErrorMessage(err, { tool: "configure" }));
+        return errorResult(buildErrorMessage(err, { tool: 'configure' }));
       }
     },
   );

@@ -111,72 +111,6 @@ API reference: @docs/cc-reference.md
 - Fix ALL review feedback before requesting merge
 - Do NOT merge without user approval
 
-## Reviewer Subagent (pre-PR semantic review)
-
-Before pushing a branch and opening a PR, **invoke the `reviewer` subagent**
-on the diff (defined in `.claude/agents/reviewer.md`). The reviewer reads
-the change with fresh context and returns a JSON verdict:
-
-- `APPROVE` — proceed to push + PR open as normal.
-- `REQUEST_CHANGES` — address the listed findings, then re-run the reviewer.
-  Do not open the PR until verdict is `APPROVE` or you have a concrete
-  reason to override a finding (document the reason in the PR body).
-- `BLOCK` — do not push. Escalate to the human; the diff has a security,
-  scope, or correctness issue that needs out-of-band judgment.
-
-**Fail-closed rule.** If the reviewer times out, errors, or returns output
-that is not parseable as the documented JSON schema, treat it as `BLOCK`
-and escalate to the human. Do **not** default to proceeding — a silent
-reviewer failure must not become a silent push, otherwise the gate is
-defeated. Include diagnostic details (the timeout marker, error class,
-or a short excerpt of the unparseable output) in the escalation message,
-but **sanitize first**: redact API keys, tokens, paths under `.env`, and
-any line that looks secret-like before posting to PR artifacts or logs.
-If unsure whether output is safe to include, escalate with just the
-error class — the human can re-run locally.
-
-The reviewer is **complementary** to (not a replacement for) `npm run pre-pr`
-(deterministic local gate, runs before push) and the PR-stage AI reviewers
-configured for this repo (run after the PR is open). The reviewer's job is
-the layer those miss: intent vs. implementation, missing edge cases, scope
-drift — surfaced before code goes public.
-
-Time budget: ~120 seconds. If the reviewer takes longer than that
-consistently, log the run-times and revisit the prompt or the model choice.
-
-**Verdict logging (orchestrator-side, mandatory).** The reviewer
-subagent is read-only by design — it can't write its own verdict
-log. After receiving each reviewer verdict, **append a JSONL
-record** to `.adder-pipeline/reviewer-verdicts.jsonl`. JSONL
-requires exactly one compact JSON object per line, terminated by a
-newline; no pretty-printing inside a record. Each record looks
-like:
-
-```text
-{"timestamp":"2026-04-26T15:00:00Z","pr_number":42,"verdict":"APPROVE","wall_clock_seconds":18}
-```
-
-- One record per invocation, append-only. Create the directory
-  `.adder-pipeline/` and the file if absent. The exact setup
-  command (kept on a single line so copy-paste runs as a unit):
-
-  ```bash
-  mkdir -p .adder-pipeline && touch .adder-pipeline/reviewer-verdicts.jsonl
-  ```
-
-  Then append the JSONL record.
-
-- `timestamp` ISO-8601 UTC, `pr_number` is the GitHub PR number
-  (use `0` if logging a pre-PR dry-run with no PR open yet),
-  `verdict` is one of `APPROVE` / `REQUEST_CHANGES` / `BLOCK`,
-  `wall_clock_seconds` is the integer seconds the agent took.
-- The log feeds the weekly distribution check that drives the
-  prompt-tightness re-evaluation; see
-  `~/projects/code-review-pipeline/pipeline-state.md` "Reviewer
-  subagent" for the keep/tune criteria.
-- Do this even when the verdict is `APPROVE`. The denominator is as
-  important as the numerator.
-
 ## Mutation Testing — Ratchet Policy (active, post-floor)
 
 Stryker `thresholds.break` is currently set to **80** in
@@ -348,74 +282,265 @@ next. Format per stage:
 Do NOT batch verification at end of all stages. A failed early stage that
 propagates is harder to diagnose than one caught immediately.
 
-## CodeGraph Usage
+## Spec Drift Prevention
 
-CodeGraph indexes this repo via `.codegraph/` and exposes
-`mcp__codegraph__*` tools to Claude Code. The 2026-04-26 audit found
-zero actual MCP invocations across 7,499 lines of transcripts despite
-the wiring being in place — the tools were treated as optional. This
-section makes specific uses **mandatory** and creates a measurement
-window to decide whether to keep or remove the wiring.
+Any addition or removal of a gate, reviewer, or pipeline step must be
+recorded in `~/projects/code-review-pipeline/pipeline-state.md`. Because
+`pipeline-state.md` lives in a separate filesystem location from this
+repo (it is vault-adjacent, not part of any repo's diff), the rule is:
+**update `pipeline-state.md` in its own location and commit that change
+alongside or immediately before the implementing PR in this repo**. "Alongside" means in the same working session;
+"immediately before" means no other implementing PR lands between the
+state-doc update and the change it documents. The state document must
+always reflect what `main` actually runs.
 
-### What CodeGraph is and is not
+Drift erodes trust. Every drift item caught in the 2026-04-26 audit (Q5
+in `~/projects/code-review-pipeline/build-log.md`) happened because this
+rule didn't exist. CodeAnt was dropped on 2026-04-23 and the docs took
+three days to catch up; CodeQL, the reviewer subagent, the
+JSDoc-coverage gate, and the Stryker hard-floor were all added without
+ever updating the spec. The cost was real: the audit had to reconstruct
+live state from PR history because no single document reflected reality.
 
-CodeGraph indexes the **abstract syntax tree** of source files —
-symbols (functions, classes, methods, types), imports, and call
-relationships. It is **not** a full-text index. It is the right
-tool for **structural** questions and the wrong tool for **substring**
-questions:
+`pipeline-state.md` is the live-state document. `pipeline-spec.md` is
+now marked superseded and preserved for the design-intent record only.
 
-| Question shape                                       | Right tool                                       |
-| ---------------------------------------------------- | ------------------------------------------------ |
-| Where is symbol X defined?                           | `mcp__codegraph__codegraph_search`               |
-| Who calls X? What does X call?                       | `mcp__codegraph__codegraph_callers` / `_callees` |
-| What does changing X impact?                         | `mcp__codegraph__codegraph_impact`               |
-| What's the high-level structure of `src/`?           | `mcp__codegraph__codegraph_files`                |
-| Trace call relationships across files                | `mcp__codegraph__codegraph_explore`              |
-| Is this literal string in any file?                  | `Grep`                                           |
-| Find this error message / regex / TODO comment       | `Grep`                                           |
-| Find this word in markdown / json / yaml             | `Grep`                                           |
-| Substring search where I don't know if it's a symbol | `Grep`                                           |
+## When to Use Subagents
 
-The dividing line: CodeGraph knows the AST; Grep knows file bytes.
-Pick the tool that matches the question shape, not the one you're
-more fluent with — the audit's 0-invocation finding was a
-muscle-memory problem, not a tool-quality problem.
+Subagents are not free — each burns its own context window, and
+coordination has overhead. Use them when work fits ALL three:
 
-### Mandatory uses (must call CodeGraph, not Grep)
+1. **Parallel-safe** — independent files, no shared state, results don't
+   depend on each other
+2. **Naturally splits 3+ ways** — fewer than 3 splits = overhead exceeds
+   benefit
+3. **Mechanical or templated** — each subtask follows the same pattern
+   with different inputs
 
-- **Before refactoring any exported symbol** (e.g., function, class,
-  type, interface, enum, exported const), call
-  `mcp__codegraph__codegraph_impact` with the symbol name to surface
-  affected callers. Do NOT skip this for "small-looking" changes —
-  exported-symbol blast radius is the exact failure mode CodeGraph
-  exists to prevent.
-- **When tracing call / caller relationships across files** (e.g.,
-  "what does this function depend on?", "who else uses this
-  method?"), use `mcp__codegraph__codegraph_explore` or
-  `_callers` / `_callees`. One graph query replaces 20+ file reads.
-- **When self-reviewing a PR with source changes**, run
-  `mcp__codegraph__codegraph_impact` on each modified exported
-  symbol. Document the result in the PR body so reviewers see the
-  blast radius CC checked.
+Examples:
 
-Note: bug investigations involving error messages, log strings, or
-literal text content are **substring** queries — use `Grep` for
-those. The mandate above is for relationship-tracing investigations
-(stack of callers, dependency chain), not for "find the string
-`connection refused` in any file."
+- ✅ JSDoc backfill across 60 files
+- ✅ Bulk test additions across independent modules
+- ✅ Multi-repo template propagation
+- ❌ Single-file refactor
+- ❌ Sequential multi-stage task
+- ❌ Small PR (<50 LOC, <3 files)
 
-File reads (`Read`) are for when you need the actual source to edit;
-use CodeGraph for AST discovery and Grep for substring lookups.
+Default to single-agent for everything else. The cost of a subagent that
+isn't pulling its weight is real.
 
-Usage is measured weekly by
-`adder-pipeline-tools/scripts/codegraph-usage-counter.sh`. See
-`~/projects/code-review-pipeline/pipeline-state.md` for the keep/cut
-decision criteria — the wiring is on probation until 2026-05-03. The
-mandates above are in force _during_ probation so the measurement
-reflects the policy actually being followed; if the decision on
-2026-05-03 is "cut," these mandates are removed alongside the MCP
-wiring.
+<!-- ADDER-PIPELINE:v2 -->
+
+## Adder Code Review Pipeline
+
+This project uses the Adder code review pipeline. Rules Claude Code must
+follow:
+
+### Before every push
+
+Run the gate until clean:
+
+```bash
+npm run pre-pr
+```
+
+All steps must pass (exit 0). Do **not** push until they do. If a gate is
+incorrectly failing, fix the gate's config rather than skipping it.
+
+The gate invokes `npm test -- --coverage`. Your project's `test` script
+must be plain (e.g. `"test": "vitest run"`), without a hardcoded
+`--coverage` flag — otherwise the runner sees a duplicate flag and fails.
+Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
+
+### Branch strategy
+
+- Feature branches only — never commit directly to `main`
+- One logical change per branch. If the task has multiple parts, multiple branches.
+- Branch name format: `feat/<short-slug>`, `fix/<short-slug>`, `chore/<short-slug>`
+- PR title matches branch purpose — write it for the reviewer, not for yourself
+
+### Pre-PR semantic review (two reviewer subagents)
+
+Before pushing a branch and opening a PR, **invoke BOTH review subagents** on
+the same diff/refs: the constructive `reviewer`
+(`.claude/agents/reviewer.md`) and the `reviewer-adversary`
+(`.claude/agents/reviewer-adversary.md`). They are independent (no shared
+state) — spawn them in parallel so wall-clock stays ~120 s, not ~240 s. Both
+read the diff with fresh context and return the **same** structured JSON
+verdict (`APPROVE` | `REQUEST_CHANGES` | `BLOCK`), but from opposite priors:
+the reviewer assesses "is this good?", the adversary assumes "this is broken,
+prove me wrong." Two stances tuned to opposite optima catch more than one
+prompt tuned to a compromise.
+
+**Recompute each verdict from its findings — don't trust the top-level field.**
+For each agent's JSON, derive the verdict from the highest `severity` in its
+`findings` (`block` → BLOCK, `request_changes` → REQUEST_CHANGES, all `info`
+or empty → APPROVE). If the model's stated `verdict` disagrees with its own
+findings, use the findings-derived value (fail toward the stricter).
+
+**Combining the two verdicts** (apply after deriving each):
+
+- **reviewer APPROVE + adversary APPROVE** → proceed to push + open the PR.
+- **either REQUEST_CHANGES, neither BLOCK** → REQUEST_CHANGES: address the
+  union of both agents' findings, then re-run BOTH; do not open the PR until
+  the combined result is APPROVE.
+- **adversary BLOCK + reviewer APPROVE or REQUEST_CHANGES** → **escalate to
+  the human.** Do NOT silently proceed and do NOT silently block. Surface the
+  adversary's block-finding(s) verbatim — this disagreement (the skeptic
+  caught what the optimist missed) is the single highest-value case the
+  two-agent design exists for, and it must reach a human.
+- **reviewer BLOCK** (any adversary verdict) → BLOCK and escalate; the
+  adversary's APPROVE does not override a constructive BLOCK (fail toward the
+  block).
+- **both BLOCK** → BLOCK and escalate. Treat as a strong signal, but **do NOT
+  count it as independent "convergent ≥2 reviewers"** the way the post-PR
+  triage rule does — both agents are the same model (Sonnet) and share its
+  blind spots, so their agreement is correlated, not independent. The genuine
+  independent-convergence signal is the post-PR multi-vendor roster
+  (CodeRabbit / Gemini / Greptile / CodeQL), not these two.
+
+**Bake-in circuit-breaker (first 30 logged adversary invocations per repo).**
+Until the adversary's false-positive rate is measured, an
+**adversary-BLOCK-only** result resolves to **REQUEST_CHANGES** (fix-and-rerun)
+rather than a mandatory human escalation — this prevents a noisy new adversary
+from training humans to rubber-stamp escalations before its signal quality is
+known. **Escape hatch (avoids a deadlock on a false positive):** if main CC
+judges the adversary's surviving finding to be a false positive it cannot
+legitimately "fix" (e.g. an unreachable case, an invented requirement, a
+finding that contradicts CLAUDE.md), it must **escalate to the human with an
+override request** — quoting the finding and the reason it's believed wrong —
+rather than looping fix-and-rerun forever. The human then either confirms the
+override (proceed) or upholds the block. So during bake-in the resolution is:
+fixable → fix-and-rerun; believed-false-positive → escalate-with-override;
+never an unbreakable loop. After 30 logged adversary verdicts, switch to the
+escalation behavior above. (Count from `.adder-pipeline/reviewer-verdicts.jsonl`
+records where `agent` is `reviewer-adversary`.) A constructive-reviewer BLOCK
+always escalates regardless of the bake-in window.
+
+**Fail-closed rule (covers BOTH agents).** If EITHER agent times out, errors,
+or returns output that is not parseable as the documented JSON schema, treat
+the combined verdict as `BLOCK` and escalate. Do **not** default to
+proceeding — a silent reviewer failure must not become a silent push. With two
+agents the combined fail-closed surface is larger; "at least one agent failed
+to return parseable JSON" is itself a BLOCK, never a proceed. Include a short
+diagnostic excerpt or error class in the escalation, but **sanitize first**:
+redact API keys, tokens, `.env` paths, and any line that looks secret-like
+before posting to PR artifacts or logs. If unsure whether output is safe to
+include, escalate with just the error class — the human can re-run locally.
+
+Both reviewers are **complementary** to (not a replacement for)
+`npm run pre-pr` (deterministic local gate, runs before push) and the PR-stage
+AI reviewers configured for this repo (CodeRabbit Pro Plus required; Gemini,
+Greptile on public repos, and CodeQL advisory — run after the PR is open).
+Their job is the layer those miss: intent vs. implementation, missing edge
+cases, scope drift, silently-weakened gates — surfaced before code goes
+public.
+
+Time budget: ~120 seconds **each** (run in parallel). If either reviewer
+consistently exceeds it, log the run-times and revisit its prompt or model.
+
+**Verdict logging (orchestrator-side, mandatory).** The reviewer
+subagents are read-only by design — they can't write their own verdict
+log. After receiving EACH agent's verdict, **append one JSONL record per
+agent** to `.adder-pipeline/reviewer-verdicts.jsonl`. JSONL requires exactly
+one compact JSON object per line, terminated by a newline; no pretty-printing
+inside a record. Each record looks like:
+
+```text
+{"timestamp":"2026-04-26T15:00:00Z","pr_number":42,"agent":"reviewer","verdict":"APPROVE","wall_clock_seconds":18}
+{"timestamp":"2026-04-26T15:00:00Z","pr_number":42,"agent":"reviewer-adversary","verdict":"BLOCK","wall_clock_seconds":22}
+```
+
+- One record per agent per invocation, append-only. Create the directory
+  `.adder-pipeline/` and the file if absent. The exact setup command (kept on
+  a single line so copy-paste runs as a unit):
+
+  ```bash
+  mkdir -p .adder-pipeline && touch .adder-pipeline/reviewer-verdicts.jsonl
+  ```
+
+  Then append the JSONL records.
+
+- `timestamp` ISO-8601 UTC, `pr_number` is the GitHub PR number (use `0` if
+  logging a pre-PR dry-run with no PR open yet), `agent` is `reviewer` or
+  `reviewer-adversary`, `verdict` is one of `APPROVE` / `REQUEST_CHANGES` /
+  `BLOCK`, `wall_clock_seconds` is the integer seconds the agent took.
+- The log feeds the weekly distribution check that drives the prompt-tightness
+  re-evaluation and the adversary's bake-in counter; see
+  `~/projects/code-review-pipeline/pipeline-state.md` "Post-PR reviewers" /
+  reviewer-subagent criteria. Grouping is by `agent`.
+- Do this even when the verdict is `APPROVE`. The denominator is as important
+  as the numerator.
+
+### Pull request workflow
+
+1. Open PR against `main`
+2. **CodeRabbit Pro Plus** (required) auto-reviews. **Gemini**, **Greptile**
+   (public repos only), and **CodeQL** also post advisory findings. The
+   live reviewer roster is recorded in
+   `~/projects/code-review-pipeline/pipeline-state.md` (internal
+   maintainer configuration — not accessible or editable by external
+   contributors; the required-vs-advisory split above is the effective
+   roster external contributors should treat as authoritative).
+3. Dependabot runs on dep-related PRs
+4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
+   advisory-reviewer threads with the same rigor — nitpicks count. When an
+   advisory reviewer disagrees with CodeRabbit or with this CLAUDE.md, the
+   summary triage rule is:
+   - **Convergent finding** (≥ 2 reviewers flag the same issue):
+     auto-apply, unless the finding falls under an auto-dismiss rule
+     in [Reviewer Triage Rules](#reviewer-triage-rules) below.
+   - **CodeRabbit vs. advisory disagreement**: prefer CodeRabbit (the
+     required reviewer); auto-dismiss the advisory finding with a one-line
+     reason in the PR body.
+   - **Advisory finding contradicts an explicit rule in this CLAUDE.md**:
+     auto-dismiss; cite the CLAUDE.md section in the dismissal note.
+   - **Substantive disagreement that doesn't fit the above** (e.g. two
+     incompatible fixes, both defensible): stop and ask the human — do not
+     oscillate between the two reviewers' preferred approaches.
+
+   See **Reviewer Triage Rules** below for codified dismissal patterns
+   (specific named cases derived from `run-log.md`).
+
+5. Ask the human to merge only when all the following are true:
+   - All CI checks green
+   - All CodeRabbit threads resolved
+   - All advisory-reviewer threads resolved or explicitly auto-dismissed in
+     the PR body
+   - `npm run pre-pr` passes locally on the branch head
+
+   **There is no human code review.** The pipeline spec is explicit: "No
+   human code review — pipeline must be thorough enough that human only
+   tests functionality." The human's pre-merge role is confirming that
+   CI + AI reviewers are clean and clicking merge — not inspecting the
+   diff. Branch protection intentionally sets
+   `required_pull_request_reviews: null` to match this principle;
+   reviewer approval at the GitHub level is not required and not
+   configured. Human functional testing happens post-merge.
+
+### Never do
+
+- Force-push to `main` (branch protection blocks it anyway)
+- Bypass the gate with `--no-verify` on commits
+- Disable a Biome lint rule (via `biome.json` or a `// biome-ignore` comment),
+  or a type-aware ESLint rule (via `eslint.config.mjs` or an
+  `// eslint-disable` comment), to make the gate pass — fix the underlying
+  code instead
+- Add files to `.gitignore` to hide them from Semgrep/SonarQube
+- Commit secrets — Gitleaks will catch them, but don't make it do that
+- Change `package.json` scripts `pre-pr`, `verify:all`,
+  `security:all` without asking the user first — these are pipeline interfaces
+
+### When a session ends or context saturates
+
+Log progress in `.adder-pipeline/session-log.md` with:
+
+- What you were doing
+- Current branch
+- What's left to do
+- Anything the next session needs to know
+
+This survives context restarts.
 
 ## Reviewer Triage Rules
 
@@ -465,169 +590,14 @@ doesn't have to be rediscovered every PR.
 
 6. **Hallucinated diff content** — when a reviewer claims a file is
    missing or present in a way that contradicts the actual diff
-   (Phase-4 example: Gemini HIGH on PR #17 of this repo claimed a
-   workflow file was absent when it was present in the diff).
-   Escalate to the human; this indicates a reviewer FP-rate concern,
-   not a PR concern, and the human needs to know if the reviewer's
-   signal quality is degrading.
+   (e.g., a reviewer claiming a file is absent when it is clearly
+   present in the diff, or vice versa). Escalate to the human; this
+   indicates a reviewer FP-rate concern, not a PR concern, and the
+   human needs to know if the reviewer's signal quality is degrading.
 
 For the substantive-disagreement case (two reviewers propose
-incompatible fixes, both defensible), stop and ask the human — do
-not oscillate between the two reviewers' preferred approaches.
+incompatible fixes, both defensible), the existing PR-workflow
+step 4 sub-bullet still applies: stop and ask the human — do not
+oscillate between the two reviewers' preferred approaches.
 
-## Spec Drift Prevention
-
-Any addition or removal of a gate, reviewer, or pipeline step must be
-recorded in `~/projects/code-review-pipeline/pipeline-state.md`. Because
-`pipeline-state.md` lives in a separate filesystem location from this
-repo (it is vault-adjacent, not part of any repo's diff), the rule is:
-**update `pipeline-state.md` in its own location and commit that change
-alongside or immediately before the implementing PR in this repo**. "Alongside" means in the same working session;
-"immediately before" means no other implementing PR lands between the
-state-doc update and the change it documents. The state document must
-always reflect what `main` actually runs.
-
-Drift erodes trust. Every drift item caught in the 2026-04-26 audit (Q5
-in `~/projects/code-review-pipeline/build-log.md`) happened because this
-rule didn't exist. CodeAnt was dropped on 2026-04-23 and the docs took
-three days to catch up; CodeQL, the reviewer subagent, the
-JSDoc-coverage gate, and the Stryker hard-floor were all added without
-ever updating the spec. The cost was real: the audit had to reconstruct
-live state from PR history because no single document reflected reality.
-
-`pipeline-state.md` is the live-state document. `pipeline-spec.md` is
-now marked superseded and preserved for the design-intent record only.
-
-## When to Use Subagents
-
-Subagents are not free — each burns its own context window, and
-coordination has overhead. Use them when work fits ALL three:
-
-1. **Parallel-safe** — independent files, no shared state, results don't
-   depend on each other
-2. **Naturally splits 3+ ways** — fewer than 3 splits = overhead exceeds
-   benefit
-3. **Mechanical or templated** — each subtask follows the same pattern
-   with different inputs
-
-Examples:
-
-- ✅ JSDoc backfill across 60 files
-- ✅ Bulk test additions across independent modules
-- ✅ Multi-repo template propagation
-- ❌ Single-file refactor
-- ❌ Sequential multi-stage task
-- ❌ Small PR (<50 LOC, <3 files)
-
-Default to single-agent for everything else. The cost of a subagent that
-isn't pulling its weight is real.
-
-<!-- ADDER-PIPELINE:v1 -->
-
-## Adder Code Review Pipeline
-
-This project uses the Adder code review pipeline. Rules Claude Code must
-follow:
-
-### Before every push
-
-Run the gate until clean:
-
-```bash
-npm run pre-pr
-```
-
-All steps must pass (exit 0). Do **not** push until they do. If a gate is
-incorrectly failing, fix the gate's config rather than skipping it.
-`--skip-qwen` is allowed during fast iteration but the final run before
-opening a PR must include Qwen.
-
-The gate invokes `npm test -- --coverage`. Your project's `test` script
-must be plain (e.g. `"test": "vitest run"`), without a hardcoded
-`--coverage` flag — otherwise the runner sees a duplicate flag and fails.
-Keep coverage as a separate script (e.g. `"test:coverage": "vitest run --coverage"`),
-which is consistent with the `npm run test:coverage` command above.
-Coverage thresholds belong in `vitest.config.ts` / `jest.config.js`.
-
-### Branch strategy
-
-- Feature branches only — never commit directly to `main`
-- One logical change per branch. If the task has multiple parts, multiple branches.
-- Branch name format: `feat/<short-slug>`, `fix/<short-slug>`, `chore/<short-slug>`
-- PR title matches branch purpose — write it for the reviewer, not for yourself
-
-### Pull request workflow
-
-1. Open PR against `main`
-2. **CodeRabbit Pro Plus** (required) auto-reviews. **Gemini**, **Greptile**,
-   and **CodeQL** also post advisory findings. The live reviewer roster is
-   recorded in `~/projects/code-review-pipeline/pipeline-state.md` (internal
-   maintainer configuration — not accessible or editable by external
-   contributors; the required-vs-advisory split above is the effective
-   roster external contributors should treat as authoritative).
-3. Dependabot runs on dep-related PRs
-4. Iterate on every comment from CodeRabbit (the required reviewer). Resolve
-   advisory-reviewer threads with the same rigor — nitpicks count. When an
-   advisory reviewer disagrees with CodeRabbit or with this CLAUDE.md, the
-   triage rule is:
-   - **Convergent finding** (≥2 reviewers flag the same issue): auto-apply.
-   - **CodeRabbit vs. advisory disagreement**: prefer CodeRabbit (the
-     required reviewer); auto-dismiss the advisory finding with a one-line
-     reason in the PR body.
-   - **Advisory finding contradicts an explicit rule in this CLAUDE.md**:
-     auto-dismiss; cite the CLAUDE.md section in the dismissal note.
-   - **Substantive disagreement that doesn't fit the above** (e.g. two
-     incompatible fixes, both defensible): stop and ask the human — do not
-     oscillate between the two reviewers' preferred approaches.
-5. Ask the human to merge only when all the following are true:
-   - All CI checks green
-   - All CodeRabbit threads resolved
-   - All advisory-reviewer threads resolved or explicitly auto-dismissed in
-     the PR body
-   - `npm run pre-pr` passes locally on the branch head
-
-   **There is no human code review.** The pipeline spec is explicit: "No
-   human code review — pipeline must be thorough enough that human only
-   tests functionality." The human's pre-merge role is confirming that
-   CI + AI reviewers are clean and clicking merge — not inspecting the
-   diff. Branch protection intentionally sets
-   `required_pull_request_reviews: null` to match this principle;
-   reviewer approval at the GitHub level is not required and not
-   configured. Human functional testing happens post-merge.
-
-### Never do
-
-- Force-push to `main` (branch protection blocks it anyway)
-- Bypass the gate with `--no-verify` on commits
-- Disable an ESLint rule to make the gate pass — fix the underlying code
-- Add files to `.gitignore` to hide them from Semgrep/SonarQube
-- Commit secrets — Gitleaks will catch them, but don't make it do that
-- Change `package.json` scripts `pre-pr`, `qwen-review`, `verify:all`,
-  `security:all` without asking the user first — these are pipeline interfaces
-
-### CodeGraph
-
-This project is indexed by CodeGraph. Prefer `mcp__codegraph__codegraph_*`
-MCP tools over Read/Grep for codebase navigation:
-
-- Where is X defined? — `mcp__codegraph__codegraph_search`
-- Who calls X? — `mcp__codegraph__codegraph_callers`
-- What breaks if I change X? — `mcp__codegraph__codegraph_impact`
-- What does X call? — `mcp__codegraph__codegraph_callees`
-- High-level structure? — `mcp__codegraph__codegraph_files`
-
-File reads are for when you need the actual source to edit. Use the graph for
-discovery.
-
-### When a session ends or context saturates
-
-Log progress in `.adder-pipeline/session-log.md` with:
-
-- What you were doing
-- Current branch
-- What's left to do
-- Anything the next session needs to know
-
-This survives context restarts.
-
-<!-- /ADDER-PIPELINE:v1 -->
+<!-- /ADDER-PIPELINE:v2 -->

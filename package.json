@@ -71,7 +71,7 @@
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^25.5.0",
     "@vitest/coverage-v8": "^4.1.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.0.3",
     "glob": "^13.0.6",
     "knip": "^6.6.2",
